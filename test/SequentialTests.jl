@@ -3,6 +3,8 @@ module SequentialTests
 using DistributedDataDraft
 using Test
 using Gridap.Arrays: Table
+using SparseArrays: sparse
+using LinearAlgebra: mul!
 
 nparts = 4
 SequentialCommunicator(nparts) do comm
@@ -152,8 +154,7 @@ SequentialCommunicator(nparts) do comm
 
   v = DistributedVector{Float64}(undef,indices)
   v = DistributedVector{Float64}(undef,indices,exchanger)
-  v = DistributedVector(0.0,indices)
-  v = DistributedVector(1,indices,exchanger)
+  fill!(v,1.0)
 
   v = DistributedVector{Float64}(undef,indices,exchanger)
   do_on_parts(v.values,v.ids) do part, values, ids
@@ -171,6 +172,26 @@ SequentialCommunicator(nparts) do comm
       @test values[lid] == 10*owner
     end
   end
+
+  col_ids = indices
+  row_ids = non_overlaping(col_ids)
+  do_on_parts(row_ids) do part, row_ids
+    @test all(i->i==part,row_ids.lid_to_owner)
+  end
+
+  values = DistributedData(row_ids,col_ids) do part, row_ids, col_ids
+    i = collect(1:num_lids(row_ids))
+    v = fill(1.0,length(i))
+    sparse(i,i,v,num_lids(row_ids),num_lids(col_ids))
+  end
+
+  x = DistributedVector{Float64}(undef,col_ids)
+  fill!(x,3)
+  b = DistributedVector{Float64}(undef,row_ids)
+
+  A = DistributedSparseMatrix(values,row_ids,col_ids)
+  mul!(b,A,x)
+  display(b.values)
 
 end # comm
 

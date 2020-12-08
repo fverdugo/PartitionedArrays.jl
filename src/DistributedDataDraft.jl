@@ -1,6 +1,8 @@
 module DistributedDataDraft
 
 using Gridap.Arrays: Table, length_to_ptrs!, rewind_ptrs!
+using SparseArrays: AbstractSparseMatrix
+using LinearAlgebra
 
 export Communicator
 export num_parts
@@ -21,10 +23,13 @@ export exchange!
 export exchange
 export discover_parts_snd
 export IndexSet
+export num_lids
 export DistributedIndexSet
 export num_gids
+export non_overlaping
 export Exchanger
 export DistributedVector
+export DistributedSparseMatrix
 
 export SequentialCommunicator
 

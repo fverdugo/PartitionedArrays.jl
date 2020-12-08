@@ -240,6 +240,9 @@ function IndexSet(ngids,lid_to_gid,lid_to_owner)
   IndexSet(ngids,lid_to_gid,lid_to_owner,gid_to_lid)
 end
 
+num_gids(a::IndexSet) = a.ngids
+num_lids(a::IndexSet) = length(a.lid_to_owner)
+
 struct DistributedIndexSet{T<:DistributedData{<:IndexSet}}
   lids::T
   ngids::Int
@@ -247,6 +250,22 @@ end
 
 get_distributed_data(a::DistributedIndexSet) = a.lids
 num_gids(a::DistributedIndexSet) = a.ngids
+
+function non_overlaping(ids::DistributedIndexSet)
+  lids = DistributedData(ids) do part, ids
+    lid_to_gid = similar(ids.lid_to_gid,eltype(ids.lid_to_gid),0)
+    for (lid,owner) in enumerate(ids.lid_to_owner)
+      if owner == part
+        gid = ids.lid_to_gid[lid]
+        push!(lid_to_gid,gid)
+      end
+    end
+    lid_to_owner = similar(ids.lid_to_owner,eltype(ids.lid_to_owner),length(lid_to_gid))
+    fill!(lid_to_owner,part)
+    IndexSet(ids.ngids,lid_to_gid,lid_to_owner)
+  end
+  DistributedIndexSet(lids,ids.ngids)
+end
 
 struct Exchanger{T,A,B,C}
   data_rcv::A
@@ -340,7 +359,7 @@ struct DistributedVector{T,A,B,C} <: AbstractVector{T}
   function DistributedVector(
     values::DistributedData{<:AbstractVector{T}},
     ids::DistributedIndexSet,
-    exchanger::Exchanger) where T
+    exchanger::Exchanger=Exchanger{T}(ids)) where T
 
     A = typeof(values)
     B = typeof(ids)
@@ -357,12 +376,11 @@ function DistributedVector{T}(::UndefInitializer,ids::DistributedIndexSet,exchan
   DistributedVector(values,ids,exchanger)
 end
 
-function DistributedVector(v::T,ids::DistributedIndexSet,exchanger::Exchanger=Exchanger{T}(ids)) where T
-  values = DistributedData(ids) do part, ids
-    nlids = length(ids.lid_to_owner)
-    fill(v,nlids)
+function Base.fill!(a::DistributedVector,v)
+  do_on_parts(a.values) do part, values
+    fill!(values,v)
   end
-  DistributedVector(values,ids,exchanger)
+  a
 end
 
 #get_distributed_data(a::DistributedVector) = a.values
@@ -397,6 +415,47 @@ function exchange!(a::DistributedVector)
   a
 end
 
+struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
+  values::A
+  row_ids::B
+  col_ids::B
+  row_exchanger::C
+  col_exchanger::C
+  function DistributedSparseMatrix(
+    values::DistributedData{<:AbstractSparseMatrix{T}},
+    row_ids::DistributedIndexSet,
+    col_ids::DistributedIndexSet,
+    row_exchanger::Exchanger=Exchanger{T}(row_ids),
+    col_exchanger::Exchanger=Exchanger{T}(col_ids)) where T
 
+    A = typeof(values)
+    B = typeof(col_ids)
+    C = typeof(col_exchanger)
 
+    new{T,A,B,C}(
+      values,
+      row_ids,
+      col_ids,
+      row_exchanger,
+      col_exchanger)
+  end
+end
+
+Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
+
+function LinearAlgebra.mul!(
+  c::DistributedVector,
+  a::DistributedSparseMatrix,
+  b::DistributedVector,
+  α::Number,
+  β::Number)
+
+  @assert c.ids === a.row_ids
+  @assert b.ids === a.col_ids
+  exchange!(b)
+  do_on_parts(c.values,a.values,b.values) do part,c,a,b
+    mul!(c,a,b,α,β)
+  end
+  c
+end
 
