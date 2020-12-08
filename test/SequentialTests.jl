@@ -130,7 +130,7 @@ SequentialCommunicator(nparts) do comm
   @test num_parts(indices) == nparts
   @test num_gids(indices) == n
 
-  exchanger = Exchanger(Float64,indices)
+  exchanger = Exchanger{Float64}(indices)
 
   do_on_parts(exchanger.parts_snd,exchanger.lids_snd) do part, parts_snd, lids_snd
     if part == 1
@@ -148,6 +148,28 @@ SequentialCommunicator(nparts) do comm
     end
     @test parts == parts_snd
     @test lids == lids_snd
+  end
+
+  v = DistributedVector{Float64}(undef,indices)
+  v = DistributedVector{Float64}(undef,indices,exchanger)
+  v = DistributedVector(0.0,indices)
+  v = DistributedVector(1,indices,exchanger)
+
+  v = DistributedVector{Float64}(undef,indices,exchanger)
+  do_on_parts(v.values,v.ids) do part, values, ids
+    for lid in 1:length(ids.lid_to_owner)
+      owner = ids.lid_to_owner[lid]
+      if owner == part
+        values[lid] = 10*part
+      end
+    end
+  end
+  exchange!(v)
+  do_on_parts(v.values,v.ids) do part, values, ids
+    for lid in 1:length(ids.lid_to_owner)
+      owner = ids.lid_to_owner[lid]
+      @test values[lid] == 10*owner
+    end
   end
 
 end # comm

@@ -248,16 +248,29 @@ end
 get_distributed_data(a::DistributedIndexSet) = a.lids
 num_gids(a::DistributedIndexSet) = a.ngids
 
-struct Exchanger{A,B,C}
+struct Exchanger{T,A,B,C}
   data_rcv::A
   data_snd::A
   parts_rcv::B
   parts_snd::B
   lids_rcv::C
   lids_snd::C
+  function Exchanger{T}(
+    data_rcv::DistributedData{<:Table{T}},
+    data_snd::DistributedData{<:Table{T}},
+    parts_rcv::DistributedData{<:AbstractVector{<:Integer}},
+    parts_snd::DistributedData{<:AbstractVector{<:Integer}},
+    lids_rcv::DistributedData{<:Table{<:Integer}},
+    lids_snd::DistributedData{<:Table{<:Integer}}) where T
+
+    A = typeof(data_rcv)
+    B = typeof(parts_rcv)
+    C = typeof(lids_rcv)
+    new{T,A,B,C}(data_rcv,data_snd,parts_rcv,parts_snd,lids_rcv,lids_snd)
+  end
 end
 
-function Exchanger(::Type{T},ids::DistributedIndexSet,neighbors=nothing) where T
+function Exchanger{T}(ids::DistributedIndexSet,neighbors=nothing) where T
 
   parts_rcv = DistributedData(ids) do part, ids
     parts_rcv = Dict((owner=>true for owner in ids.lid_to_owner if owner!=part))
@@ -317,23 +330,72 @@ function Exchanger(::Type{T},ids::DistributedIndexSet,neighbors=nothing) where T
     lids_snd, data_snd
   end
 
-  Exchanger(data_rcv,data_snd,parts_rcv,parts_snd,lids_rcv,lids_snd)
+  Exchanger{T}(data_rcv,data_snd,parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
-#function exchange!(ids::DistributedIndexSet,a::Exchanger)
-#  do_on_parts(ids,a.data_snd,a.lids_snd) do part, 
-#  end
-#  exchange!(a.data_rcv,a.data_snd,a.parts_rcv,a.parts_snd)
-#end
+struct DistributedVector{T,A,B,C} <: AbstractVector{T}
+  values::A
+  ids::B
+  exchanger::C
+  function DistributedVector(
+    values::DistributedData{<:AbstractVector{T}},
+    ids::DistributedIndexSet,
+    exchanger::Exchanger) where T
 
-#struct DistributedVector{T,A<:DistributedData{<:AbstractVector{T}},B<:DistributedIndexSet} <: AbstractVector{T}
-#  values::A
-#  ids::B
-#end
-#
+    A = typeof(values)
+    B = typeof(ids)
+    C = typeof(exchanger)
+    new{T,A,B,C}(values,ids,exchanger)
+  end
+end
+
+function DistributedVector{T}(::UndefInitializer,ids::DistributedIndexSet,exchanger::Exchanger=Exchanger{T}(ids)) where T
+  values = DistributedData(ids) do part, ids
+    nlids = length(ids.lid_to_owner)
+    Vector{T}(undef,nlids)
+  end
+  DistributedVector(values,ids,exchanger)
+end
+
+function DistributedVector(v::T,ids::DistributedIndexSet,exchanger::Exchanger=Exchanger{T}(ids)) where T
+  values = DistributedData(ids) do part, ids
+    nlids = length(ids.lid_to_owner)
+    fill(v,nlids)
+  end
+  DistributedVector(values,ids,exchanger)
+end
+
 #get_distributed_data(a::DistributedVector) = a.values
-#
-#Base.length(a::DistributedVector) = num_gids(a.ids)
+
+Base.length(a::DistributedVector) = num_gids(a.ids)
+
+function exchange!(a::DistributedVector)
+
+  # Fill snd buffers
+  do_on_parts( a.values,a.exchanger.data_snd,a.exchanger.lids_snd) do part,values,data_snd,lids_snd 
+    for p in 1:length(lids_snd.data)
+      lid = lids_snd.data[p]
+      data_snd.data[p] = values[lid]
+    end
+  end
+
+  # communicate
+  exchange!(
+    a.exchanger.data_rcv,
+    a.exchanger.data_snd,
+    a.exchanger.parts_rcv,
+    a.exchanger.parts_snd)
+
+  # Fill non-owned values
+  do_on_parts( a.values,a.exchanger.data_rcv,a.exchanger.lids_rcv) do part,values,data_rcv,lids_rcv 
+    for p in 1:length(lids_rcv.data)
+      lid = lids_rcv.data[p]
+      values[lid] = data_rcv.data[p]  
+    end
+  end
+
+  a
+end
 
 
 

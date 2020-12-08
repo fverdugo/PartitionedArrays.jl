@@ -24,6 +24,7 @@ export IndexSet
 export DistributedIndexSet
 export num_gids
 export Exchanger
+export DistributedVector
 
 export SequentialCommunicator
 
