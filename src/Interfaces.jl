@@ -114,6 +114,8 @@ end
 
 get_comm(a) = get_comm(get_distributed_data(a))
 
+# In this version, sending a number per part is enough
+# We have another version below to send a vector of numbers per part (compressed in a Table)
 function exchange!(
   data_rcv::DistributedData,
   data_snd::DistributedData,
@@ -132,6 +134,49 @@ function exchange(
     similar(data_snd,eltype(data_snd),length(parts_rcv))
   end
 
+  exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+  data_rcv
+end
+
+function exchange!(
+  data_rcv::DistributedData{<:Table},
+  data_snd::DistributedData{<:Table},
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData)
+
+  @abstractmethod
+end
+
+function exchange(
+  data_snd::DistributedData{<:Table},
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData)
+
+  # Count how many we snd to each part
+  n_snd = DistributedData(data_snd) do part, data_snd
+    n_snd = zeros(eltype(data_snd.ptrs),length(data_snd))
+    for i in 1:length(n_snd)
+      n_snd[i] = data_snd.ptrs[i+1] - data_snd.ptrs[i]
+    end
+    n_snd
+  end
+
+  # Count how many we rcv from each part
+  n_rcv = exchange(n_snd,parts_rcv,parts_snd)
+
+  # Allocate rcv tables
+  data_rcv = DistributedData(n_rcv,data_snd) do part, n_rcv, data_snd
+    ptrs = similar(data_snd.ptrs,eltype(data_snd.ptrs),length(n_rcv)+1)
+    for i in 1:length(n_rcv)
+      ptrs[i+1] = n_rcv[i]
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = similar(data_snd.data,eltype(data_snd.data),ndata)
+    Table(data,ptrs)
+  end
+
+  # Do the exchange
   exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
   data_rcv
 end

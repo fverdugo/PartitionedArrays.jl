@@ -1,5 +1,7 @@
 module DistributedDataDraft
 
+using Gridap.Arrays: Table, length_to_ptrs!
+
 export Communicator
 export num_parts
 export num_workers
