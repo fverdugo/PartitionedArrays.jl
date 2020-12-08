@@ -33,6 +33,15 @@ SequentialCommunicator(nparts) do comm
   c = bcast(comm,2)
   @test c.parts == fill(2,nparts)
 
+  a2, b2 = DistributedData(comm) do part
+    10*part, 30*part 
+  end
+
+  do_on_parts(a2,b2) do part, a2, b2
+    @test a2 == 10*part
+    @test b2 == 30*part
+  end
+
   parts_rcv = DistributedData(comm) do part
     if part == 1
       [2,3]
@@ -101,21 +110,46 @@ SequentialCommunicator(nparts) do comm
   end
 
   n = 10
-  indices = DistributedIndexSet(comm,n) do part
+  lids = DistributedData(comm) do part
     if part == 1
-      IndexSet(n,1:5,fill(part,5))
+      IndexSet(n,[1,2,3,5,7,8],[1,1,1,2,3,3])
+    elseif part == 2
+      IndexSet(n,[2,4,5,10],[1,2,2,4])
+    elseif part == 3
+      IndexSet(n,[6,7,8,5,4,10],[3,3,3,2,2,4])
     else
-      IndexSet(n,6:10,fill(part,5))
+      IndexSet(n,[1,3,7,9,10],[1,1,3,4,4])
     end
   end
+  indices = DistributedIndexSet(lids,n)
+
   do_on_parts(indices) do part, indices
-    @test indices.lid_to_owner == fill(part,5)
     @test indices.ngids == n
   end
   @test get_comm(indices) === comm
   @test num_parts(indices) == nparts
   @test num_gids(indices) == n
 
-end 
+  exchanger = Exchanger(Float64,indices)
+
+  do_on_parts(exchanger.parts_snd,exchanger.lids_snd) do part, parts_snd, lids_snd
+    if part == 1
+      parts = [2,4]
+      lids = [[2],[1,3]]
+    elseif part == 2
+      parts = [1,3]
+      lids = [[3],[3,2]]
+    elseif part == 3
+      parts = [1,4]
+      lids = [[2,3],[2]]
+    else
+      parts = [2,3]
+      lids = [[5],[5]]
+    end
+    @test parts == parts_snd
+    @test lids == lids_snd
+  end
+
+end # comm
 
 end # Module

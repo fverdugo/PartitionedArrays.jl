@@ -1,6 +1,6 @@
 module DistributedDataDraft
 
-using Gridap.Arrays: Table, length_to_ptrs!
+using Gridap.Arrays: Table, length_to_ptrs!, rewind_ptrs!
 
 export Communicator
 export num_parts
@@ -23,6 +23,7 @@ export discover_parts_snd
 export IndexSet
 export DistributedIndexSet
 export num_gids
+export Exchanger
 
 export SequentialCommunicator
 

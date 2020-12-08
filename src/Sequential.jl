@@ -55,6 +55,38 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
   end
 end
 
+function Base.iterate(a::SequentialDistributedData)
+  next = DistributedData(a) do part, a
+    iterate(a)
+  end
+  if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
+    return nothing
+  end
+  item = DistributedData(next) do part, next
+    next[1]
+  end
+  state = DistributedData(next) do part, next
+    next[2]
+  end
+  item, state
+end
+
+function Base.iterate(a::SequentialDistributedData,state)
+  next = DistributedData(a,state) do part, a, state
+    iterate(a,state)
+  end
+  if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
+    return nothing
+  end
+  item = DistributedData(next) do part, next
+    next[1]
+  end
+  state = DistributedData(next) do part, next
+    next[2]
+  end
+  item, state
+end
+
 get_part(comm::SequentialCommunicator,a::SequentialDistributedData,part::Integer) = a.parts[part]
 
 get_comm(a::SequentialDistributedData) = a.comm

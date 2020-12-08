@@ -75,6 +75,10 @@ get_part_type(::Type{<:DistributedData{T}}) where T = T
 
 get_part_type(::DistributedData{T}) where T = T
 
+Base.iterate(a::DistributedData)  = @abstractmethod
+
+Base.iterate(a::DistributedData,state)  = @abstractmethod
+
 function gather!(a::AbstractVector,b::DistributedData)
   @abstractmethod
 end
@@ -216,6 +220,10 @@ function discover_parts_snd(parts_rcv::DistributedData)
   discover_parts_snd(parts_rcv,neighbors)
 end
 
+function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
+  discover_parts_snd(parts_rcv)
+end
+
 # A, B, C should be the type of some indexable collection, e.g. ranges or vectors or dicts
 struct IndexSet{A,B,C}
   ngids::Int
@@ -232,7 +240,6 @@ function IndexSet(ngids,lid_to_gid,lid_to_owner)
   IndexSet(ngids,lid_to_gid,lid_to_owner,gid_to_lid)
 end
 
-
 struct DistributedIndexSet{T<:DistributedData{<:IndexSet}}
   lids::T
   ngids::Int
@@ -241,17 +248,83 @@ end
 get_distributed_data(a::DistributedIndexSet) = a.lids
 num_gids(a::DistributedIndexSet) = a.ngids
 
-function DistributedIndexSet(initializer::Function,comm::Communicator,ngids::Integer,args...)
-  lids = DistributedData(initializer,comm,args...)
-  DistributedIndexSet(lids,ngids)
+struct Exchanger{A,B,C}
+  data_rcv::A
+  data_snd::A
+  parts_rcv::B
+  parts_snd::B
+  lids_rcv::C
+  lids_snd::C
 end
 
-# The comm argument can be omitted if it can be determined from the first
-# data argument.
-function DistributedIndexSet(initializer::Function,ngids::Integer,args...) where T
-  comm = get_comm(get_distributed_data(first(args)))
-  DistributedIndexSet(initializer,comm,args...)
+function Exchanger(::Type{T},ids::DistributedIndexSet,neighbors=nothing) where T
+
+  parts_rcv = DistributedData(ids) do part, ids
+    parts_rcv = Dict((owner=>true for owner in ids.lid_to_owner if owner!=part))
+    sort(collect(keys(parts_rcv)))
+  end
+
+  lids_rcv, gids_rcv, data_rcv = DistributedData(ids,parts_rcv) do part, ids, parts_rcv
+
+    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
+
+    ptrs = zeros(Int32,length(parts_rcv)+1)
+    for owner in ids.lid_to_owner
+      if owner != part
+        ptrs[owner_to_i[owner]+1] +=1
+      end
+    end
+    length_to_ptrs!(ptrs)
+
+    data_lids = zeros(Int32,ptrs[end]-1)
+    data_gids = zeros(Int,ptrs[end]-1)
+    data_data = zeros(T,ptrs[end]-1)
+
+    for (lid,owner) in enumerate(ids.lid_to_owner)
+      if owner != part
+        p = ptrs[owner_to_i[owner]]
+        data_lids[p]=lid
+        data_gids[p]=ids.lid_to_gid[lid]
+        ptrs[owner_to_i[owner]] += 1
+      end
+    end
+    rewind_ptrs!(ptrs)
+
+    lids_rcv = Table(data_lids,ptrs)
+    gids_rcv = Table(data_gids,ptrs)
+    data_rcv = Table(data_data,ptrs)
+
+    lids_rcv, gids_rcv, data_rcv
+  end
+
+  parts_snd = discover_parts_snd(parts_rcv,neighbors)
+
+  gids_snd = exchange(gids_rcv,parts_snd,parts_rcv)
+
+  lids_snd, data_snd = DistributedData(ids, gids_snd) do part, ids, gids_snd
+
+    ptrs = gids_snd.ptrs
+    data_lids = zeros(Int32,ptrs[end]-1)
+    data_data = zeros(T,ptrs[end]-1)
+
+    for (k,gid) in enumerate(gids_snd.data)
+      data_lids[k] = ids.gid_to_lid[gid]
+    end
+
+    lids_snd = Table(data_lids,ptrs)
+    data_snd = Table(data_data,ptrs)
+
+    lids_snd, data_snd
+  end
+
+  Exchanger(data_rcv,data_snd,parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
+
+#function exchange!(ids::DistributedIndexSet,a::Exchanger)
+#  do_on_parts(ids,a.data_snd,a.lids_snd) do part, 
+#  end
+#  exchange!(a.data_rcv,a.data_snd,a.parts_rcv,a.parts_snd)
+#end
 
 #struct DistributedVector{T,A<:DistributedData{<:AbstractVector{T}},B<:DistributedIndexSet} <: AbstractVector{T}
 #  values::A
