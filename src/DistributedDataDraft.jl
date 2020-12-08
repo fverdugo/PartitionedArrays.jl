@@ -32,6 +32,7 @@ export num_gids
 export non_overlaping
 export DistributedVector
 export DistributedSparseMatrix
+export AdditiveSchwarz
 
 export SequentialCommunicator
 

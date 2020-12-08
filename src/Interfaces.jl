@@ -526,3 +526,35 @@ function Base.getindex(
   end
 end
 
+struct AdditiveSchwarz{A,B,C}
+  problems::A
+  solvers::B
+  row_ids::C
+  col_ids::C
+end
+
+function AdditiveSchwarz(a::DistributedSparseMatrix)
+  problems = a[a.row_ids,a.row_ids].values
+  solvers = DistributedData(problems) do part, problem
+    return \
+  end
+  AdditiveSchwarz(problems,solvers,a.row_ids,a.col_ids)
+end
+
+function LinearAlgebra.mul!(c::DistributedVector,a::AdditiveSchwarz,b::DistributedVector)
+  @assert c.ids === a.col_ids
+  @assert b.ids === a.row_ids
+  do_on_parts(c.values,a.problems,a.solvers,b.values,a.col_ids,a.row_ids) do part,c_col,p,s,b,col_ids,row_ids
+    c_row = s(p,b)
+    for lid_row in 1:num_lids(row_ids)
+      gid = row_ids.lid_to_gid[lid_row]
+      lid_col = col_ids.gid_to_lid[gid]
+      c_col[lid_col] = c_row[lid_row]
+    end
+  end
+  c
+end
+
+
+
+

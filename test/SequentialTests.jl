@@ -216,6 +216,12 @@ SequentialCommunicator(nparts) do comm
 
   mul!(b,B,y)
 
+  P = AdditiveSchwarz(A)
+
+  x = DistributedVector{Float64}(undef,col_ids)
+  mul!(x,P,b)
+  exchange!(x)
+
 end # comm
 
 end # Module
