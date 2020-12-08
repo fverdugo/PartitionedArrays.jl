@@ -399,6 +399,32 @@ function Base.fill!(a::DistributedVector,v)
   a
 end
 
+function Base.getindex(a::DistributedVector,ids::DistributedIndexSet)
+  exchange!(a)
+  if ids === a.ids
+    a
+  else
+    ids_out = ids
+    ids_in = a.ids
+    values_in = a.values
+    values_out = DistributedData(values_in,ids_in,ids_out) do part, values_in, ids_in, ids_out
+      values_out = similar(values_in,eltype(values_in),num_lids(ids_out))
+      for lid_out in 1:num_lids(ids_out)
+        if ids_out.lid_to_owner[lid_out] == part
+          gid = ids_out.lid_to_gid[lid_out]
+          @notimplementedif ! haskey(ids_in.gid_to_lid,gid)
+          lid_in = ids_in.gid_to_lid[gid]
+          values_out[lid_out] = values_in[lid_in]
+        end
+      end
+      values_out
+    end
+    v = DistributedVector(values_out,ids_out)
+    exchange!(v)
+    v
+  end
+end
+
 #get_distributed_data(a::DistributedVector) = a.values
 
 Base.length(a::DistributedVector) = num_gids(a.ids)
@@ -466,5 +492,37 @@ function LinearAlgebra.mul!(
     mul!(c,a,b,α,β)
   end
   c
+end
+
+function Base.getindex(
+  a::DistributedSparseMatrix,
+  row_ids::DistributedIndexSet,
+  col_ids::DistributedIndexSet)
+
+  @notimplementedif a.row_ids !== row_ids
+  if a.col_ids === col_ids
+    a
+  else
+    ids_out = col_ids
+    ids_in = a.col_ids
+    values_in = a.values
+    values_out = DistributedData(values_in,ids_in,ids_out) do part, values_in, ids_in, ids_out
+      i_to_lid_in = Int32[]
+      i_to_lid_out = Int32[]
+      for lid_in in 1:num_lids(ids_in)
+         gid = ids_in.lid_to_gid[lid_in]
+         if haskey(ids_out.gid_to_lid,gid)
+           lid_out = ids_out.gid_to_lid[gid]
+           push!(i_to_lid_in,lid_in)
+           push!(i_to_lid_out,lid_out)
+         end
+      end
+      I,J_in,V = findnz(values_in[:,i_to_lid_in])
+      J_out = similar(J_in)
+      J_out .= i_to_lid_out[J_in]
+      sparse(I,J_out,V,size(values_in,1),num_lids(ids_out))
+    end
+    DistributedSparseMatrix(values_out,row_ids,col_ids)
+  end
 end
 

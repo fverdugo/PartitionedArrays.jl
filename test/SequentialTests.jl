@@ -174,6 +174,9 @@ SequentialCommunicator(nparts) do comm
     end
   end
 
+  u = v[indices]
+  @test u.ids === indices
+
   col_ids = indices
   row_ids = non_overlaping(col_ids)
   do_on_parts(row_ids) do part, row_ids
@@ -182,8 +185,14 @@ SequentialCommunicator(nparts) do comm
 
   values = DistributedData(row_ids,col_ids) do part, row_ids, col_ids
     i = collect(1:num_lids(row_ids))
+    j = similar(i)
+    for lid_row in 1:num_lids(row_ids)
+      gid = row_ids.lid_to_gid[lid_row]
+      lid_col = col_ids.gid_to_lid[gid]
+      j[lid_row] = lid_col
+    end
     v = fill(1.0,length(i))
-    sparse(i,i,v,num_lids(row_ids),num_lids(col_ids))
+    sparse(i,j,v,num_lids(row_ids),num_lids(col_ids))
   end
 
   x = DistributedVector{Float64}(undef,col_ids)
@@ -192,7 +201,20 @@ SequentialCommunicator(nparts) do comm
 
   A = DistributedSparseMatrix(values,row_ids,col_ids)
   mul!(b,A,x)
-  display(b.values)
+
+  y = x[row_ids]
+  @test y.ids === row_ids
+
+  B = A[row_ids,col_ids]
+  @test B.col_ids === col_ids
+
+  B = A[row_ids,row_ids]
+  @test B.col_ids === row_ids
+
+  C = B[row_ids,col_ids]
+  @test C.col_ids === col_ids
+
+  mul!(b,B,y)
 
 end # comm
 

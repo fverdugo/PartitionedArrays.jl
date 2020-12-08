@@ -1,7 +1,7 @@
 module DistributedDataDraft
 
 using Gridap.Arrays: Table, length_to_ptrs!, rewind_ptrs!
-using SparseArrays: AbstractSparseMatrix
+using SparseArrays: AbstractSparseMatrix, findnz, sparse
 using LinearAlgebra
 
 export Communicator
