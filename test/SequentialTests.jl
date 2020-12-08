@@ -123,7 +123,28 @@ SequentialCommunicator(nparts) do comm
       IndexSet(n,[1,3,7,9,10],[1,1,3,4,4])
     end
   end
-  indices = DistributedIndexSet(lids,n)
+
+  exchanger = Exchanger(lids)
+
+  do_on_parts(exchanger.parts_snd,exchanger.lids_snd) do part, parts_snd, lids_snd
+    if part == 1
+      parts = [2,4]
+      ids = [[2],[1,3]]
+    elseif part == 2
+      parts = [1,3]
+      ids = [[3],[3,2]]
+    elseif part == 3
+      parts = [1,4]
+      ids = [[2,3],[2]]
+    else
+      parts = [2,3]
+      ids = [[5],[5]]
+    end
+    @test parts == parts_snd
+    @test ids == lids_snd
+  end
+
+  indices = DistributedIndexSet(n,lids,exchanger)
 
   do_on_parts(indices) do part, indices
     @test indices.ngids == n
@@ -132,31 +153,11 @@ SequentialCommunicator(nparts) do comm
   @test num_parts(indices) == nparts
   @test num_gids(indices) == n
 
-  exchanger = Exchanger{Float64}(indices)
-
-  do_on_parts(exchanger.parts_snd,exchanger.lids_snd) do part, parts_snd, lids_snd
-    if part == 1
-      parts = [2,4]
-      lids = [[2],[1,3]]
-    elseif part == 2
-      parts = [1,3]
-      lids = [[3],[3,2]]
-    elseif part == 3
-      parts = [1,4]
-      lids = [[2,3],[2]]
-    else
-      parts = [2,3]
-      lids = [[5],[5]]
-    end
-    @test parts == parts_snd
-    @test lids == lids_snd
-  end
 
   v = DistributedVector{Float64}(undef,indices)
-  v = DistributedVector{Float64}(undef,indices,exchanger)
   fill!(v,1.0)
 
-  v = DistributedVector{Float64}(undef,indices,exchanger)
+  v = DistributedVector{Float64}(undef,indices)
   do_on_parts(v.values,v.ids) do part, values, ids
     for lid in 1:length(ids.lid_to_owner)
       owner = ids.lid_to_owner[lid]

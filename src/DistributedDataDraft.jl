@@ -24,10 +24,12 @@ export exchange
 export discover_parts_snd
 export IndexSet
 export num_lids
+export Exchanger
+export allocate_rcv_buffer
+export allocate_snd_buffer
 export DistributedIndexSet
 export num_gids
 export non_overlaping
-export Exchanger
 export DistributedVector
 export DistributedSparseMatrix
 

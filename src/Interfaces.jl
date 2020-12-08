@@ -243,9 +243,109 @@ end
 num_gids(a::IndexSet) = a.ngids
 num_lids(a::IndexSet) = length(a.lid_to_owner)
 
-struct DistributedIndexSet{T<:DistributedData{<:IndexSet}}
-  lids::T
+struct Exchanger{B,C}
+  parts_rcv::B
+  parts_snd::B
+  lids_rcv::C
+  lids_snd::C
+  function Exchanger(
+    parts_rcv::DistributedData{<:AbstractVector{<:Integer}},
+    parts_snd::DistributedData{<:AbstractVector{<:Integer}},
+    lids_rcv::DistributedData{<:Table{<:Integer}},
+    lids_snd::DistributedData{<:Table{<:Integer}})
+
+    B = typeof(parts_rcv)
+    C = typeof(lids_rcv)
+    new{B,C}(parts_rcv,parts_snd,lids_rcv,lids_snd)
+  end
+end
+
+function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
+
+  parts_rcv = DistributedData(ids) do part, ids
+    parts_rcv = Dict((owner=>true for owner in ids.lid_to_owner if owner!=part))
+    sort(collect(keys(parts_rcv)))
+  end
+
+  lids_rcv, gids_rcv = DistributedData(ids,parts_rcv) do part, ids, parts_rcv
+
+    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
+
+    ptrs = zeros(Int32,length(parts_rcv)+1)
+    for owner in ids.lid_to_owner
+      if owner != part
+        ptrs[owner_to_i[owner]+1] +=1
+      end
+    end
+    length_to_ptrs!(ptrs)
+
+    data_lids = zeros(Int32,ptrs[end]-1)
+    data_gids = zeros(Int,ptrs[end]-1)
+
+    for (lid,owner) in enumerate(ids.lid_to_owner)
+      if owner != part
+        p = ptrs[owner_to_i[owner]]
+        data_lids[p]=lid
+        data_gids[p]=ids.lid_to_gid[lid]
+        ptrs[owner_to_i[owner]] += 1
+      end
+    end
+    rewind_ptrs!(ptrs)
+
+    lids_rcv = Table(data_lids,ptrs)
+    gids_rcv = Table(data_gids,ptrs)
+
+    lids_rcv, gids_rcv
+  end
+
+  parts_snd = discover_parts_snd(parts_rcv,neighbors)
+
+  gids_snd = exchange(gids_rcv,parts_snd,parts_rcv)
+
+  lids_snd = DistributedData(ids, gids_snd) do part, ids, gids_snd
+    ptrs = gids_snd.ptrs
+    data_lids = zeros(Int32,ptrs[end]-1)
+    for (k,gid) in enumerate(gids_snd.data)
+      data_lids[k] = ids.gid_to_lid[gid]
+    end
+    lids_snd = Table(data_lids,ptrs)
+    lids_snd
+  end
+
+  Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
+end
+
+function allocate_rcv_buffer(::Type{T},a::Exchanger) where T
+  data_rcv = DistributedData(a.lids_rcv) do part, lids_rcv
+    ptrs = lids_rcv.ptrs
+    data = zeros(T,ptrs[end]-1)
+    Table(data,ptrs)
+  end
+  data_rcv
+end
+
+function allocate_snd_buffer(::Type{T},a::Exchanger) where T
+  data_snd = DistributedData(a.lids_snd) do part, lids_snd
+    ptrs = lids_snd.ptrs
+    data = zeros(T,ptrs[end]-1)
+    Table(data,ptrs)
+  end
+  data_snd
+end
+
+struct DistributedIndexSet{A,B}
   ngids::Int
+  lids::A
+  exchanger::B
+  function DistributedIndexSet(
+    ngids::Integer,
+    lids::DistributedData{<:IndexSet},
+    exchanger::Exchanger=Exchanger(lids))
+
+    A = typeof(lids)
+    B = typeof(exchanger)
+    new{A,B}(ngids,lids,exchanger)
+  end
 end
 
 get_distributed_data(a::DistributedIndexSet) = a.lids
@@ -264,116 +364,32 @@ function non_overlaping(ids::DistributedIndexSet)
     fill!(lid_to_owner,part)
     IndexSet(ids.ngids,lid_to_gid,lid_to_owner)
   end
-  DistributedIndexSet(lids,ids.ngids)
+  neighbors = DistributedData(ids.exchanger.parts_rcv) do part,parts_rcv
+    similar(parts_rcv,eltype(parts_rcv),0)
+  end
+  exchanger = Exchanger(lids,neighbors)
+  DistributedIndexSet(ids.ngids,lids,exchanger)
 end
 
-struct Exchanger{T,A,B,C}
-  data_rcv::A
-  data_snd::A
-  parts_rcv::B
-  parts_snd::B
-  lids_rcv::C
-  lids_snd::C
-  function Exchanger{T}(
-    data_rcv::DistributedData{<:Table{T}},
-    data_snd::DistributedData{<:Table{T}},
-    parts_rcv::DistributedData{<:AbstractVector{<:Integer}},
-    parts_snd::DistributedData{<:AbstractVector{<:Integer}},
-    lids_rcv::DistributedData{<:Table{<:Integer}},
-    lids_snd::DistributedData{<:Table{<:Integer}}) where T
-
-    A = typeof(data_rcv)
-    B = typeof(parts_rcv)
-    C = typeof(lids_rcv)
-    new{T,A,B,C}(data_rcv,data_snd,parts_rcv,parts_snd,lids_rcv,lids_snd)
-  end
-end
-
-function Exchanger{T}(ids::DistributedIndexSet,neighbors=nothing) where T
-
-  parts_rcv = DistributedData(ids) do part, ids
-    parts_rcv = Dict((owner=>true for owner in ids.lid_to_owner if owner!=part))
-    sort(collect(keys(parts_rcv)))
-  end
-
-  lids_rcv, gids_rcv, data_rcv = DistributedData(ids,parts_rcv) do part, ids, parts_rcv
-
-    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
-
-    ptrs = zeros(Int32,length(parts_rcv)+1)
-    for owner in ids.lid_to_owner
-      if owner != part
-        ptrs[owner_to_i[owner]+1] +=1
-      end
-    end
-    length_to_ptrs!(ptrs)
-
-    data_lids = zeros(Int32,ptrs[end]-1)
-    data_gids = zeros(Int,ptrs[end]-1)
-    data_data = zeros(T,ptrs[end]-1)
-
-    for (lid,owner) in enumerate(ids.lid_to_owner)
-      if owner != part
-        p = ptrs[owner_to_i[owner]]
-        data_lids[p]=lid
-        data_gids[p]=ids.lid_to_gid[lid]
-        ptrs[owner_to_i[owner]] += 1
-      end
-    end
-    rewind_ptrs!(ptrs)
-
-    lids_rcv = Table(data_lids,ptrs)
-    gids_rcv = Table(data_gids,ptrs)
-    data_rcv = Table(data_data,ptrs)
-
-    lids_rcv, gids_rcv, data_rcv
-  end
-
-  parts_snd = discover_parts_snd(parts_rcv,neighbors)
-
-  gids_snd = exchange(gids_rcv,parts_snd,parts_rcv)
-
-  lids_snd, data_snd = DistributedData(ids, gids_snd) do part, ids, gids_snd
-
-    ptrs = gids_snd.ptrs
-    data_lids = zeros(Int32,ptrs[end]-1)
-    data_data = zeros(T,ptrs[end]-1)
-
-    for (k,gid) in enumerate(gids_snd.data)
-      data_lids[k] = ids.gid_to_lid[gid]
-    end
-
-    lids_snd = Table(data_lids,ptrs)
-    data_snd = Table(data_data,ptrs)
-
-    lids_snd, data_snd
-  end
-
-  Exchanger{T}(data_rcv,data_snd,parts_rcv,parts_snd,lids_rcv,lids_snd)
-end
-
-struct DistributedVector{T,A,B,C} <: AbstractVector{T}
+struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A
   ids::B
-  exchanger::C
   function DistributedVector(
     values::DistributedData{<:AbstractVector{T}},
-    ids::DistributedIndexSet,
-    exchanger::Exchanger=Exchanger{T}(ids)) where T
+    ids::DistributedIndexSet) where T
 
     A = typeof(values)
     B = typeof(ids)
-    C = typeof(exchanger)
-    new{T,A,B,C}(values,ids,exchanger)
+    new{T,A,B}(values,ids)
   end
 end
 
-function DistributedVector{T}(::UndefInitializer,ids::DistributedIndexSet,exchanger::Exchanger=Exchanger{T}(ids)) where T
+function DistributedVector{T}(::UndefInitializer,ids::DistributedIndexSet) where T
   values = DistributedData(ids) do part, ids
     nlids = length(ids.lid_to_owner)
     Vector{T}(undef,nlids)
   end
-  DistributedVector(values,ids,exchanger)
+  DistributedVector(values,ids)
 end
 
 function Base.fill!(a::DistributedVector,v)
@@ -387,10 +403,14 @@ end
 
 Base.length(a::DistributedVector) = num_gids(a.ids)
 
-function exchange!(a::DistributedVector)
+function exchange!(a::DistributedVector{T}) where T
 
-  # Fill snd buffers
-  do_on_parts( a.values,a.exchanger.data_snd,a.exchanger.lids_snd) do part,values,data_snd,lids_snd 
+  # Allocate buffers
+  data_rcv = allocate_rcv_buffer(T,a.ids.exchanger)
+  data_snd = allocate_snd_buffer(T,a.ids.exchanger)
+
+  # Fill snd buffer
+  do_on_parts(a.values,data_snd,a.ids.exchanger.lids_snd) do part,values,data_snd,lids_snd 
     for p in 1:length(lids_snd.data)
       lid = lids_snd.data[p]
       data_snd.data[p] = values[lid]
@@ -399,13 +419,13 @@ function exchange!(a::DistributedVector)
 
   # communicate
   exchange!(
-    a.exchanger.data_rcv,
-    a.exchanger.data_snd,
-    a.exchanger.parts_rcv,
-    a.exchanger.parts_snd)
+    data_rcv,
+    data_snd,
+    a.ids.exchanger.parts_rcv,
+    a.ids.exchanger.parts_snd)
 
-  # Fill non-owned values
-  do_on_parts( a.values,a.exchanger.data_rcv,a.exchanger.lids_rcv) do part,values,data_rcv,lids_rcv 
+  # Fill non-owned values from rcv buffer
+  do_on_parts( a.values,data_rcv,a.ids.exchanger.lids_rcv) do part,values,data_rcv,lids_rcv 
     for p in 1:length(lids_rcv.data)
       lid = lids_rcv.data[p]
       values[lid] = data_rcv.data[p]  
@@ -415,29 +435,18 @@ function exchange!(a::DistributedVector)
   a
 end
 
-struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
+struct DistributedSparseMatrix{T,A,B} <: AbstractMatrix{T}
   values::A
   row_ids::B
   col_ids::B
-  row_exchanger::C
-  col_exchanger::C
   function DistributedSparseMatrix(
     values::DistributedData{<:AbstractSparseMatrix{T}},
     row_ids::DistributedIndexSet,
-    col_ids::DistributedIndexSet,
-    row_exchanger::Exchanger=Exchanger{T}(row_ids),
-    col_exchanger::Exchanger=Exchanger{T}(col_ids)) where T
+    col_ids::DistributedIndexSet) where T
 
     A = typeof(values)
     B = typeof(col_ids)
-    C = typeof(col_exchanger)
-
-    new{T,A,B,C}(
-      values,
-      row_ids,
-      col_ids,
-      row_exchanger,
-      col_exchanger)
+    new{T,A,B}(values,row_ids,col_ids)
   end
 end
 
