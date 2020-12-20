@@ -8,6 +8,7 @@ export Communicator
 export num_parts
 export num_workers
 export do_on_parts
+export map_on_parts
 export i_am_master
 export OrchestratedCommunicator
 export Communicator
@@ -19,6 +20,7 @@ export gather
 export scatter
 export bcast
 export get_distributed_data
+export spawn_exchange!
 export exchange!
 export exchange
 export discover_parts_snd

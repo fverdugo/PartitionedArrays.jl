@@ -18,6 +18,13 @@ function do_on_parts(task::Function,args...)
   do_on_parts(task,comm,args...)
 end
 
+# Like do_on_parts put task does not take part as its first argument
+function map_on_parts(task::Function,args...)
+  do_on_parts(args...) do part, x...
+    task(x...)
+  end
+end
+
 function i_am_master(::Communicator)
   @abstractmethod
 end
@@ -118,9 +125,13 @@ end
 
 get_comm(a) = get_comm(get_distributed_data(a))
 
+# Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
-function exchange!(
+# Starts a non-blocking exchange. It returns a DistributedData of Julia Tasks. Calling wait on these
+# tasks will wait until the exchange is done in the corresponding part
+# (i.e., at this point it is save to read/write the buffers again).
+function spawn_exchange!(
   data_rcv::DistributedData,
   data_snd::DistributedData,
   parts_rcv::DistributedData,
@@ -129,6 +140,19 @@ function exchange!(
   @abstractmethod
 end
 
+# Blocking in-place exchange
+function exchange!(
+  data_rcv::DistributedData,
+  data_snd::DistributedData,
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData)
+
+  t = spawn_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+  map_on_parts(wait,t)
+  data_rcv
+end
+
+# Blocking allocating exchange
 function exchange(
   data_snd::DistributedData,
   parts_rcv::DistributedData,
@@ -142,7 +166,8 @@ function exchange(
   data_rcv
 end
 
-function exchange!(
+# Non-blocking in-place exchange variable length (compressed in a Table)
+function spawn_exchange!(
   data_rcv::DistributedData{<:Table},
   data_snd::DistributedData{<:Table},
   parts_rcv::DistributedData,
@@ -151,6 +176,7 @@ function exchange!(
   @abstractmethod
 end
 
+# Blocking allocating exchange variable length (compressed in a Table)
 function exchange(
   data_snd::DistributedData{<:Table},
   parts_rcv::DistributedData,

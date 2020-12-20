@@ -113,7 +113,7 @@ function scatter(comm::SequentialCommunicator,b::AbstractVector)
   SequentialDistributedData(comm,b)
 end
 
-function exchange!(
+function spawn_exchange!(
   data_rcv::SequentialDistributedData,
   data_snd::SequentialDistributedData,
   parts_rcv::SequentialDistributedData,
@@ -129,7 +129,9 @@ function exchange!(
       data_rcv.parts[part_rcv][i] = data_snd.parts[part_snd][j]
     end
   end
-  data_rcv
+  DistributedData(get_comm(parts_rcv)) do part
+    @async nothing
+  end
 end
 
 function _check_rcv_and_snd_match(parts_rcv::SequentialDistributedData,parts_snd::SequentialDistributedData)
@@ -145,7 +147,7 @@ function _check_rcv_and_snd_match(parts_rcv::SequentialDistributedData,parts_snd
   true
 end
 
-function exchange!(
+function spawn_exchange!(
   data_rcv::SequentialDistributedData{<:Table},
   data_snd::SequentialDistributedData{<:Table},
   parts_rcv::SequentialDistributedData,
@@ -168,6 +170,8 @@ function exchange!(
       end
     end
   end
-  data_rcv
+  DistributedData(get_comm(parts_rcv)) do part
+    @async nothing
+  end
 end
 
