@@ -114,13 +114,13 @@ SequentialCommunicator(nparts) do comm
   n = 10
   lids = DistributedData(comm) do part
     if part == 1
-      IndexSet(n,[1,2,3,5,7,8],[1,1,1,2,3,3])
+      IndexSet(part,n,[1,2,3,5,7,8],[1,1,1,2,3,3])
     elseif part == 2
-      IndexSet(n,[2,4,5,10],[1,2,2,4])
+      IndexSet(part,n,[2,4,5,10],[1,2,2,4])
     elseif part == 3
-      IndexSet(n,[6,7,8,5,4,10],[3,3,3,2,2,4])
+      IndexSet(part,n,[6,7,8,5,4,10],[3,3,3,2,2,4])
     else
-      IndexSet(n,[1,3,7,9,10],[1,1,3,4,4])
+      IndexSet(part,n,[1,3,7,9,10],[1,1,3,4,4])
     end
   end
 
@@ -159,8 +159,8 @@ SequentialCommunicator(nparts) do comm
 
   v = DistributedVector{Float64}(undef,indices)
   do_on_parts(v.values,v.ids) do part, values, ids
-    for lid in 1:length(ids.lid_to_owner)
-      owner = ids.lid_to_owner[lid]
+    for lid in 1:length(ids.lid_to_part)
+      owner = ids.lid_to_part[lid]
       if owner == part
         values[lid] = 10*part
       end
@@ -168,8 +168,8 @@ SequentialCommunicator(nparts) do comm
   end
   exchange!(v)
   do_on_parts(v.values,v.ids) do part, values, ids
-    for lid in 1:length(ids.lid_to_owner)
-      owner = ids.lid_to_owner[lid]
+    for lid in 1:length(ids.lid_to_part)
+      owner = ids.lid_to_part[lid]
       @test values[lid] == 10*owner
     end
   end
@@ -180,7 +180,7 @@ SequentialCommunicator(nparts) do comm
   col_ids = indices
   row_ids = non_overlaping(col_ids)
   do_on_parts(row_ids) do part, row_ids
-    @test all(i->i==part,row_ids.lid_to_owner)
+    @test all(i->i==part,row_ids.lid_to_part)
   end
 
   values = DistributedData(row_ids,col_ids) do part, row_ids, col_ids

@@ -354,22 +354,23 @@ end
 
 # A, B, C should be the type of some indexable collection, e.g. ranges or vectors or dicts
 struct IndexSet{A,B,C}
+  part::Int
   ngids::Int
   lid_to_gid::A
-  lid_to_owner::B
+  lid_to_part::B
   gid_to_lid::C
 end
 
-function IndexSet(ngids,lid_to_gid,lid_to_owner)
+function IndexSet(part,ngids,lid_to_gid,lid_to_part)
   gid_to_lid = Dict{Int,Int32}()
   for (lid,gid) in enumerate(lid_to_gid)
     gid_to_lid[gid] = lid
   end
-  IndexSet(ngids,lid_to_gid,lid_to_owner,gid_to_lid)
+  IndexSet(part,ngids,lid_to_gid,lid_to_part,gid_to_lid)
 end
 
 num_gids(a::IndexSet) = a.ngids
-num_lids(a::IndexSet) = length(a.lid_to_owner)
+num_lids(a::IndexSet) = length(a.lid_to_part)
 
 struct Exchanger{B,C}
   parts_rcv::B
@@ -391,7 +392,7 @@ end
 function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
 
   parts_rcv = DistributedData(ids) do part, ids
-    parts_rcv = Dict((owner=>true for owner in ids.lid_to_owner if owner!=part))
+    parts_rcv = Dict((owner=>true for owner in ids.lid_to_part if owner!=part))
     sort(collect(keys(parts_rcv)))
   end
 
@@ -400,7 +401,7 @@ function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
     owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
 
     ptrs = zeros(Int32,length(parts_rcv)+1)
-    for owner in ids.lid_to_owner
+    for owner in ids.lid_to_part
       if owner != part
         ptrs[owner_to_i[owner]+1] +=1
       end
@@ -410,7 +411,7 @@ function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
     data_lids = zeros(Int32,ptrs[end]-1)
     data_gids = zeros(Int,ptrs[end]-1)
 
-    for (lid,owner) in enumerate(ids.lid_to_owner)
+    for (lid,owner) in enumerate(ids.lid_to_part)
       if owner != part
         p = ptrs[owner_to_i[owner]]
         data_lids[p]=lid
@@ -482,15 +483,15 @@ num_gids(a::DistributedIndexSet) = a.ngids
 function non_overlaping(ids::DistributedIndexSet)
   lids = DistributedData(ids) do part, ids
     lid_to_gid = similar(ids.lid_to_gid,eltype(ids.lid_to_gid),0)
-    for (lid,owner) in enumerate(ids.lid_to_owner)
+    for (lid,owner) in enumerate(ids.lid_to_part)
       if owner == part
         gid = ids.lid_to_gid[lid]
         push!(lid_to_gid,gid)
       end
     end
-    lid_to_owner = similar(ids.lid_to_owner,eltype(ids.lid_to_owner),length(lid_to_gid))
-    fill!(lid_to_owner,part)
-    IndexSet(ids.ngids,lid_to_gid,lid_to_owner)
+    lid_to_part = similar(ids.lid_to_part,eltype(ids.lid_to_part),length(lid_to_gid))
+    fill!(lid_to_part,part)
+    IndexSet(ids.part,ids.ngids,lid_to_gid,lid_to_part)
   end
   neighbors = DistributedData(ids.exchanger.parts_rcv) do part,parts_rcv
     similar(parts_rcv,eltype(parts_rcv),0)
@@ -514,7 +515,7 @@ end
 
 function DistributedVector{T}(::UndefInitializer,ids::DistributedIndexSet) where T
   values = DistributedData(ids) do part, ids
-    nlids = length(ids.lid_to_owner)
+    nlids = length(ids.lid_to_part)
     Vector{T}(undef,nlids)
   end
   DistributedVector(values,ids)
@@ -538,7 +539,7 @@ function Base.getindex(a::DistributedVector,ids::DistributedIndexSet)
     values_out = DistributedData(values_in,ids_in,ids_out) do part, values_in, ids_in, ids_out
       values_out = similar(values_in,eltype(values_in),num_lids(ids_out))
       for lid_out in 1:num_lids(ids_out)
-        if ids_out.lid_to_owner[lid_out] == part
+        if ids_out.lid_to_part[lid_out] == part
           gid = ids_out.lid_to_gid[lid_out]
           @notimplementedif ! haskey(ids_in.gid_to_lid,gid)
           lid_in = ids_in.gid_to_lid[gid]
