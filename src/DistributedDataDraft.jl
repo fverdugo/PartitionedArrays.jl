@@ -25,7 +25,10 @@ export exchange!
 export exchange
 export discover_parts_snd
 export IndexPartition
+export num_oids
 export UniformIndexPartition
+export DistributedIndexPartition
+export UniformDistributedIndexPartition
 export IndexSet
 export num_lids
 export Exchanger

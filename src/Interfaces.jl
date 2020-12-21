@@ -257,6 +257,9 @@ struct IndexPartition{A,B,C}
   gid_to_part::C
 end
 
+num_gids(a::IndexPartition) = length(a.gid_to_part)
+num_oids(a::IndexPartition) = length(a.oid_to_gid)
+
 function UniformIndexPartition(ngids,np,p)
   gids = _oid_to_gid(ngids,np,p)
   oids = Int32(1):Int32(length(gids))
@@ -350,6 +353,26 @@ end
 function _is_gid_in_part(ngids,np,p,gid)
   gids = _oid_to_gid(ngids,np,p)
   gid >= gids.start && gid <= gids.stop
+end
+
+struct DistributedIndexPartition{A}
+  ngids::Int
+  oids::A
+  function DistributedIndexPartition(ngids::Integer, oids::DistributedData{<:IndexPartition})
+    A = typeof(oids)
+    new{A}(ngids,oids)
+  end
+end
+
+get_distributed_data(a::DistributedIndexPartition) = a.oids
+num_gids(a::DistributedIndexPartition) = a.ngids
+
+function UniformDistributedIndexPartition(comm::Communicator,ngids::Integer)
+  np = num_parts(comm)
+  oids = DistributedData(comm) do p
+    UniformIndexPartition(ngids,np,p)
+  end
+  DistributedIndexPartition(ngids,oids)
 end
 
 # A, B, C should be the type of some indexable collection, e.g. ranges or vectors or dicts
