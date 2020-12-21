@@ -250,6 +250,108 @@ function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
+struct IndexPartition{A,B,C}
+  part::Int
+  oid_to_gid::A
+  gid_to_oid::B
+  gid_to_part::C
+end
+
+function UniformIndexPartition(ngids,np,p)
+  gids = _oid_to_gid(ngids,np,p)
+  oids = Int32(1):Int32(length(gids))
+  oid_to_gid = OidToGid(gids)
+  gid_to_oid = GidToOid(gids,oids)
+  gid_to_part = GidToPart(ngids,np)
+  IndexPartition(
+    p,
+    oid_to_gid,
+    gid_to_oid,
+    gid_to_part)
+end
+
+struct OidToGid <: AbstractVector{Int}
+  gids::UnitRange{Int}
+end
+Base.size(a::OidToGid) = (length(a.gids),)
+Base.IndexStyle(::Type{<:OidToGid}) = IndexLinear()
+Base.getindex(a::OidToGid,oid::Integer) = a.gids[oid]
+
+struct GidToOid <: AbstractDict{Int,Int32}
+  gids::UnitRange{Int}
+  oids::UnitRange{Int32}
+end
+Base.length(a::GidToOid) = length(a.gids)
+Base.keys(a::GidToOid) = a.gids
+Base.values(a::GidToOid) = a.oids
+function Base.getindex(a::GidToOid,gid::Int)
+  @boundscheck begin
+    if ! (gid in a.gids)
+      throw(KeyError(gid))
+    end
+  end
+  oid = Int32(gid - a.gids.start + 1)
+  oid
+end
+function Base.iterate(a::GidToOid)
+  if length(a) == 0
+    return nothing
+  end
+  state = 1
+  a.gids[state]=>a.oids[state], state
+end
+function Base.iterate(a::GidToOid,state)
+  if length(a) <= state
+    return nothing
+  end
+  s = state + 1
+  a.gids[s]=>a.oids[s], s
+end
+
+struct GidToPart <: AbstractVector{Int}
+  ngids::Int
+  np::Int
+end
+Base.size(a::GidToPart) = (a.ngids,)
+Base.IndexStyle(::Type{<:GidToPart}) = IndexLinear()
+function Base.getindex(a::GidToPart,gid::Integer)
+  @boundscheck begin
+    if !( 1<=gid && gid<=length(a) )
+      throw(BoundsError(a,gid))
+    end
+  end
+  _gid_to_part(a.ngids,a.np,gid)
+end
+
+function _oid_to_gid(ngids,np,p)
+  _olength = ngids ÷ np
+  _offset = _olength * (p-1)
+  _rem = ngids % np
+  if _rem < (np-p+1)
+    olength = _olength
+    offset = _offset
+  else
+    olength = _olength + 1
+    offset = _offset + p - (np-_rem) - 1
+  end
+  Int(1+offset):Int(olength+offset)
+end
+
+function _gid_to_part(ngids,np,gid)
+  @check 1<=gid && gid<=ngids "gid=$gid is not in [1,$ngids]"
+  # TODO this can be heavily optimized
+  for p in 1:np
+    if _is_gid_in_part(ngids,np,p,gid)
+      return p
+    end
+  end
+end
+
+function _is_gid_in_part(ngids,np,p,gid)
+  gids = _oid_to_gid(ngids,np,p)
+  gid >= gids.start && gid <= gids.stop
+end
+
 # A, B, C should be the type of some indexable collection, e.g. ranges or vectors or dicts
 struct IndexSet{A,B,C}
   ngids::Int

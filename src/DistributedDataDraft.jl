@@ -24,6 +24,8 @@ export spawn_exchange!
 export exchange!
 export exchange
 export discover_parts_snd
+export IndexPartition
+export UniformIndexPartition
 export IndexSet
 export num_lids
 export Exchanger
