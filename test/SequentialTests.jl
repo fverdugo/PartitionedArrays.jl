@@ -161,6 +161,25 @@ SequentialCommunicator(nparts) do comm
   @test num_parts(indices) == nparts
   @test num_gids(indices) == n
 
+  values = DistributedData(indices) do part, ids
+    values = fill(0.0,num_lids(ids))
+    for lid in 1:length(ids.lid_to_part)
+      owner = ids.lid_to_part[lid]
+      if owner == part
+        values[lid] = 10*part
+      end
+    end
+    values
+  end
+
+  exchange!(values,indices)
+
+  do_on_parts(values,indices) do part, values, ids
+    for lid in 1:length(ids.lid_to_part)
+      owner = ids.lid_to_part[lid]
+      @test values[lid] == 10*owner
+    end
+  end
 
   v = DistributedVector{Float64}(undef,indices)
   fill!(v,1.0)

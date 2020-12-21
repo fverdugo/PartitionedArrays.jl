@@ -141,15 +141,10 @@ function spawn_exchange!(
 end
 
 # Blocking in-place exchange
-function exchange!(
-  data_rcv::DistributedData,
-  data_snd::DistributedData,
-  parts_rcv::DistributedData,
-  parts_snd::DistributedData)
-
-  t = spawn_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+function exchange!(args...)
+  t = spawn_exchange!(args...)
   map_on_parts(wait,t)
-  data_rcv
+  first(args)
 end
 
 # Blocking allocating exchange
@@ -502,6 +497,53 @@ end
 
 get_distributed_data(a::DistributedIndexSet) = a.lids
 num_gids(a::DistributedIndexSet) = a.ngids
+
+function spawn_exchange!(values::DistributedData{<:AbstractVector{T}},ids::DistributedIndexSet) where T
+
+  # Allocate buffers
+  data_rcv = allocate_rcv_buffer(T,ids.exchanger)
+  data_snd = allocate_snd_buffer(T,ids.exchanger)
+
+  # Fill snd buffer
+  do_on_parts(values,data_snd,ids.exchanger.lids_snd) do part,values,data_snd,lids_snd 
+    for p in 1:length(lids_snd.data)
+      lid = lids_snd.data[p]
+      data_snd.data[p] = values[lid]
+    end
+  end
+
+  # communicate
+  task = spawn_exchange!(
+    data_rcv,
+    data_snd,
+    ids.exchanger.parts_rcv,
+    ids.exchanger.parts_snd)
+
+  # Fill non-owned values from rcv buffer
+  # asynchronously
+  return DistributedData(task,values,data_rcv,ids.exchanger.lids_rcv) do part,task,values,data_rcv,lids_rcv 
+    @async begin
+      wait(task)
+      for p in 1:length(lids_rcv.data)
+        lid = lids_rcv.data[p]
+        values[lid] = data_rcv.data[p]  
+      end
+    end
+  end
+
+end
+
+
+
+
+
+
+
+
+
+
+
+
 
 function non_overlaping(ids::DistributedIndexSet)
   lids = DistributedData(ids) do part, ids
