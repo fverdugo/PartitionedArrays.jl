@@ -245,28 +245,83 @@ function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
-struct IndexPartition{A,B,C}
+# Arbitrary set of global indices stored in a part
+# gid_to_part can be omitted with nothing since only for some particular parallel
+# data layouts (e.g. uniform partitions) it is efficient to recover this information. 
+struct IndexSet{A,B,C,D}
   part::Int
-  oid_to_gid::A
-  gid_to_oid::B
-  gid_to_part::C
+  ngids::Int
+  lid_to_gid::A
+  lid_to_part::B
+  gid_to_lid::C
+  gid_to_part::D
+  function IndexSet(
+    part::Integer
+    ngids::Integer
+    lid_to_gid::AbstractVector,
+    lid_to_part::AbstractVector,
+    gid_to_lid::AbstractDict,
+    gid_to_part::AbstractVector)
+    A = typeof(lid_to_gid)
+    B = typeof(lid_to_part)
+    C = typeof(gid_to_lid)
+    D = typeof(gid_to_part)
+    new{A,B,C,D}(
+      part,
+      ngids,
+      lid_to_gid,
+      lid_to_part,
+      gid_to_lid,
+      gid_to_part)
+  end
 end
 
-num_gids(a::IndexPartition) = length(a.gid_to_part)
-num_oids(a::IndexPartition) = length(a.oid_to_gid)
+num_gids(a::IndexSet) = a.ngids
+num_lids(a::IndexSet) = length(a.lid_to_part)
 
-function UniformIndexPartition(ngids,np,p)
+function IndexSet(
+  part::Integer
+  ngids::Integer
+  lid_to_gid::AbstractVector,
+  lid_to_part::AbstractVector)
+
+  gid_to_lid = Dict{Int,Int32}()
+  for (lid,gid) in enumerate(lid_to_gid)
+    gid_to_lid[gid] = lid
+  end
+  IndexSet(part,ngids,lid_to_gid,lid_to_part,gid_to_lid,nothing)
+end
+
+function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
+ xid_to_gid = lazy_map(Reindex(a.lid_to_gid),xid_to_lid)
+ xid_to_part = lazy_map(Reindex(a.lid_to_part),xid_to_lid)
+ IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part)
+end
+
+function IndexSet(a::IndexSet,b::IndexSet,glue::PosNegPartition)
+  lid_to_gid = lazy_map(PosNegReindex(a.lid_to_gid,b.lid_to_gid),glue)
+  lid_to_part = lazy_map(PosNegReindex(a.lid_to_part,b.lid_to_part),glue)
+  gid_to_lid = GidToLid(a.gid_to_lid,b.gid_to_lid,glue)
+  IndexSet(a.part,a.ngids,lid_to_gid,lid_to_part,gid_to_lid,a.gid_to_part)
+end
+
+function UniformIndexSet(ngids,np,p)
   gids = _oid_to_gid(ngids,np,p)
   oids = Int32(1):Int32(length(gids))
   oid_to_gid = OidToGid(gids)
+  oid_to_part = Fill(p,length(oids))
   gid_to_oid = GidToOid(gids,oids)
   gid_to_part = GidToPart(ngids,np)
-  IndexPartition(
-    p,
+  IndexSet(
+    part,
+    ngids,
     oid_to_gid,
+    oid_to_part,
     gid_to_oid,
     gid_to_part)
 end
+
+# Helpers for Uniform index set
 
 struct OidToGid <: AbstractVector{Int}
   gids::UnitRange{Int}
@@ -281,10 +336,11 @@ struct GidToOid <: AbstractDict{Int,Int32}
 end
 Base.length(a::GidToOid) = length(a.gids)
 Base.keys(a::GidToOid) = a.gids
+Base.haskey(a::GidToOid,gid::Int) = gid in a.gids
 Base.values(a::GidToOid) = a.oids
 function Base.getindex(a::GidToOid,gid::Int)
   @boundscheck begin
-    if ! (gid in a.gids)
+    if ! haskey(a,gid)
       throw(KeyError(gid))
     end
   end
@@ -350,45 +406,61 @@ function _is_gid_in_part(ngids,np,p,gid)
   gid >= gids.start && gid <= gids.stop
 end
 
-struct DistributedIndexPartition{A}
-  ngids::Int
-  oids::A
-  function DistributedIndexPartition(ngids::Integer, oids::DistributedData{<:IndexPartition})
-    A = typeof(oids)
-    new{A}(ngids,oids)
+struct GidToLid{A,B,C} <: AbstractDict{Int,Int32}
+  gid_to_oid::A
+  gid_to_hid::B
+  glue::C
+  function GidToLid(
+    gid_to_oid::AbstractDict
+    gid_to_hid::AbstractDict
+    glue::PosNegPartition)
+
+    A = typeof(gid_to_oid)
+    B = typeof(gid_to_hid)
+    C = typeof(glue)
+    new{A,B,C}(
+      gid_to_oid,
+      gid_to_hid,
+      glue)
   end
 end
-
-get_distributed_data(a::DistributedIndexPartition) = a.oids
-num_gids(a::DistributedIndexPartition) = a.ngids
-
-function UniformDistributedIndexPartition(comm::Communicator,ngids::Integer)
-  np = num_parts(comm)
-  oids = DistributedData(comm) do p
-    UniformIndexPartition(ngids,np,p)
+Base.length(a::GidToLid) = length(a.gid_to_oid) + length(a.gid_to_hid)
+Base.haskey(a::GidToLid,gid::Int) = haskey(a.gid_to_oid,gid) || haskey(a.gid_to_hid,gid)
+Base.keys(a::GidToLid) = lazy_map(PosNegReindex(keys(a.gid_to_oid),keys(a.gid_to_hid)),a.glue)
+Base.values(a::GidToLid) = lazy_map(PosNegReindex(values(a.gid_to_oid),values(a.gid_to_hid)),a.glue)
+function Base.getindex(a::GidToLid,gid::Int)
+  @boundscheck begin
+    if ! haskey(a,gid)
+      throw(KeyError(gid))
+    end
   end
-  DistributedIndexPartition(ngids,oids)
-end
-
-# A, B, C should be the type of some indexable collection, e.g. ranges or vectors or dicts
-struct IndexSet{A,B,C}
-  part::Int
-  ngids::Int
-  lid_to_gid::A
-  lid_to_part::B
-  gid_to_lid::C
-end
-
-function IndexSet(part,ngids,lid_to_gid,lid_to_part)
-  gid_to_lid = Dict{Int,Int32}()
-  for (lid,gid) in enumerate(lid_to_gid)
-    gid_to_lid[gid] = lid
+  if haskey(a.gid_to_oid,gid)
+    oid = a.gid_to_oid[gid]
+    oid_to_lid = a.glue.ipos_to_i
+    lid = oid_to_lid[oid]
+  else
+    hid = a.gid_to_hid[gid]
+    hid_to_lid = a.glue.ineg_to_i
+    lid = hid_to_lid[hid]
   end
-  IndexSet(part,ngids,lid_to_gid,lid_to_part,gid_to_lid)
+  lid
 end
-
-num_gids(a::IndexSet) = a.ngids
-num_lids(a::IndexSet) = length(a.lid_to_part)
+function Base.iterate(a::GidToLid)
+  if length(a) == 0
+    return nothing
+  end
+  state = 1
+  k = keys(a)
+  v = values(a)
+  k[state]=>v[state], (state,k,v)
+end
+function Base.iterate(a::GidToLid,(state,k,v))
+  if length(a) <= state
+    return nothing
+  end
+  s = state + 1
+  k[s]=>v[s], (s,k,v)
+end
 
 struct Exchanger{B,C}
   parts_rcv::B
@@ -480,6 +552,214 @@ function allocate_snd_buffer(::Type{T},a::Exchanger) where T
   data_snd
 end
 
+function spawn_exchange!(
+  values::DistributedData{<:AbstractVector{T}},
+  exchanger::DistributedData{<:Exchanger}) where T
+
+  # Allocate buffers
+  data_rcv = allocate_rcv_buffer(T,exchanger)
+  data_snd = allocate_snd_buffer(T,exchanger)
+
+  # Fill snd buffer
+  do_on_parts(values,data_snd,exchanger.lids_snd) do part,values,data_snd,lids_snd 
+    for p in 1:length(lids_snd.data)
+      lid = lids_snd.data[p]
+      data_snd.data[p] = values[lid]
+    end
+  end
+
+  # communicate
+  task = spawn_exchange!(
+    data_rcv,
+    data_snd,
+    exchanger.parts_rcv,
+    exchanger.parts_snd)
+
+  # Fill non-owned values from rcv buffer
+  # asynchronously
+  return DistributedData(task,values,data_rcv,exchanger.lids_rcv) do part,task,values,data_rcv,lids_rcv 
+    @async begin
+      wait(task)
+      for p in 1:length(lids_rcv.data)
+        lid = lids_rcv.data[p]
+        values[lid] = data_rcv.data[p]  
+      end
+    end
+  end
+
+end
+
+# Numeric data build on top of a IndexLayout
+# i.e. the data stored locally in a distributed vector
+struct ValueLayout{A,B,C}
+  lid_to_value::A
+  oid_to_value::B
+  hig_to_value::C
+  function ValueLayout(
+    lid_to_value::AbstractVector,
+    oid_to_lid::Union{AbstractVector,AbstractRange},
+    hid_to_lid::Union{AbstractVector,AbstractRange})
+
+    oid_to_value = view(lid_to_value,oid_to_lid)
+    hid_to_value = view(lid_to_value,hid_to_lid)
+    A = typeof(lid_to_value)
+    B = typeof(oid_to_value)
+    C = typeof(hid_to_value)
+    new{A,B,C}(
+      lid_to_value,
+      oid_to_value,
+      hig_to_value)
+  end
+end
+
+# IndexSet + some metadata about owned and ghost ids,
+# This is the symbolic data fully describing a distributed vector
+# oid: owned id
+# hig: ghost (aka halo) id
+# gid: global id
+# lid: local id (ie union of owned + ghost)
+struct IndexLayout{A,B,C,D}
+  lids::A
+  oids::B
+  hids::C
+  glue::D
+  function IndexLayout(
+    lids::IndexSet,
+    oids::IndexSet,
+    hids::IndexSet,
+    glue::PosNegPartition)
+    A = typeof(lids)
+    B = typeof(oids)
+    C = typeof(hids)
+    D = typeof(glue)
+    new{A,B,C,D}(
+      lids,
+      oids,
+      hids,
+      glue)
+  end
+end
+
+function IndexLayout(lids::IndexSet,glue::PosNegPartition)
+  oid_to_lid = glue.ipos_to_i
+  hid_to_lid = glue.ineg_to_i
+  oids = IndexSet(lids,oid_to_lid)
+  hids = IndexSet(lids,hid_to_lid)
+  IndexLayout(lids,oids,hids,glue)
+end
+
+function IndexLayout(lids::IndexSet)
+  part = lids.part
+  oid_to_lid = findall(owner->owner==part,lids.lid_to_part)
+  glue = PosNegPartition(oid_to_lid,num_lids(lids))
+  IndexLayout(lids,glue)
+end
+
+function IndexLayout(oids::IndexSet,hids::IndexSet,glue::PosNegPartition)
+  lids = IndexSet(oids,hids,glue)
+  IndexLayout(lids,oids,hids,glue)
+end
+
+function Base.getproperty(x::IndexLayout, sym::Symbol)
+  if sym == :part
+    x.oids.part
+  elseif sym == :ngids
+    x.oids.ngids
+  elseif sym == :oid_to_gid
+    x.oids.lid_to_gid
+  elseif sym == :oid_to_part
+    x.oids.lid_to_part
+  elseif sym == :gid_to_oid
+    x.oids.gid_to_lid
+  elseif sym == :gid_to_part
+    x.oids.gid_to_part
+  elseif sym == :lid_to_gid
+    x.lids.lid_to_gid
+  elseif sym == :lid_to_part
+    x.lids.lid_to_part
+  elseif sym == :gid_to_lid
+    x.lids.gid_to_lid
+  elseif sym == :hid_to_gid
+    x.hids.lid_to_gid
+  elseif sym == :hid_to_part
+    x.hids.lid_to_part
+  elseif sym == :gid_to_hid
+    x.hids.gid_to_lid
+  elseif sym == :lid_to_ohid
+    x.glue.i_to_iposneg
+  elseif sym == :oid_to_lid
+    x.glue.ipos_to_i
+  elseif sym == :hid_to_lid
+    x.glue.ineg_to_i
+  else
+    getfield(x, sym)
+  end
+end
+
+function Base.propertynames(x::IndexLayout, private=false)
+  (
+   fieldnames(typeof(x))...,
+  :part,
+  :ngids,
+  :oid_to_gid,
+  :oid_to_part,
+  :gid_to_oid,
+  :gid_to_part,
+  :lid_to_gid,
+  :lid_to_part,
+  :gid_to_lid,
+  :hid_to_gid,
+  :hid_to_part,
+  :gid_to_hid,
+  :lid_to_ohid,
+  :oid_to_lid,
+  :hid_to_lid)
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct DistributedIndexPartition{A}
+  ngids::Int
+  oids::A
+  function DistributedIndexPartition(ngids::Integer, oids::DistributedData{<:IndexPartition})
+    A = typeof(oids)
+    new{A}(ngids,oids)
+  end
+end
+
+get_distributed_data(a::DistributedIndexPartition) = a.oids
+num_gids(a::DistributedIndexPartition) = a.ngids
+
+function UniformDistributedIndexSet(comm::Communicator,ngids::Integer)
+  np = num_parts(comm)
+  oids = DistributedData(comm) do p
+    UniformIndexSet(ngids,np,p)
+  end
+  DistributedIndexSet(ngids,oids)
+end
+
+
 struct DistributedIndexSet{A,B}
   ngids::Int
   lids::A
@@ -498,72 +778,26 @@ end
 get_distributed_data(a::DistributedIndexSet) = a.lids
 num_gids(a::DistributedIndexSet) = a.ngids
 
-function spawn_exchange!(values::DistributedData{<:AbstractVector{T}},ids::DistributedIndexSet) where T
 
-  # Allocate buffers
-  data_rcv = allocate_rcv_buffer(T,ids.exchanger)
-  data_snd = allocate_snd_buffer(T,ids.exchanger)
-
-  # Fill snd buffer
-  do_on_parts(values,data_snd,ids.exchanger.lids_snd) do part,values,data_snd,lids_snd 
-    for p in 1:length(lids_snd.data)
-      lid = lids_snd.data[p]
-      data_snd.data[p] = values[lid]
-    end
-  end
-
-  # communicate
-  task = spawn_exchange!(
-    data_rcv,
-    data_snd,
-    ids.exchanger.parts_rcv,
-    ids.exchanger.parts_snd)
-
-  # Fill non-owned values from rcv buffer
-  # asynchronously
-  return DistributedData(task,values,data_rcv,ids.exchanger.lids_rcv) do part,task,values,data_rcv,lids_rcv 
-    @async begin
-      wait(task)
-      for p in 1:length(lids_rcv.data)
-        lid = lids_rcv.data[p]
-        values[lid] = data_rcv.data[p]  
-      end
-    end
-  end
-
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-function non_overlaping(ids::DistributedIndexSet)
-  lids = DistributedData(ids) do part, ids
-    lid_to_gid = similar(ids.lid_to_gid,eltype(ids.lid_to_gid),0)
-    for (lid,owner) in enumerate(ids.lid_to_part)
-      if owner == part
-        gid = ids.lid_to_gid[lid]
-        push!(lid_to_gid,gid)
-      end
-    end
-    lid_to_part = similar(ids.lid_to_part,eltype(ids.lid_to_part),length(lid_to_gid))
-    fill!(lid_to_part,part)
-    IndexSet(ids.part,ids.ngids,lid_to_gid,lid_to_part)
-  end
-  neighbors = DistributedData(ids.exchanger.parts_rcv) do part,parts_rcv
-    similar(parts_rcv,eltype(parts_rcv),0)
-  end
-  exchanger = Exchanger(lids,neighbors)
-  DistributedIndexSet(ids.ngids,lids,exchanger)
-end
+#function non_overlaping(ids::DistributedIndexSet)
+#  lids = DistributedData(ids) do part, ids
+#    lid_to_gid = similar(ids.lid_to_gid,eltype(ids.lid_to_gid),0)
+#    for (lid,owner) in enumerate(ids.lid_to_part)
+#      if owner == part
+#        gid = ids.lid_to_gid[lid]
+#        push!(lid_to_gid,gid)
+#      end
+#    end
+#    lid_to_part = similar(ids.lid_to_part,eltype(ids.lid_to_part),length(lid_to_gid))
+#    fill!(lid_to_part,part)
+#    IndexSet(ids.part,ids.ngids,lid_to_gid,lid_to_part)
+#  end
+#  neighbors = DistributedData(ids.exchanger.parts_rcv) do part,parts_rcv
+#    similar(parts_rcv,eltype(parts_rcv),0)
+#  end
+#  exchanger = Exchanger(lids,neighbors)
+#  DistributedIndexSet(ids.ngids,lids,exchanger)
+#end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A

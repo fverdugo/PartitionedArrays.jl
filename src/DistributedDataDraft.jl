@@ -1,7 +1,8 @@
 module DistributedDataDraft
 
-using Gridap.Arrays: Table, length_to_ptrs!, rewind_ptrs!
+using Gridap.Arrays: Table, length_to_ptrs!, rewind_ptrs!, lazy_map, PosNegReindex, PosNegPartition, Reindex
 using SparseArrays: AbstractSparseMatrix, findnz, sparse
+using FillArrays
 using LinearAlgebra
 
 export Communicator
@@ -24,11 +25,9 @@ export spawn_exchange!
 export exchange!
 export exchange
 export discover_parts_snd
-export IndexPartition
 export num_oids
-export UniformIndexPartition
-export DistributedIndexPartition
-export UniformDistributedIndexPartition
+export UniformIndexSet
+export UniformDistributedIndexSet
 export IndexSet
 export num_lids
 export Exchanger

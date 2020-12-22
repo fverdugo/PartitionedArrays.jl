@@ -181,73 +181,73 @@ SequentialCommunicator(nparts) do comm
     end
   end
 
-  v = DistributedVector{Float64}(undef,indices)
-  fill!(v,1.0)
+  #v = DistributedVector{Float64}(undef,indices)
+  #fill!(v,1.0)
 
-  v = DistributedVector{Float64}(undef,indices)
-  do_on_parts(v.values,v.ids) do part, values, ids
-    for lid in 1:length(ids.lid_to_part)
-      owner = ids.lid_to_part[lid]
-      if owner == part
-        values[lid] = 10*part
-      end
-    end
-  end
-  exchange!(v)
-  do_on_parts(v.values,v.ids) do part, values, ids
-    for lid in 1:length(ids.lid_to_part)
-      owner = ids.lid_to_part[lid]
-      @test values[lid] == 10*owner
-    end
-  end
+  #v = DistributedVector{Float64}(undef,indices)
+  #do_on_parts(v.values,v.ids) do part, values, ids
+  #  for lid in 1:length(ids.lid_to_part)
+  #    owner = ids.lid_to_part[lid]
+  #    if owner == part
+  #      values[lid] = 10*part
+  #    end
+  #  end
+  #end
+  #exchange!(v)
+  #do_on_parts(v.values,v.ids) do part, values, ids
+  #  for lid in 1:length(ids.lid_to_part)
+  #    owner = ids.lid_to_part[lid]
+  #    @test values[lid] == 10*owner
+  #  end
+  #end
 
-  u = v[indices]
-  @test u.ids === indices
+  #u = v[indices]
+  #@test u.ids === indices
 
-  col_ids = indices
-  row_ids = non_overlaping(col_ids)
-  do_on_parts(row_ids) do part, row_ids
-    @test all(i->i==part,row_ids.lid_to_part)
-  end
+  #col_ids = indices
+  #row_ids = non_overlaping(col_ids)
+  #do_on_parts(row_ids) do part, row_ids
+  #  @test all(i->i==part,row_ids.lid_to_part)
+  #end
 
-  values = DistributedData(row_ids,col_ids) do part, row_ids, col_ids
-    i = collect(1:num_lids(row_ids))
-    j = similar(i)
-    for lid_row in 1:num_lids(row_ids)
-      gid = row_ids.lid_to_gid[lid_row]
-      lid_col = col_ids.gid_to_lid[gid]
-      j[lid_row] = lid_col
-    end
-    v = fill(1.0,length(i))
-    sparse(i,j,v,num_lids(row_ids),num_lids(col_ids))
-  end
+  #values = DistributedData(row_ids,col_ids) do part, row_ids, col_ids
+  #  i = collect(1:num_lids(row_ids))
+  #  j = similar(i)
+  #  for lid_row in 1:num_lids(row_ids)
+  #    gid = row_ids.lid_to_gid[lid_row]
+  #    lid_col = col_ids.gid_to_lid[gid]
+  #    j[lid_row] = lid_col
+  #  end
+  #  v = fill(1.0,length(i))
+  #  sparse(i,j,v,num_lids(row_ids),num_lids(col_ids))
+  #end
 
-  x = DistributedVector{Float64}(undef,col_ids)
-  fill!(x,3)
-  b = DistributedVector{Float64}(undef,row_ids)
+  #x = DistributedVector{Float64}(undef,col_ids)
+  #fill!(x,3)
+  #b = DistributedVector{Float64}(undef,row_ids)
 
-  A = DistributedSparseMatrix(values,row_ids,col_ids)
-  mul!(b,A,x)
+  #A = DistributedSparseMatrix(values,row_ids,col_ids)
+  #mul!(b,A,x)
 
-  y = x[row_ids]
-  @test y.ids === row_ids
+  #y = x[row_ids]
+  #@test y.ids === row_ids
 
-  B = A[row_ids,col_ids]
-  @test B.col_ids === col_ids
+  #B = A[row_ids,col_ids]
+  #@test B.col_ids === col_ids
 
-  B = A[row_ids,row_ids]
-  @test B.col_ids === row_ids
+  #B = A[row_ids,row_ids]
+  #@test B.col_ids === row_ids
 
-  C = B[row_ids,col_ids]
-  @test C.col_ids === col_ids
+  #C = B[row_ids,col_ids]
+  #@test C.col_ids === col_ids
 
-  mul!(b,B,y)
+  #mul!(b,B,y)
 
-  P = AdditiveSchwarz(A)
+  #P = AdditiveSchwarz(A)
 
-  x = DistributedVector{Float64}(undef,col_ids)
-  mul!(x,P,b)
-  exchange!(x)
+  #x = DistributedVector{Float64}(undef,col_ids)
+  #mul!(x,P,b)
+  #exchange!(x)
 
 end # comm
 

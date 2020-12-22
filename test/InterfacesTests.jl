@@ -6,7 +6,7 @@ using Test
 ngids = 10
 np = 3
 p = 3
-oids = UniformIndexPartition(ngids,np,p)
+oids = UniformIndexSet(ngids,np,p)
 @test oids.part == p
 @test oids.oid_to_gid == [7, 8, 9, 10]
 @test oids.gid_to_part == [1, 1, 1, 2, 2, 2, 3, 3, 3, 3]
