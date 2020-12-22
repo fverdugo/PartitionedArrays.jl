@@ -183,8 +183,8 @@ SequentialCommunicator(nparts) do comm
     end
   end
 
-  #v = DistributedVector{Float64}(undef,indices)
-  #fill!(v,1.0)
+  v = DistributedVector{Float64}(undef,indices)
+  fill!(v,1.0)
 
   #v = DistributedVector{Float64}(undef,indices)
   #do_on_parts(v.values,v.ids) do part, values, ids

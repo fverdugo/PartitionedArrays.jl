@@ -788,6 +788,12 @@ struct DistributedIndexLayout{A,B}
   end
 end
 
+function DistributedIndexLayout(i::DistributedIndexSet)
+  ids = DistributedData(i) do part, i
+    IndexLayout(i)
+  end
+end
+
 get_distributed_data(a::DistributedIndexLayout) = a.ids
 num_gids(a::DistributedIndexLayout) = a.ngids
 
