@@ -113,8 +113,10 @@ SequentialCommunicator(nparts) do comm
 
   n = 10
 
-  oids = UniformDistributedIndexPartition(comm,n)
-  @test num_gids(oids) == n
+  np = num_parts(comm)
+  oids = DistributedData(comm) do p
+    UniformIndexSet(n,np,p)
+  end
 
   do_on_parts(oids) do part, oids
     @test oids.part == part

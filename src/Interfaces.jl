@@ -256,12 +256,12 @@ struct IndexSet{A,B,C,D}
   gid_to_lid::C
   gid_to_part::D
   function IndexSet(
-    part::Integer
-    ngids::Integer
+    part::Integer,
+    ngids::Integer,
     lid_to_gid::AbstractVector,
     lid_to_part::AbstractVector,
     gid_to_lid::AbstractDict,
-    gid_to_part::AbstractVector)
+    gid_to_part::Union{AbstractVector,Nothing})
     A = typeof(lid_to_gid)
     B = typeof(lid_to_part)
     C = typeof(gid_to_lid)
@@ -280,22 +280,28 @@ num_gids(a::IndexSet) = a.ngids
 num_lids(a::IndexSet) = length(a.lid_to_part)
 
 function IndexSet(
-  part::Integer
-  ngids::Integer
+  part::Integer,
+  ngids::Integer,
   lid_to_gid::AbstractVector,
   lid_to_part::AbstractVector)
 
-  gid_to_lid = Dict{Int,Int32}()
-  for (lid,gid) in enumerate(lid_to_gid)
-    gid_to_lid[gid] = lid
-  end
+  gid_to_lid = _compute_gid_to_lid(lid_to_gid)
   IndexSet(part,ngids,lid_to_gid,lid_to_part,gid_to_lid,nothing)
 end
 
 function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
  xid_to_gid = lazy_map(Reindex(a.lid_to_gid),xid_to_lid)
  xid_to_part = lazy_map(Reindex(a.lid_to_part),xid_to_lid)
- IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part)
+ gid_to_xid = _compute_gid_to_lid(xid_to_gid)
+ IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,gid_to_xid,a.gid_to_part)
+end
+
+function _compute_gid_to_lid(lid_to_gid)
+  gid_to_lid = Dict{Int,Int32}()
+  for (lid,gid) in enumerate(lid_to_gid)
+    gid_to_lid[gid] = lid
+  end
+  gid_to_lid
 end
 
 function IndexSet(a::IndexSet,b::IndexSet,glue::PosNegPartition)
@@ -305,11 +311,11 @@ function IndexSet(a::IndexSet,b::IndexSet,glue::PosNegPartition)
   IndexSet(a.part,a.ngids,lid_to_gid,lid_to_part,gid_to_lid,a.gid_to_part)
 end
 
-function UniformIndexSet(ngids,np,p)
-  gids = _oid_to_gid(ngids,np,p)
+function UniformIndexSet(ngids,np,part)
+  gids = _oid_to_gid(ngids,np,part)
   oids = Int32(1):Int32(length(gids))
   oid_to_gid = OidToGid(gids)
-  oid_to_part = Fill(p,length(oids))
+  oid_to_part = Fill(part,length(oids))
   gid_to_oid = GidToOid(gids,oids)
   gid_to_part = GidToPart(ngids,np)
   IndexSet(
@@ -411,8 +417,8 @@ struct GidToLid{A,B,C} <: AbstractDict{Int,Int32}
   gid_to_hid::B
   glue::C
   function GidToLid(
-    gid_to_oid::AbstractDict
-    gid_to_hid::AbstractDict
+    gid_to_oid::AbstractDict,
+    gid_to_hid::AbstractDict,
     glue::PosNegPartition)
 
     A = typeof(gid_to_oid)
@@ -554,7 +560,7 @@ end
 
 function spawn_exchange!(
   values::DistributedData{<:AbstractVector{T}},
-  exchanger::DistributedData{<:Exchanger}) where T
+  exchanger::Exchanger) where T
 
   # Allocate buffers
   data_rcv = allocate_rcv_buffer(T,exchanger)
@@ -589,27 +595,57 @@ function spawn_exchange!(
 
 end
 
+struct DistributedIndexSet{A,B}
+  ngids::Int
+  ids::A
+  exchanger::B
+  function DistributedIndexSet(
+    ngids::Integer,
+    ids::DistributedData{<:IndexSet},
+    exchanger::Exchanger=Exchanger(ids))
+
+    A = typeof(ids)
+    B = typeof(exchanger)
+    new{A,B}(ngids,ids,exchanger)
+  end
+end
+
+get_distributed_data(a::DistributedIndexSet) = a.ids
+num_gids(a::DistributedIndexSet) = a.ngids
+
+function spawn_exchange!(
+  values::DistributedData{<:AbstractVector},
+  ids::DistributedIndexSet)
+  spawn_exchange!(values,ids.exchanger)
+end
+
 # Numeric data build on top of a IndexLayout
 # i.e. the data stored locally in a distributed vector
-struct ValueLayout{A,B,C}
+# the three stored vectors have to be views to the same data
+struct ValueLayout{T,A,B,C}
   lid_to_value::A
   oid_to_value::B
-  hig_to_value::C
+  hid_to_value::C
   function ValueLayout(
-    lid_to_value::AbstractVector,
-    oid_to_lid::Union{AbstractVector,AbstractRange},
-    hid_to_lid::Union{AbstractVector,AbstractRange})
-
-    oid_to_value = view(lid_to_value,oid_to_lid)
-    hid_to_value = view(lid_to_value,hid_to_lid)
+    lid_to_value::AbstractVector{T},
+    oid_to_value::AbstractVector{T},
+    hid_to_value::AbstractVector{T}) where T
     A = typeof(lid_to_value)
     B = typeof(oid_to_value)
     C = typeof(hid_to_value)
-    new{A,B,C}(
+    new{T,A,B,C}(
       lid_to_value,
       oid_to_value,
-      hig_to_value)
+      hid_to_value)
   end
+end
+
+function ValueLayout(lid_to_value::AbstractVector{T}, glue::PosNegPartition) where T
+  oid_to_lid = glue.ipos_to_i
+  hid_to_lid = glue.ineg_to_i
+  oid_to_value = view(lid_to_value,oid_to_lid)
+  hid_to_value = view(lid_to_value,hid_to_lid)
+  ValueLayout(lid_to_value,oid_to_value,hid_to_value)
 end
 
 # IndexSet + some metadata about owned and ghost ids,
@@ -716,95 +752,57 @@ function Base.propertynames(x::IndexLayout, private=false)
   :hid_to_lid)
 end
 
+num_gids(a::IndexLayout) = a.ngids
+num_lids(a::IndexLayout) = length(a.lid_to_part)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-struct DistributedIndexPartition{A}
-  ngids::Int
-  oids::A
-  function DistributedIndexPartition(ngids::Integer, oids::DistributedData{<:IndexPartition})
-    A = typeof(oids)
-    new{A}(ngids,oids)
+function Exchanger(ids::DistributedData{<:IndexLayout},neighbors=nothing)
+  hids = DistributedData(ids) do part, ids
+    ids.hids
   end
+  ghost_exchanger = Exchanger(hids,neighbors)
+  ghost_exchanger
 end
 
-get_distributed_data(a::DistributedIndexPartition) = a.oids
-num_gids(a::DistributedIndexPartition) = a.ngids
+function spawn_exchange!(
+  values::DistributedData{<:ValueLayout},
+  ghost_exchanger::Exchanger)
 
-function UniformDistributedIndexSet(comm::Communicator,ngids::Integer)
-  np = num_parts(comm)
-  oids = DistributedData(comm) do p
-    UniformIndexSet(ngids,np,p)
+  ghost_values = DistributedData(values) do part, values
+    values.hid_to_value
   end
-  DistributedIndexSet(ngids,oids)
+  spawn_exchange!(ghost_values,ghost_exchanger)
 end
 
-
-struct DistributedIndexSet{A,B}
+struct DistributedIndexLayout{A,B}
   ngids::Int
-  lids::A
+  ids::A
   exchanger::B
-  function DistributedIndexSet(
+  function DistributedIndexLayout(
     ngids::Integer,
-    lids::DistributedData{<:IndexSet},
-    exchanger::Exchanger=Exchanger(lids))
+    ids::DistributedData{<:IndexLayout},
+    exchanger::Exchanger=Exchanger(ids))
 
-    A = typeof(lids)
+    A = typeof(ids)
     B = typeof(exchanger)
-    new{A,B}(ngids,lids,exchanger)
+    new{A,B}(ngids,ids,exchanger)
   end
 end
 
-get_distributed_data(a::DistributedIndexSet) = a.lids
-num_gids(a::DistributedIndexSet) = a.ngids
+get_distributed_data(a::DistributedIndexLayout) = a.ids
+num_gids(a::DistributedIndexLayout) = a.ngids
 
-
-#function non_overlaping(ids::DistributedIndexSet)
-#  lids = DistributedData(ids) do part, ids
-#    lid_to_gid = similar(ids.lid_to_gid,eltype(ids.lid_to_gid),0)
-#    for (lid,owner) in enumerate(ids.lid_to_part)
-#      if owner == part
-#        gid = ids.lid_to_gid[lid]
-#        push!(lid_to_gid,gid)
-#      end
-#    end
-#    lid_to_part = similar(ids.lid_to_part,eltype(ids.lid_to_part),length(lid_to_gid))
-#    fill!(lid_to_part,part)
-#    IndexSet(ids.part,ids.ngids,lid_to_gid,lid_to_part)
-#  end
-#  neighbors = DistributedData(ids.exchanger.parts_rcv) do part,parts_rcv
-#    similar(parts_rcv,eltype(parts_rcv),0)
-#  end
-#  exchanger = Exchanger(lids,neighbors)
-#  DistributedIndexSet(ids.ngids,lids,exchanger)
-#end
+function spawn_exchange!(
+  values::DistributedData{<:ValueLayout},
+  ids::DistributedIndexLayout)
+  spawn_exchange!(values,ids.exchanger)
+end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A
   ids::B
   function DistributedVector(
-    values::DistributedData{<:AbstractVector{T}},
-    ids::DistributedIndexSet) where T
+    values::DistributedData{<:ValueLayout{T}},
+    ids::DistributedIndexLayout) where T
 
     A = typeof(values)
     B = typeof(ids)
@@ -812,176 +810,124 @@ struct DistributedVector{T,A,B} <: AbstractVector{T}
   end
 end
 
-function DistributedVector{T}(::UndefInitializer,ids::DistributedIndexSet) where T
+function DistributedVector{T}(
+  ::UndefInitializer,
+  ids::DistributedIndexLayout) where T
+
   values = DistributedData(ids) do part, ids
-    nlids = length(ids.lid_to_part)
-    Vector{T}(undef,nlids)
+    nlids = num_lids(ids)
+    lid_to_value = Vector{T}(undef,nlids)
+    ValueLayout(lid_to_value,ids.glue)
   end
   DistributedVector(values,ids)
 end
 
 function Base.fill!(a::DistributedVector,v)
   do_on_parts(a.values) do part, values
-    fill!(values,v)
+    fill!(values.lid_to_value,v)
   end
   a
 end
-
-function Base.getindex(a::DistributedVector,ids::DistributedIndexSet)
-  exchange!(a)
-  if ids === a.ids
-    a
-  else
-    ids_out = ids
-    ids_in = a.ids
-    values_in = a.values
-    values_out = DistributedData(values_in,ids_in,ids_out) do part, values_in, ids_in, ids_out
-      values_out = similar(values_in,eltype(values_in),num_lids(ids_out))
-      for lid_out in 1:num_lids(ids_out)
-        if ids_out.lid_to_part[lid_out] == part
-          gid = ids_out.lid_to_gid[lid_out]
-          @notimplementedif ! haskey(ids_in.gid_to_lid,gid)
-          lid_in = ids_in.gid_to_lid[gid]
-          values_out[lid_out] = values_in[lid_in]
-        end
-      end
-      values_out
-    end
-    v = DistributedVector(values_out,ids_out)
-    exchange!(v)
-    v
-  end
-end
-
-#get_distributed_data(a::DistributedVector) = a.values
 
 Base.length(a::DistributedVector) = num_gids(a.ids)
 
-function exchange!(a::DistributedVector{T}) where T
-
-  # Allocate buffers
-  data_rcv = allocate_rcv_buffer(T,a.ids.exchanger)
-  data_snd = allocate_snd_buffer(T,a.ids.exchanger)
-
-  # Fill snd buffer
-  do_on_parts(a.values,data_snd,a.ids.exchanger.lids_snd) do part,values,data_snd,lids_snd 
-    for p in 1:length(lids_snd.data)
-      lid = lids_snd.data[p]
-      data_snd.data[p] = values[lid]
-    end
-  end
-
-  # communicate
-  exchange!(
-    data_rcv,
-    data_snd,
-    a.ids.exchanger.parts_rcv,
-    a.ids.exchanger.parts_snd)
-
-  # Fill non-owned values from rcv buffer
-  do_on_parts( a.values,data_rcv,a.ids.exchanger.lids_rcv) do part,values,data_rcv,lids_rcv 
-    for p in 1:length(lids_rcv.data)
-      lid = lids_rcv.data[p]
-      values[lid] = data_rcv.data[p]  
-    end
-  end
-
-  a
+function spawn_exchange!(a::DistributedVector)
+  spawn_exchange!(a.values,a.ids)
 end
 
-struct DistributedSparseMatrix{T,A,B} <: AbstractMatrix{T}
-  values::A
-  row_ids::B
-  col_ids::B
-  function DistributedSparseMatrix(
-    values::DistributedData{<:AbstractSparseMatrix{T}},
-    row_ids::DistributedIndexSet,
-    col_ids::DistributedIndexSet) where T
-
-    A = typeof(values)
-    B = typeof(col_ids)
-    new{T,A,B}(values,row_ids,col_ids)
-  end
-end
-
-Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
-
-function LinearAlgebra.mul!(
-  c::DistributedVector,
-  a::DistributedSparseMatrix,
-  b::DistributedVector,
-  α::Number,
-  β::Number)
-
-  @assert c.ids === a.row_ids
-  @assert b.ids === a.col_ids
-  exchange!(b)
-  do_on_parts(c.values,a.values,b.values) do part,c,a,b
-    mul!(c,a,b,α,β)
-  end
-  c
-end
-
-function Base.getindex(
-  a::DistributedSparseMatrix,
-  row_ids::DistributedIndexSet,
-  col_ids::DistributedIndexSet)
-
-  @notimplementedif a.row_ids !== row_ids
-  if a.col_ids === col_ids
-    a
-  else
-    ids_out = col_ids
-    ids_in = a.col_ids
-    values_in = a.values
-    values_out = DistributedData(values_in,ids_in,ids_out) do part, values_in, ids_in, ids_out
-      i_to_lid_in = Int32[]
-      i_to_lid_out = Int32[]
-      for lid_in in 1:num_lids(ids_in)
-         gid = ids_in.lid_to_gid[lid_in]
-         if haskey(ids_out.gid_to_lid,gid)
-           lid_out = ids_out.gid_to_lid[gid]
-           push!(i_to_lid_in,lid_in)
-           push!(i_to_lid_out,lid_out)
-         end
-      end
-      I,J_in,V = findnz(values_in[:,i_to_lid_in])
-      J_out = similar(J_in)
-      J_out .= i_to_lid_out[J_in]
-      sparse(I,J_out,V,size(values_in,1),num_lids(ids_out))
-    end
-    DistributedSparseMatrix(values_out,row_ids,col_ids)
-  end
-end
-
-struct AdditiveSchwarz{A,B,C}
-  problems::A
-  solvers::B
-  row_ids::C
-  col_ids::C
-end
-
-function AdditiveSchwarz(a::DistributedSparseMatrix)
-  problems = a[a.row_ids,a.row_ids].values
-  solvers = DistributedData(problems) do part, problem
-    return \
-  end
-  AdditiveSchwarz(problems,solvers,a.row_ids,a.col_ids)
-end
-
-function LinearAlgebra.mul!(c::DistributedVector,a::AdditiveSchwarz,b::DistributedVector)
-  @assert c.ids === a.col_ids
-  @assert b.ids === a.row_ids
-  do_on_parts(c.values,a.problems,a.solvers,b.values,a.col_ids,a.row_ids) do part,c_col,p,s,b,col_ids,row_ids
-    c_row = s(p,b)
-    for lid_row in 1:num_lids(row_ids)
-      gid = row_ids.lid_to_gid[lid_row]
-      lid_col = col_ids.gid_to_lid[gid]
-      c_col[lid_col] = c_row[lid_row]
-    end
-  end
-  c
-end
+#struct DistributedSparseMatrix{T,A,B} <: AbstractMatrix{T}
+#  values::A
+#  row_ids::B
+#  col_ids::B
+#  function DistributedSparseMatrix(
+#    values::DistributedData{<:AbstractSparseMatrix{T}},
+#    row_ids::DistributedIndexSet,
+#    col_ids::DistributedIndexSet) where T
+#
+#    A = typeof(values)
+#    B = typeof(col_ids)
+#    new{T,A,B}(values,row_ids,col_ids)
+#  end
+#end
+#
+#Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
+#
+#function LinearAlgebra.mul!(
+#  c::DistributedVector,
+#  a::DistributedSparseMatrix,
+#  b::DistributedVector,
+#  α::Number,
+#  β::Number)
+#
+#  @assert c.ids === a.row_ids
+#  @assert b.ids === a.col_ids
+#  exchange!(b)
+#  do_on_parts(c.values,a.values,b.values) do part,c,a,b
+#    mul!(c,a,b,α,β)
+#  end
+#  c
+#end
+#
+#function Base.getindex(
+#  a::DistributedSparseMatrix,
+#  row_ids::DistributedIndexSet,
+#  col_ids::DistributedIndexSet)
+#
+#  @notimplementedif a.row_ids !== row_ids
+#  if a.col_ids === col_ids
+#    a
+#  else
+#    ids_out = col_ids
+#    ids_in = a.col_ids
+#    values_in = a.values
+#    values_out = DistributedData(values_in,ids_in,ids_out) do part, values_in, ids_in, ids_out
+#      i_to_lid_in = Int32[]
+#      i_to_lid_out = Int32[]
+#      for lid_in in 1:num_lids(ids_in)
+#         gid = ids_in.lid_to_gid[lid_in]
+#         if haskey(ids_out.gid_to_lid,gid)
+#           lid_out = ids_out.gid_to_lid[gid]
+#           push!(i_to_lid_in,lid_in)
+#           push!(i_to_lid_out,lid_out)
+#         end
+#      end
+#      I,J_in,V = findnz(values_in[:,i_to_lid_in])
+#      J_out = similar(J_in)
+#      J_out .= i_to_lid_out[J_in]
+#      sparse(I,J_out,V,size(values_in,1),num_lids(ids_out))
+#    end
+#    DistributedSparseMatrix(values_out,row_ids,col_ids)
+#  end
+#end
+#
+#struct AdditiveSchwarz{A,B,C}
+#  problems::A
+#  solvers::B
+#  row_ids::C
+#  col_ids::C
+#end
+#
+#function AdditiveSchwarz(a::DistributedSparseMatrix)
+#  problems = a[a.row_ids,a.row_ids].values
+#  solvers = DistributedData(problems) do part, problem
+#    return \
+#  end
+#  AdditiveSchwarz(problems,solvers,a.row_ids,a.col_ids)
+#end
+#
+#function LinearAlgebra.mul!(c::DistributedVector,a::AdditiveSchwarz,b::DistributedVector)
+#  @assert c.ids === a.col_ids
+#  @assert b.ids === a.row_ids
+#  do_on_parts(c.values,a.problems,a.solvers,b.values,a.col_ids,a.row_ids) do part,c_col,p,s,b,col_ids,row_ids
+#    c_row = s(p,b)
+#    for lid_row in 1:num_lids(row_ids)
+#      gid = row_ids.lid_to_gid[lid_row]
+#      lid_col = col_ids.gid_to_lid[gid]
+#      c_col[lid_col] = c_row[lid_row]
+#    end
+#  end
+#  c
+#end
 
 
 

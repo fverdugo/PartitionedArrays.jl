@@ -27,7 +27,6 @@ export exchange
 export discover_parts_snd
 export num_oids
 export UniformIndexSet
-export UniformDistributedIndexSet
 export IndexSet
 export num_lids
 export Exchanger
