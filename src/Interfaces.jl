@@ -141,8 +141,8 @@ function async_exchange!(
 end
 
 # Blocking in-place exchange
-function exchange!(args...)
-  t = async_exchange!(args...)
+function exchange!(args...;kwargs...)
+  t = async_exchange!(args...;kwargs...)
   map_on_parts(wait,t)
   first(args)
 end
@@ -649,6 +649,10 @@ function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
+function Base.reverse(a::Exchanger)
+  Exchanger(a.parts_snd,a.parts_rcv,a.lids_snd,a.lids_rcv)
+end
+
 function allocate_rcv_buffer(::Type{T},a::Exchanger) where T
   data_rcv = DistributedData(a.lids_rcv) do part, lids_rcv
     ptrs = lids_rcv.ptrs
@@ -669,7 +673,8 @@ end
 
 function async_exchange!(
   values::DistributedData{<:AbstractVector{T}},
-  exchanger::Exchanger) where T
+  exchanger::Exchanger;
+  reduce_op=_replace) where T
 
   # Allocate buffers
   data_rcv = allocate_rcv_buffer(T,exchanger)
@@ -690,19 +695,21 @@ function async_exchange!(
     exchanger.parts_rcv,
     exchanger.parts_snd)
 
-  # Fill non-owned values from rcv buffer
+  # Fill values from rcv buffer
   # asynchronously
   return DistributedData(task,values,data_rcv,exchanger.lids_rcv) do part,task,values,data_rcv,lids_rcv 
     @async begin
       wait(task)
       for p in 1:length(lids_rcv.data)
         lid = lids_rcv.data[p]
-        values[lid] = data_rcv.data[p]  
+        values[lid] = reduce_op(values[lid],data_rcv.data[p])
       end
     end
   end
 
 end
+
+_replace(x,y) = y
 
 struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
@@ -749,11 +756,11 @@ Base.last(a::DistributedRange) = a.ngids
 get_distributed_data(a::DistributedRange) = a.lids
 num_gids(a::DistributedRange) = a.ngids
 
-function async_exchange!(
-  values::DistributedData{<:AbstractVector},
-  r::DistributedRange)
-  async_exchange!(values,r.exchanger)
-end
+#function async_exchange!(
+#  values::DistributedData{<:AbstractVector},
+#  r::DistributedRange)
+#  async_exchange!(values,r.exchanger)
+#end
 
 function remove_ghost(a::DistributedRange)
   oids = DistributedData(a.lids) do p,lids
@@ -1006,7 +1013,17 @@ end
 Base.length(a::DistributedVector) = length(a.ids)
 
 function async_exchange!(a::DistributedVector)
-  async_exchange!(a.values,a.ids)
+  async_exchange!(a.values,a.ids.exchanger)
+end
+
+#TODO async_assemble!
+# To implement this we would need to input a task in async_exchange!
+function assemble!(a::DistributedVector;reduce_op=+)
+  exchanger_rcv = a.ids.exchanger # receives data at ghost ids from remote parts
+  exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
+  exchange!(a.values,exchanger_snd;reduce_op=reduce_op)
+  exchange!(a.values,exchanger_rcv)
+  a
 end
 
 struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}

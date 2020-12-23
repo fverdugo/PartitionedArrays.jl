@@ -151,6 +151,39 @@ SequentialCommunicator(nparts) do comm
     @test ids == lids_snd
   end
 
+  values = DistributedData(lids) do part, lids
+    values = fill(0.0,num_lids(lids))
+    for lid in 1:length(lids.lid_to_part)
+      owner = lids.lid_to_part[lid]
+      if owner == part
+        values[lid] = 10*part
+      end
+    end
+    values
+  end
+
+  exchange!(values,exchanger)
+
+  do_on_parts(values,lids) do part, values, lids
+    for lid in 1:length(lids.lid_to_part)
+      owner = lids.lid_to_part[lid]
+      @test values[lid] == 10*owner
+    end
+  end
+
+  exchanger_rcv = exchanger # receives data at ghost ids from remote parts
+  exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
+
+  values = DistributedData(lids) do part, lids
+    values = fill(0.0,num_lids(lids))
+    for lid in 1:length(lids.lid_to_part)
+      values[lid] = 10*part
+    end
+    values
+  end
+  exchange!(values,exchanger_snd;reduce_op=+)
+  exchange!(values,exchanger_rcv)
+
   ids = DistributedRange(n,lids)
 
   do_on_parts(ids) do part, ids
@@ -159,26 +192,6 @@ SequentialCommunicator(nparts) do comm
   @test get_comm(ids) === comm
   @test num_parts(ids) == nparts
   @test num_gids(ids) == n
-
-  values = DistributedData(ids) do part, ids
-    values = fill(0.0,num_lids(ids))
-    for lid in 1:length(ids.lid_to_part)
-      owner = ids.lid_to_part[lid]
-      if owner == part
-        values[lid] = 10*part
-      end
-    end
-    values
-  end
-
-  exchange!(values,ids)
-
-  do_on_parts(values,ids) do part, values, ids
-    for lid in 1:length(ids.lid_to_part)
-      owner = ids.lid_to_part[lid]
-      @test values[lid] == 10*owner
-    end
-  end
 
   v = DistributedVector{Float64}(undef,ids)
   fill!(v,1.0)
@@ -199,6 +212,8 @@ SequentialCommunicator(nparts) do comm
       @test values[lid] == 10*owner
     end
   end
+
+  assemble!(v)
 
   #u = v[ids]
   #@test u.ids === ids

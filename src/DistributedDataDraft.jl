@@ -22,6 +22,7 @@ export gather
 export scatter
 export bcast
 export get_distributed_data
+export assemble!
 export async_exchange!
 export exchange!
 export exchange
