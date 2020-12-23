@@ -248,30 +248,42 @@ end
 # Arbitrary set of global indices stored in a part
 # gid_to_part can be omitted with nothing since only for some particular parallel
 # data layouts (e.g. uniform partitions) it is efficient to recover this information. 
-struct IndexSet{A,B,C,D}
+# oid: owned id
+# hig: ghost (aka halo) id
+# gid: global id
+# lid: local id (ie union of owned + ghost)
+struct IndexSet{A,B,C,D,E,F}
   part::Int
   ngids::Int
   lid_to_gid::A
   lid_to_part::B
   gid_to_part::C
-  gid_to_lid::D
+  oid_to_lid::D
+  hid_to_lid::E
+  gid_to_lid::F
   function IndexSet(
     part::Integer,
     ngids::Integer,
     lid_to_gid::AbstractVector,
     lid_to_part::AbstractVector,
     gid_to_part::Union{AbstractVector,Nothing},
+    oid_to_lid::Union{AbstractVector,AbstractRange},
+    hid_to_lid::Union{AbstractVector,AbstractRange},
     gid_to_lid::AbstractDict)
     A = typeof(lid_to_gid)
     B = typeof(lid_to_part)
     C = typeof(gid_to_part)
-    D = typeof(gid_to_lid)
-    new{A,B,C,D}(
+    D = typeof(oid_to_lid)
+    E = typeof(hid_to_lid)
+    F = typeof(gid_to_lid)
+    new{A,B,C,D,E,F}(
       part,
       ngids,
       lid_to_gid,
       lid_to_part,
       gid_to_part,
+      oid_to_lid,
+      hid_to_lid,
       gid_to_lid)
   end
 end
@@ -284,19 +296,47 @@ function IndexSet(
   ngids::Integer,
   lid_to_gid::AbstractVector,
   lid_to_part::AbstractVector,
-  gid_to_part::Union{AbstractVector,Nothing}=nothing)
+  gid_to_part::Union{AbstractVector,Nothing},
+  oid_to_lid::Union{AbstractVector,AbstractRange},
+  hid_to_lid::Union{AbstractVector,AbstractRange})
 
   gid_to_lid = Dict{Int,Int32}()
   for (lid,gid) in enumerate(lid_to_gid)
     gid_to_lid[gid] = lid
   end
-  gid_to_lid
-  IndexSet(part,ngids,lid_to_gid,lid_to_part,gid_to_part,gid_to_lid)
+  IndexSet(
+    part,
+    ngids,
+    lid_to_gid,
+    lid_to_part,
+    gid_to_part,
+    oid_to_lid,
+    hid_to_lid,
+    gid_to_lid)
+end
+
+function IndexSet(
+  part::Integer,
+  ngids::Integer,
+  lid_to_gid::AbstractVector,
+  lid_to_part::AbstractVector,
+  gid_to_part::Union{AbstractVector,Nothing}=nothing)
+
+  oid_to_lid = findall(owner->owner==part,lid_to_part)
+  hid_to_lid = findall(owner->owner!=part,lid_to_part)
+  IndexSet(
+    part,
+    ngids,
+    lid_to_gid,
+    lid_to_part,
+    gid_to_part,
+    oid_to_lid,
+    hid_to_lid)
 end
 
 function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
- xid_to_gid = lazy_map(Reindex(a.lid_to_gid),xid_to_lid)
- xid_to_part = lazy_map(Reindex(a.lid_to_part),xid_to_lid)
+ xid_to_gid = collect(Int,lazy_map(Reindex(a.lid_to_gid),xid_to_lid))
+ xid_to_part = collect(Int32,lazy_map(Reindex(a.lid_to_part),xid_to_lid))
  IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
 end
 
@@ -626,62 +666,47 @@ function spawn_exchange!(
 
 end
 
-struct DistributedRange{A,B,C,D} <: AbstractUnitRange{Int}
+struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
-  oids::B
-  hids::C
-  exchanger::D
+  exchanger::B
   function DistributedRange(
     ngids::Integer,
     lids::DistributedData{<:IndexSet},
-    oids::DistributedData{<:AbstractVector},
-    hids::DistributedData{<:AbstractVector},
     exchanger::Exchanger=Exchanger(lids))
   
     A = typeof(lids)
-    B = typeof(oids)
-    C = typeof(hids)
-    D = typeof(exchanger)
-    new{A,B,C,D}(
+    B = typeof(exchanger)
+    new{A,B}(
       ngids,
       lids,
-      oids,
-      hids,
       exchanger)
   end
 end
 
-function DistributedRange(
-  ngids::Integer,
-  lids::DistributedData{<:IndexSet})
-
-  oids, hids = DistributedData(lids) do p, lids
-    oids = findall(owner->owner==p,lids.lid_to_part)
-    hids = findall(owner->owner!=p,lids.lid_to_part)
-    oids, hids
-  end
-  DistributedRange(ngids,lids,oids,hids)
-end
-
 function DistributedRange(comm::Communicator,ngids::Integer)
   np = num_parts(comm)
-  lids, oids, hids = DistributedData(comm) do part
+  lids = DistributedData(comm) do part
     gids = _oid_to_gid(ngids,np,part)
-    oid_to_gid = collect(gids)
-    oid_to_part = Fill(part,length(gids))
+    lid_to_gid = collect(gids)
+    lid_to_part = Fill(part,length(gids))
     gid_to_part = GidToPart(ngids,np)
-    lids = IndexSet(part,ngids,oid_to_gid,oid_to_part,gid_to_part)
-    oids = collect(Int32,1:length(gids))
-    hids = Int32[]
-    lids, oids, hids
+    oid_to_lid = Int32(1):Int32(length(gids))
+    hid_to_lid = Int32(1):Int32(0)
+    IndexSet(
+      part,
+      ngids,
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
   end
-  DistributedRange(ngids,lids,oids,hids)
+  DistributedRange(ngids,lids)
 end
 
 Base.first(a::DistributedRange) = 1
 Base.last(a::DistributedRange) = a.ngids
-num_gids(a::DistributedRange) = a.ngids
 
 get_distributed_data(a::DistributedRange) = a.lids
 num_gids(a::DistributedRange) = a.ngids
@@ -903,7 +928,7 @@ end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A
-  range::B
+  indices::B
   function DistributedVector(
     values::DistributedData{<:AbstractVector{T}},
     ids::DistributedRange) where T
@@ -932,10 +957,10 @@ function Base.fill!(a::DistributedVector,v)
   a
 end
 
-Base.length(a::DistributedVector) = length(a.range)
+Base.length(a::DistributedVector) = length(a.indices)
 
 function spawn_exchange!(a::DistributedVector)
-  spawn_exchange!(a.values,a.range)
+  spawn_exchange!(a.values,a.indices)
 end
 
 #struct DistributedSparseMatrix{T,A,B} <: AbstractMatrix{T}

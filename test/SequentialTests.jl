@@ -184,7 +184,7 @@ SequentialCommunicator(nparts) do comm
   fill!(v,1.0)
 
   v = DistributedVector{Float64}(undef,indices)
-  do_on_parts(v.values,v.range) do part, values, ids
+  do_on_parts(v.values,v.indices) do part, values, ids
     for lid in 1:length(ids.lid_to_part)
       owner = ids.lid_to_part[lid]
       if owner == part
@@ -193,7 +193,7 @@ SequentialCommunicator(nparts) do comm
     end
   end
   exchange!(v)
-  do_on_parts(v.values,v.range) do part, values, ids
+  do_on_parts(v.values,v.indices) do part, values, ids
     for lid in 1:length(ids.lid_to_part)
       owner = ids.lid_to_part[lid]
       @test values[lid] == 10*owner
