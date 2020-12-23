@@ -254,7 +254,7 @@ end
 # hig: ghost (aka halo) id
 # gid: global id
 # lid: local id (ie union of owned + ghost)
-struct IndexSet{A,B,C,D,E,F}
+struct IndexSet{A,B,C,D,E,F,G}
   part::Int
   ngids::Int
   lid_to_gid::A
@@ -262,7 +262,8 @@ struct IndexSet{A,B,C,D,E,F}
   gid_to_part::C
   oid_to_lid::D
   hid_to_lid::E
-  gid_to_lid::F
+  lid_to_ohid::F
+  gid_to_lid::G
   function IndexSet(
     part::Integer,
     ngids::Integer,
@@ -271,14 +272,16 @@ struct IndexSet{A,B,C,D,E,F}
     gid_to_part::Union{AbstractVector,Nothing},
     oid_to_lid::Union{AbstractVector,AbstractRange},
     hid_to_lid::Union{AbstractVector,AbstractRange},
+    lid_to_ohid::AbstractVector,
     gid_to_lid::AbstractDict)
     A = typeof(lid_to_gid)
     B = typeof(lid_to_part)
     C = typeof(gid_to_part)
     D = typeof(oid_to_lid)
     E = typeof(hid_to_lid)
-    F = typeof(gid_to_lid)
-    new{A,B,C,D,E,F}(
+    F = typeof(lid_to_ohid)
+    G = typeof(gid_to_lid)
+    new{A,B,C,D,E,F,G}(
       part,
       ngids,
       lid_to_gid,
@@ -286,6 +289,7 @@ struct IndexSet{A,B,C,D,E,F}
       gid_to_part,
       oid_to_lid,
       hid_to_lid,
+      lid_to_ohid,
       gid_to_lid)
   end
 end
@@ -302,7 +306,8 @@ function IndexSet(
   lid_to_part::AbstractVector,
   gid_to_part::Union{AbstractVector,Nothing},
   oid_to_lid::Union{AbstractVector,AbstractRange},
-  hid_to_lid::Union{AbstractVector,AbstractRange})
+  hid_to_lid::Union{AbstractVector,AbstractRange},
+  lid_to_ohid::AbstractVector)
 
   gid_to_lid = Dict{Int,Int32}()
   for (lid,gid) in enumerate(lid_to_gid)
@@ -316,7 +321,32 @@ function IndexSet(
     gid_to_part,
     oid_to_lid,
     hid_to_lid,
+    lid_to_ohid,
     gid_to_lid)
+end
+
+function IndexSet(
+  part::Integer,
+  ngids::Integer,
+  lid_to_gid::AbstractVector,
+  lid_to_part::AbstractVector,
+  gid_to_part::Union{AbstractVector,Nothing},
+  oid_to_lid::Union{AbstractVector,AbstractRange},
+  hid_to_lid::Union{AbstractVector,AbstractRange})
+
+  lid_to_ohid = zeros(Int32,length(lid_to_gid))
+  lid_to_ohid[oid_to_lid] = 1:length(oid_to_lid)
+  lid_to_ohid[hid_to_lid] = -(1:length(hid_to_lid))
+
+  IndexSet(
+    part,
+    ngids,
+    lid_to_gid,
+    lid_to_part,
+    gid_to_part,
+    oid_to_lid,
+    hid_to_lid,
+    lid_to_ohid)
 end
 
 function IndexSet(
