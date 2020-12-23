@@ -113,10 +113,7 @@ SequentialCommunicator(nparts) do comm
 
   n = 10
 
-  np = num_parts(comm)
-  oids = DistributedData(comm) do p
-    UniformIndexSet(n,np,p)
-  end
+  oids = DistributedRange(comm,n)
 
   do_on_parts(oids) do part, oids
     @test oids.part == part
@@ -154,7 +151,7 @@ SequentialCommunicator(nparts) do comm
     @test ids == lids_snd
   end
 
-  indices = DistributedIndexSet(n,lids,exchanger)
+  indices = DistributedRange(n,lids)
 
   do_on_parts(indices) do part, indices
     @test indices.ngids == n
@@ -186,22 +183,22 @@ SequentialCommunicator(nparts) do comm
   v = DistributedVector{Float64}(undef,indices)
   fill!(v,1.0)
 
-  #v = DistributedVector{Float64}(undef,indices)
-  #do_on_parts(v.values,v.ids) do part, values, ids
-  #  for lid in 1:length(ids.lid_to_part)
-  #    owner = ids.lid_to_part[lid]
-  #    if owner == part
-  #      values[lid] = 10*part
-  #    end
-  #  end
-  #end
-  #exchange!(v)
-  #do_on_parts(v.values,v.ids) do part, values, ids
-  #  for lid in 1:length(ids.lid_to_part)
-  #    owner = ids.lid_to_part[lid]
-  #    @test values[lid] == 10*owner
-  #  end
-  #end
+  v = DistributedVector{Float64}(undef,indices)
+  do_on_parts(v.values,v.range) do part, values, ids
+    for lid in 1:length(ids.lid_to_part)
+      owner = ids.lid_to_part[lid]
+      if owner == part
+        values[lid] = 10*part
+      end
+    end
+  end
+  exchange!(v)
+  do_on_parts(v.values,v.range) do part, values, ids
+    for lid in 1:length(ids.lid_to_part)
+      owner = ids.lid_to_part[lid]
+      @test values[lid] == 10*owner
+    end
+  end
 
   #u = v[indices]
   #@test u.ids === indices
