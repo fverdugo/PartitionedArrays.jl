@@ -131,7 +131,7 @@ get_comm(a) = get_comm(get_distributed_data(a))
 # Starts a non-blocking exchange. It returns a DistributedData of Julia Tasks. Calling wait on these
 # tasks will wait until the exchange is done in the corresponding part
 # (i.e., at this point it is save to read/write the buffers again).
-function spawn_exchange!(
+function async_exchange!(
   data_rcv::DistributedData,
   data_snd::DistributedData,
   parts_rcv::DistributedData,
@@ -142,7 +142,7 @@ end
 
 # Blocking in-place exchange
 function exchange!(args...)
-  t = spawn_exchange!(args...)
+  t = async_exchange!(args...)
   map_on_parts(wait,t)
   first(args)
 end
@@ -162,7 +162,7 @@ function exchange(
 end
 
 # Non-blocking in-place exchange variable length (compressed in a Table)
-function spawn_exchange!(
+function async_exchange!(
   data_rcv::DistributedData{<:Table},
   data_snd::DistributedData{<:Table},
   parts_rcv::DistributedData,
@@ -635,7 +635,7 @@ function allocate_snd_buffer(::Type{T},a::Exchanger) where T
   data_snd
 end
 
-function spawn_exchange!(
+function async_exchange!(
   values::DistributedData{<:AbstractVector{T}},
   exchanger::Exchanger) where T
 
@@ -652,7 +652,7 @@ function spawn_exchange!(
   end
 
   # communicate
-  task = spawn_exchange!(
+  task = async_exchange!(
     data_rcv,
     data_snd,
     exchanger.parts_rcv,
@@ -717,10 +717,10 @@ Base.last(a::DistributedRange) = a.ngids
 get_distributed_data(a::DistributedRange) = a.lids
 num_gids(a::DistributedRange) = a.ngids
 
-function spawn_exchange!(
+function async_exchange!(
   values::DistributedData{<:AbstractVector},
   r::DistributedRange)
-  spawn_exchange!(values,r.exchanger)
+  async_exchange!(values,r.exchanger)
 end
 
 function remove_ghost(a::DistributedRange)
@@ -750,10 +750,10 @@ end
 #get_distributed_data(a::DistributedIndexSet) = a.ids
 #num_gids(a::DistributedIndexSet) = a.ngids
 #
-#function spawn_exchange!(
+#function async_exchange!(
 #  values::DistributedData{<:AbstractVector},
 #  ids::DistributedIndexSet)
-#  spawn_exchange!(values,ids.exchanger)
+#  async_exchange!(values,ids.exchanger)
 #end
 
 ## Numeric data build on top of a IndexLayout
@@ -900,14 +900,14 @@ end
 #  ghost_exchanger
 #end
 #
-#function spawn_exchange!(
+#function async_exchange!(
 #  values::DistributedData{<:ValueLayout},
 #  ghost_exchanger::Exchanger)
 #
 #  ghost_values = DistributedData(values) do part, values
 #    values.hid_to_value
 #  end
-#  spawn_exchange!(ghost_values,ghost_exchanger)
+#  async_exchange!(ghost_values,ghost_exchanger)
 #end
 #
 #struct DistributedIndexLayout{A,B}
@@ -934,10 +934,10 @@ end
 #get_distributed_data(a::DistributedIndexLayout) = a.ids
 #num_gids(a::DistributedIndexLayout) = a.ngids
 #
-#function spawn_exchange!(
+#function async_exchange!(
 #  values::DistributedData{<:ValueLayout},
 #  ids::DistributedIndexLayout)
-#  spawn_exchange!(values,ids.exchanger)
+#  async_exchange!(values,ids.exchanger)
 #end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
@@ -973,8 +973,8 @@ end
 
 Base.length(a::DistributedVector) = length(a.indices)
 
-function spawn_exchange!(a::DistributedVector)
-  spawn_exchange!(a.values,a.indices)
+function async_exchange!(a::DistributedVector)
+  async_exchange!(a.values,a.indices)
 end
 
 struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
@@ -1006,7 +1006,7 @@ function LinearAlgebra.mul!(
 
   @assert c.indices === a.row_indices
   @assert b.indices === a.col_indices
-  t = spawn_exchange!(b)
+  t = async_exchange!(b)
   do_on_parts(c.values,a.owned_values,a.ghost_values,a.row_indices,a.col_indices,b.values,t) do part,c,ao,ah,rlids,clids,b,t
     scale_entries!(c,β)
     co = view(c,rlids.oid_to_lid)
