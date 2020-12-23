@@ -245,7 +245,8 @@ function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
-# TODO add also  lid_to_ohid
+# TODO create abstract type IndexSet and some specializations instead of having
+# so many type parameters in the current IndexSet
 
 # Arbitrary set of global indices stored in a part
 # gid_to_part can be omitted with nothing since only for some particular parallel
@@ -378,40 +379,31 @@ function remove_ghost(a::IndexSet)
   IndexSet(a,a.oid_to_lid)
 end
 
-### Used to dinamically set new indices
-struct LocalId{A<:IndexSet}
-  lids::A
-  gid::Int
-end
-
-@inline function Base.getindex(lid_to_value::AbstractVector,I::LocalId)
-  a = I.lids
-  gid = I.gid
-  if haskey(a.gid_to_lid,gid)
-    lid = a.gid_to_lid[gid]
-    value = lid_to_value[lid]
-  else
-    value = zero(eltype(lid_to_value))
-  end
-  value
-end
-
 # Note that this increases the underlying IndexSet to accomodate new gids
-@inline function Base.setindex!(lid_to_value::AbstractVector,value,I::LocalId)
-  a = I.lids
-  gid = I.gid
+# By default reduce_op is + (make sure that you have initialized lid_to_value)
+function setgid!(lid_to_value::AbstractVector,a::IndexSet,value,gid::Integer;reduce_op=+,grow=true)
   if haskey(a.gid_to_lid,gid)
     lid = a.gid_to_lid[gid]
-    lid_to_value[lid] = value
+    lid_to_value[lid] = reduce_op(lid_to_value[lid],value)
   else
+    @assert grow == true
     part = a.gid_to_part[gid]
     lid = Int32(num_lids(a)+1)
-    push!(lid_to_gid,gid)
-    push!(lid_to_part,part)
-    push!(lid_to_value,value)
-    gid_to_lid[gid] = lid
+    hid = Int32(num_hids(a)+1)
+    push!(a.lid_to_gid,gid)
+    push!(a.lid_to_part,part)
+    push!(a.hid_to_lid,lid)
+    push!(a.lid_to_ohid,-hid)
+    a.gid_to_lid[gid] = lid
+    v = reduce_op(zero(eltype(lid_to_value)),value)
+    push!(lid_to_value,v)
   end
   lid_to_value
+end
+
+function setgid!(t::Tuple{AbstractVector,IndexSet},args...;kwargs...)
+  lid_to_value, a = t
+  setgid!(lid_to_value,a,args...;kwargs...)
 end
 
 #function IndexSet(a::IndexSet,b::IndexSet,glue::PosNegPartition)
@@ -734,10 +726,10 @@ function DistributedRange(comm::Communicator,ngids::Integer)
   lids = DistributedData(comm) do part
     gids = _oid_to_gid(ngids,np,part)
     lid_to_gid = collect(gids)
-    lid_to_part = Fill(part,length(gids))
+    lid_to_part = fill(part,length(gids))
     gid_to_part = GidToPart(ngids,np)
     oid_to_lid = Int32(1):Int32(length(gids))
-    hid_to_lid = Int32(1):Int32(0)
+    hid_to_lid = collect(Int32(1):Int32(0))
     IndexSet(
       part,
       ngids,
@@ -1003,6 +995,45 @@ function DistributedVector{T}(
   DistributedVector(values,ids)
 end
 
+struct DistributedVectorSeed{T,A,B}
+  ngids::Int
+  values::A
+  ids::B
+  function DistributedVectorSeed(
+    ngids::Integer,
+    values::DistributedData{<:AbstractVector{T}},
+    ids::DistributedData{<:IndexSet}) where T
+
+    A = typeof(values)
+    B = typeof(ids)
+    new{T,A,B}(ngids,values,ids)
+  end
+end
+
+function DistributedVectorSeed{T}(comm::Communicator,ngids::Integer) where T
+  # TODO build ids without initializing an Exchanger
+  ids = DistributedRange(comm,ngids).lids
+  values = DistributedData(ids) do part, ids
+    zeros(T,num_lids(ids))
+  end
+  DistributedVectorSeed(ngids,values,ids)
+end
+
+function get_distributed_data(a::DistributedVectorSeed)
+  DistributedData(a.values,a.ids) do part, values, ids
+    (values,ids)
+  end
+end
+
+function DistributedVector(v::DistributedVectorSeed;assemble::Bool=true)
+  ids = DistributedRange(v.ngids,v.ids)
+  u = DistributedVector(v.values,ids)
+  if assemble
+    assemble!(u)
+  end
+  u
+end
+
 function Base.fill!(a::DistributedVector,v)
   do_on_parts(a.values) do part, lid_to_value
     fill!(lid_to_value,v)
@@ -1012,6 +1043,7 @@ end
 
 Base.length(a::DistributedVector) = length(a.ids)
 
+# TODO a better name?
 function async_exchange!(a::DistributedVector)
   async_exchange!(a.values,a.ids.exchanger)
 end

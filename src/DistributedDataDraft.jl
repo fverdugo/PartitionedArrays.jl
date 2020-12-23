@@ -30,6 +30,7 @@ export discover_parts_snd
 export num_oids
 export num_hids
 export IndexSet
+export setgid!
 export num_lids
 export Exchanger
 export allocate_rcv_buffer
@@ -38,6 +39,7 @@ export DistributedRange
 export num_gids
 export remove_ghost
 export DistributedVector
+export DistributedVectorSeed
 export DistributedSparseMatrix
 export AdditiveSchwarz
 

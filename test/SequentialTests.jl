@@ -215,6 +215,35 @@ SequentialCommunicator(nparts) do comm
 
   assemble!(v)
 
+
+  # Incremental creation of a DistributedVector
+
+  # We start by allocating a seed, which 
+  # only has data for owned ids corresponding
+  # to a uniform partition of a range on n ids
+  # TODO allow a user defined number of ids per part
+  v = DistributedVectorSeed{Float64}(comm,n)
+
+  # Set the data we want randomly
+  do_on_parts(v) do part, v
+    if part == 1
+      setgid!(v,2.0,2)
+      setgid!(v,10.0,10)
+    elseif part == 2
+      setgid!(v,1.0,1)
+      setgid!(v,1.0,7)
+    elseif part == 3
+      setgid!(v,1.0,1)
+      setgid!(v,1.0,4)
+      setgid!(v,1.0,4)
+    else
+    end
+  end
+
+  # Build the vector
+  # TODO Do this async
+  v = DistributedVector(v)
+
   #u = v[ids]
   #@test u.ids === ids
 
