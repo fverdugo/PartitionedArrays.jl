@@ -1,6 +1,7 @@
 module DistributedDataDraft
 
 using Gridap.Arrays: Table, length_to_ptrs!, rewind_ptrs!, lazy_map, PosNegReindex, PosNegPartition, Reindex
+using Gridap.Algebra: scale_entries!
 using SparseArrays: AbstractSparseMatrix, findnz, sparse
 using FillArrays
 using LinearAlgebra
@@ -26,6 +27,7 @@ export exchange!
 export exchange
 export discover_parts_snd
 export num_oids
+export num_hids
 export IndexSet
 export num_lids
 export Exchanger
@@ -33,7 +35,7 @@ export allocate_rcv_buffer
 export allocate_snd_buffer
 export DistributedRange
 export num_gids
-export non_overlaping
+export remove_ghost
 export DistributedVector
 export DistributedSparseMatrix
 export AdditiveSchwarz

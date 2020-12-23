@@ -290,6 +290,8 @@ end
 
 num_gids(a::IndexSet) = a.ngids
 num_lids(a::IndexSet) = length(a.lid_to_part)
+num_oids(a::IndexSet) = length(a.oid_to_lid)
+num_hids(a::IndexSet) = length(a.hid_to_lid)
 
 function IndexSet(
   part::Integer,
@@ -335,9 +337,13 @@ function IndexSet(
 end
 
 function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
- xid_to_gid = collect(Int,lazy_map(Reindex(a.lid_to_gid),xid_to_lid))
- xid_to_part = collect(Int32,lazy_map(Reindex(a.lid_to_part),xid_to_lid))
- IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
+  xid_to_gid = a.lid_to_gid[xid_to_lid]
+  xid_to_part = a.lid_to_part[xid_to_lid]
+  IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
+end
+
+function remove_ghost(a::IndexSet)
+  IndexSet(a,a.oid_to_lid)
 end
 
 ### Used to dinamically set new indices
@@ -717,6 +723,14 @@ function spawn_exchange!(
   spawn_exchange!(values,r.exchanger)
 end
 
+function remove_ghost(a::DistributedRange)
+  oids = DistributedData(a.lids) do p,lids
+    remove_ghost(lids)
+  end
+  # TODO build an empty exchanger
+  DistributedRange(a.ngids,oids)
+end
+
 
 #struct DistributedIndexSet{A,B}
 #  ngids::Int
@@ -963,38 +977,47 @@ function spawn_exchange!(a::DistributedVector)
   spawn_exchange!(a.values,a.indices)
 end
 
-#struct DistributedSparseMatrix{T,A,B} <: AbstractMatrix{T}
-#  values::A
-#  row_ids::B
-#  col_ids::B
-#  function DistributedSparseMatrix(
-#    values::DistributedData{<:AbstractSparseMatrix{T}},
-#    row_ids::DistributedIndexSet,
-#    col_ids::DistributedIndexSet) where T
-#
-#    A = typeof(values)
-#    B = typeof(col_ids)
-#    new{T,A,B}(values,row_ids,col_ids)
-#  end
-#end
-#
-#Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
-#
-#function LinearAlgebra.mul!(
-#  c::DistributedVector,
-#  a::DistributedSparseMatrix,
-#  b::DistributedVector,
-#  α::Number,
-#  β::Number)
-#
-#  @assert c.ids === a.row_ids
-#  @assert b.ids === a.col_ids
-#  exchange!(b)
-#  do_on_parts(c.values,a.values,b.values) do part,c,a,b
-#    mul!(c,a,b,α,β)
-#  end
-#  c
-#end
+struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
+  owned_values::A
+  ghost_values::A
+  row_indices::B
+  col_indices::C
+  function DistributedSparseMatrix(
+    owned_values::DistributedData{<:AbstractSparseMatrix{T}},
+    ghost_values::DistributedData{<:AbstractSparseMatrix{T}},
+    row_ids::DistributedRange,
+    col_ids::DistributedRange) where T
+
+    A = typeof(owned_values)
+    B = typeof(row_ids)
+    C = typeof(col_ids)
+    new{T,A,B,C}(owned_values,ghost_values,row_ids,col_ids)
+  end
+end
+
+Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_indices),num_gids(a.col_indices))
+
+function LinearAlgebra.mul!(
+  c::DistributedVector,
+  a::DistributedSparseMatrix,
+  b::DistributedVector,
+  α::Number,
+  β::Number)
+
+  @assert c.indices === a.row_indices
+  @assert b.indices === a.col_indices
+  t = spawn_exchange!(b)
+  do_on_parts(c.values,a.owned_values,a.ghost_values,a.row_indices,a.col_indices,b.values,t) do part,c,ao,ah,rlids,clids,b,t
+    scale_entries!(c,β)
+    co = view(c,rlids.oid_to_lid)
+    bo = view(b,clids.oid_to_lid)
+    mul!(co,ao,bo,α,1)
+    wait(t)
+    bh = view(b,clids.hid_to_lid)
+    mul!(co,ah,bh,α,1)
+  end
+  c
+end
 #
 #function Base.getindex(
 #  a::DistributedSparseMatrix,
