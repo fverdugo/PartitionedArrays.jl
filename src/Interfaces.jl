@@ -245,6 +245,8 @@ function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
+# TODO add also  lid_to_ohid
+
 # Arbitrary set of global indices stored in a part
 # gid_to_part can be omitted with nothing since only for some particular parallel
 # data layouts (e.g. uniform partitions) it is efficient to recover this information. 
@@ -942,7 +944,7 @@ end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A
-  indices::B
+  ids::B
   function DistributedVector(
     values::DistributedData{<:AbstractVector{T}},
     ids::DistributedRange) where T
@@ -971,17 +973,17 @@ function Base.fill!(a::DistributedVector,v)
   a
 end
 
-Base.length(a::DistributedVector) = length(a.indices)
+Base.length(a::DistributedVector) = length(a.ids)
 
 function async_exchange!(a::DistributedVector)
-  async_exchange!(a.values,a.indices)
+  async_exchange!(a.values,a.ids)
 end
 
 struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
   owned_values::A
   ghost_values::A
-  row_indices::B
-  col_indices::C
+  row_ids::B
+  col_ids::C
   function DistributedSparseMatrix(
     owned_values::DistributedData{<:AbstractSparseMatrix{T}},
     ghost_values::DistributedData{<:AbstractSparseMatrix{T}},
@@ -995,7 +997,7 @@ struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
   end
 end
 
-Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_indices),num_gids(a.col_indices))
+Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
 
 function LinearAlgebra.mul!(
   c::DistributedVector,
@@ -1004,10 +1006,10 @@ function LinearAlgebra.mul!(
   α::Number,
   β::Number)
 
-  @assert c.indices === a.row_indices
-  @assert b.indices === a.col_indices
+  @assert c.ids === a.row_ids
+  @assert b.ids === a.col_ids
   t = async_exchange!(b)
-  do_on_parts(c.values,a.owned_values,a.ghost_values,a.row_indices,a.col_indices,b.values,t) do part,c,ao,ah,rlids,clids,b,t
+  do_on_parts(c.values,a.owned_values,a.ghost_values,a.row_ids,a.col_ids,b.values,t) do part,c,ao,ah,rlids,clids,b,t
     scale_entries!(c,β)
     co = view(c,rlids.oid_to_lid)
     bo = view(b,clids.oid_to_lid)
@@ -1051,34 +1053,32 @@ end
 #  end
 #end
 #
-#struct AdditiveSchwarz{A,B,C}
-#  problems::A
-#  solvers::B
-#  row_ids::C
-#  col_ids::C
-#end
-#
-#function AdditiveSchwarz(a::DistributedSparseMatrix)
-#  problems = a[a.row_ids,a.row_ids].values
-#  solvers = DistributedData(problems) do part, problem
-#    return \
-#  end
-#  AdditiveSchwarz(problems,solvers,a.row_ids,a.col_ids)
-#end
-#
-#function LinearAlgebra.mul!(c::DistributedVector,a::AdditiveSchwarz,b::DistributedVector)
-#  @assert c.ids === a.col_ids
-#  @assert b.ids === a.row_ids
-#  do_on_parts(c.values,a.problems,a.solvers,b.values,a.col_ids,a.row_ids) do part,c_col,p,s,b,col_ids,row_ids
-#    c_row = s(p,b)
-#    for lid_row in 1:num_lids(row_ids)
-#      gid = row_ids.lid_to_gid[lid_row]
-#      lid_col = col_ids.gid_to_lid[gid]
-#      c_col[lid_col] = c_row[lid_row]
-#    end
-#  end
-#  c
-#end
+struct AdditiveSchwarz{A,B,C,D}
+  problems::A
+  solvers::B
+  row_ids::C
+  col_ids::D
+end
+
+function AdditiveSchwarz(a::DistributedSparseMatrix)
+  problems = a.owned_values
+  solvers = DistributedData(problems) do part, problem
+    return \
+  end
+  AdditiveSchwarz(problems,solvers,a.col_ids,a.row_ids)
+end
+
+function LinearAlgebra.mul!(c::DistributedVector,a::AdditiveSchwarz,b::DistributedVector)
+  @assert c.ids === a.row_ids
+  @assert b.ids === a.col_ids
+  do_on_parts(c.values,a.problems,a.solvers,b.values,a.row_ids,a.col_ids) do part,c,p,s,b,row_ids,col_ids
+    # TODO not all solvers would accept a view
+    # but if oids before hids one can do a reinterpretation of memory instead of a view.
+    bo = view(b,col_ids.oid_to_lid)
+    c[row_ids.oid_to_lid] = s(p,bo)
+  end
+  c
+end
 
 
 

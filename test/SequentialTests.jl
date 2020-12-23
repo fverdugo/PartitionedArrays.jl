@@ -151,16 +151,16 @@ SequentialCommunicator(nparts) do comm
     @test ids == lids_snd
   end
 
-  indices = DistributedRange(n,lids)
+  ids = DistributedRange(n,lids)
 
-  do_on_parts(indices) do part, indices
-    @test indices.ngids == n
+  do_on_parts(ids) do part, ids
+    @test ids.ngids == n
   end
-  @test get_comm(indices) === comm
-  @test num_parts(indices) == nparts
-  @test num_gids(indices) == n
+  @test get_comm(ids) === comm
+  @test num_parts(ids) == nparts
+  @test num_gids(ids) == n
 
-  values = DistributedData(indices) do part, ids
+  values = DistributedData(ids) do part, ids
     values = fill(0.0,num_lids(ids))
     for lid in 1:length(ids.lid_to_part)
       owner = ids.lid_to_part[lid]
@@ -171,20 +171,20 @@ SequentialCommunicator(nparts) do comm
     values
   end
 
-  exchange!(values,indices)
+  exchange!(values,ids)
 
-  do_on_parts(values,indices) do part, values, ids
+  do_on_parts(values,ids) do part, values, ids
     for lid in 1:length(ids.lid_to_part)
       owner = ids.lid_to_part[lid]
       @test values[lid] == 10*owner
     end
   end
 
-  v = DistributedVector{Float64}(undef,indices)
+  v = DistributedVector{Float64}(undef,ids)
   fill!(v,1.0)
 
-  v = DistributedVector{Float64}(undef,indices)
-  do_on_parts(v.values,v.indices) do part, values, ids
+  v = DistributedVector{Float64}(undef,ids)
+  do_on_parts(v.values,v.ids) do part, values, ids
     for lid in 1:length(ids.lid_to_part)
       owner = ids.lid_to_part[lid]
       if owner == part
@@ -193,17 +193,17 @@ SequentialCommunicator(nparts) do comm
     end
   end
   exchange!(v)
-  do_on_parts(v.values,v.indices) do part, values, ids
+  do_on_parts(v.values,v.ids) do part, values, ids
     for lid in 1:length(ids.lid_to_part)
       owner = ids.lid_to_part[lid]
       @test values[lid] == 10*owner
     end
   end
 
-  #u = v[indices]
-  #@test u.ids === indices
+  #u = v[ids]
+  #@test u.ids === ids
 
-  col_ids = indices
+  col_ids = ids
   row_ids = remove_ghost(col_ids)
   do_on_parts(row_ids) do part, row_ids
     @test all(i->i==part,row_ids.lid_to_part)
@@ -255,11 +255,14 @@ SequentialCommunicator(nparts) do comm
 
   #mul!(b,B,y)
 
-  #P = AdditiveSchwarz(A)
+  P = AdditiveSchwarz(A)
+  x = DistributedVector{Float64}(undef,col_ids)
+  mul!(x,P,b)
+  exchange!(x)
 
-  #x = DistributedVector{Float64}(undef,col_ids)
-  #mul!(x,P,b)
-  #exchange!(x)
+  do_on_parts(x.values) do part, values
+    @test all(  values .== 3 )
+  end
 
 end # comm
 
