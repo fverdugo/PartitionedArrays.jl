@@ -3,10 +3,9 @@ struct SequentialBackend <: Backend end
 
 const sequential = SequentialBackend()
 
-function distributed_run(driver::Function,b::SequentialBackend,nparts::Integer)
+function Partition(b::SequentialBackend,nparts::Integer)
   parts = [ Part(part,nparts) for part in 1:nparts ]
-  part = SequentialDistributedData(parts)
-  driver(part)
+  SequentialDistributedData(parts)
 end
 
 struct SequentialDistributedData{T} <: DistributedData{T}

@@ -1,12 +1,19 @@
 
 abstract type Backend end
 
-function distributed_run(driver::Function,b::Backend,nparts::Integer)
+# Should return a DistributedData{Part}
+function Partition(b::Backend,nparts::Integer)
   @abstractmethod
 end
 
-function distributed_run(driver::Function,b::Backend,nparts::Tuple)
-  distributed_run(driver,b,prod(nparts))
+function Partition(b::Backend,nparts::Tuple)
+  Partition(b,prod(nparts))
+end
+
+# This can be overwritten to add a finally clause
+function distributed_run(driver::Function,b::Backend,nparts)
+  part = Partition(b,nparts)
+  driver(part)
 end
 
 # Data distributed in parts of type T
@@ -24,3 +31,4 @@ struct Part
 end
 
 num_parts(a::Part) = a.num_parts
+
