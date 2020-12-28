@@ -11,11 +11,16 @@ export Partition
 export SequentialBackend
 export sequential
 
+export MPIBackend
+export mpi
 
 include("Helpers.jl")
 
 include("Interfaces.jl")
 
 include("SequentialBackend.jl")
+
+import MPI
+include("MPIBackend.jl")
 
 end

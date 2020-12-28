@@ -25,6 +25,10 @@ function map_parts(task::Function,a::DistributedData...)
   @abstractmethod
 end
 
+function i_am_master(::DistributedData)
+  @abstractmethod
+end
+
 struct Part
   id::Int
   num_parts::Int

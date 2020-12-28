@@ -22,6 +22,8 @@ function map_parts(task::Function,args::SequentialDistributedData...)
   SequentialDistributedData(parts_out)
 end
 
+i_am_master(a::SequentialDistributedData) = true
+
 function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
   for part in 1:num_parts(data)
     if part != 1

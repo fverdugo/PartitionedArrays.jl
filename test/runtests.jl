@@ -1,10 +1,9 @@
 using DistributedDataDraft
 using Test
 
-include("InterfacesTests.jl")
+@testset "Interfaces" begin include("InterfacesTests.jl") end
 
-include("SequentialBackendTests.jl")
+@testset "SequentialBackend" begin include("SequentialBackendTests.jl") end
 
-@testset "DistributedDataDraft.jl" begin
-    # Write your tests here.
-end
+@testset "MPIBackend" begin include("MPIBackendTests.jl") end
+
