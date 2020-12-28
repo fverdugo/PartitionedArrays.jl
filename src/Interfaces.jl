@@ -49,17 +49,32 @@ function async_exchange!(
   data_rcv::DistributedData,
   data_snd::DistributedData,
   parts_rcv::DistributedData,
-  parts_snd::DistributedData)
+  parts_snd::DistributedData,
+  t_in::DistributedData)
 
   @abstractmethod
 end
 
-# Blocking in-place exchange
-function exchange!(args...;kwargs...)
-  t = async_exchange!(args...;kwargs...)
-  map_parts(schedule,t)
-  map_parts(wait,t)
-  first(args)
+function async_exchange!(
+  data_rcv::DistributedData,
+  data_snd::DistributedData,
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData)
+
+  t_in = map_parts(parts_rcv) do parts_rcv
+    @task nothing
+  end
+  async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
+end
+
+function async_exchange!(
+  data_rcv::DistributedData,
+  data_snd::DistributedData,
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData,
+  t_in::Nothing)
+
+  async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
 end
 
 # Non-blocking allocating exchange
@@ -67,15 +82,74 @@ end
 function async_exchange(
   data_snd::DistributedData,
   parts_rcv::DistributedData,
-  parts_snd::DistributedData)
+  parts_snd::DistributedData,
+  t_in=nothing)
 
   data_rcv = map_parts(data_snd,parts_rcv) do data_snd, parts_rcv
     similar(data_snd,eltype(data_snd),length(parts_rcv))
   end
 
-  t = async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+  t_out = async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
 
-  data_rcv, t
+  data_rcv, t_out
+end
+
+## Non-blocking in-place exchange variable length (compressed in a Table)
+#function async_exchange!(
+#  data_rcv::DistributedData{<:Table},
+#  data_snd::DistributedData{<:Table},
+#  parts_rcv::DistributedData,
+#  parts_snd::DistributedData)
+#
+#  @abstractmethod
+#end
+#
+## Non-blocking allocating exchange variable length (compressed in a Table)
+#function async_exchange(
+#  data_snd::DistributedData{<:Table},
+#  parts_rcv::DistributedData,
+#  parts_snd::DistributedData)
+#
+#  # Count how many we snd to each part
+#  n_snd = map_parts(data_snd) do data_snd
+#    n_snd = zeros(eltype(data_snd.ptrs),length(data_snd))
+#    for i in 1:length(n_snd)
+#      n_snd[i] = data_snd.ptrs[i+1] - data_snd.ptrs[i]
+#    end
+#    n_snd
+#  end
+#
+#  # Count how many we rcv from each part
+#  n_rcv, t1 = async_exchange(n_snd,parts_rcv,parts_snd)
+#
+#  # Allocate empty output
+#  data_rcv = map_parts(empty_table,data_snd)
+#
+#  t2 = map_parts(n_rcv,t1,data_rcv) do data_rcv,t1,data_rcv
+#    @task begin
+#      wait(schedule(t1))
+#      resize!(data_rcv.ptrs,length(n_rcv)+1)
+#      for i in 1:length(n_rcv)
+#        data_rcv.ptrs[i+1] = n_rcv[i]
+#      end
+#      length_to_ptrs!(data_rcv.ptrs)
+#      ndata = data_rcv.ptrs[end]-1
+#      resize!(data_rcv.data,ndata)
+#      nothing
+#    end
+#  end
+#
+#  t3 = async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+#
+#  data_rcv
+#end
+
+# Blocking in-place exchange
+function exchange!(args...;kwargs...)
+  t = async_exchange!(args...;kwargs...)
+  map_parts(schedule,t)
+  map_parts(wait,t)
+  first(args)
 end
 
 # Blocking allocating exchange

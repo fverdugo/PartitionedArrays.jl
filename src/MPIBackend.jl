@@ -1,5 +1,4 @@
 
-# Wrap mpi calls
 
 get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
@@ -57,31 +56,46 @@ function async_exchange!(
   data_rcv::MPIDistributedData,
   data_snd::MPIDistributedData,
   parts_rcv::MPIDistributedData,
-  parts_snd::MPIDistributedData)
+  parts_snd::MPIDistributedData,
+  t_in::MPIDistributedData)
 
   @check parts_rcv.comm === data_rcv.comm
   @check parts_rcv.comm === data_snd.comm
+  @check parts_rcv.comm === t_in.comm
   comm = parts_rcv.comm
-  req_all = MPI.Request[]
 
-  for (i,part_rcv) in enumerate(parts_rcv.part)
-    rank_rcv = part_rcv-1
-    buff_rcv = view(data_rcv.part,i:i)
-    tag_rcv = part_rcv
-    reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
-    push!(req_all,reqr)
+  t0 = t_in.part
+
+  t1 = @async begin
+
+    req_all = MPI.Request[]
+    wait(schedule(t0))
+
+    for (i,part_rcv) in enumerate(parts_rcv.part)
+      rank_rcv = part_rcv-1
+      buff_rcv = view(data_rcv.part,i:i)
+      tag_rcv = part_rcv
+      reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+      push!(req_all,reqr)
+    end
+
+    for (i,part_snd) in enumerate(parts_snd.part)
+      rank_snd = part_snd-1
+      buff_snd = view(data_snd.part,i:i)
+      tag_snd = get_part_id(comm)
+      reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+      push!(req_all,reqs)
+    end
+
+    return req_all
   end
 
-  for (i,part_snd) in enumerate(parts_snd.part)
-    rank_snd = part_snd-1
-    buff_snd = view(data_snd.part,i:i)
-    tag_snd = get_part_id(comm)
-    reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
-    push!(req_all,reqs)
+  t2 = @task begin
+    req_all = fetch(t1)
+    MPI.Waitall!(req_all)
   end
 
-  t = @task MPI.Waitall!(req_all)
-
-  MPIDistributedData(t,comm)
+  t_out = MPIDistributedData(t2,comm)
+  t_out
 end
 

@@ -38,10 +38,15 @@ function async_exchange!(
   data_rcv::SequentialDistributedData,
   data_snd::SequentialDistributedData,
   parts_rcv::SequentialDistributedData,
-  parts_snd::SequentialDistributedData)
+  parts_snd::SequentialDistributedData,
+  t_in::DistributedData)
 
   @check num_parts(parts_rcv) == num_parts(data_rcv)
   @check num_parts(parts_rcv) == num_parts(data_snd)
+  @check num_parts(parts_rcv) == num_parts(t_in)
+
+  map_parts(schedule,t_in)
+  map_parts(wait,t_in)
 
   @boundscheck _check_rcv_and_snd_match(parts_rcv,parts_snd)
   for part_rcv in 1:num_parts(parts_rcv)
@@ -50,9 +55,10 @@ function async_exchange!(
       data_rcv.parts[part_rcv][i] = data_snd.parts[part_snd][j]
     end
   end
-  map_parts(data_rcv) do data_rcv
+  t_out = map_parts(data_rcv) do data_rcv
     @task nothing
   end
+  t_out
 end
 
 function _check_rcv_and_snd_match(parts_rcv::SequentialDistributedData,parts_snd::SequentialDistributedData)
