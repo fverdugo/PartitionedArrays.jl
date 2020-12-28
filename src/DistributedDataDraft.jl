@@ -11,6 +11,7 @@ export async_exchange!
 export exchange!
 export exchange
 export async_exchange
+export Table
 
 export SequentialBackend
 export sequential

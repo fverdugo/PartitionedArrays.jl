@@ -55,6 +55,7 @@ function async_exchange!(
       data_rcv.parts[part_rcv][i] = data_snd.parts[part_snd][j]
     end
   end
+
   t_out = map_parts(data_rcv) do data_rcv
     @task nothing
   end
@@ -72,4 +73,39 @@ function _check_rcv_and_snd_match(parts_rcv::SequentialDistributedData,parts_snd
     end
   end
   true
+end
+
+function async_exchange!(
+  data_rcv::SequentialDistributedData{<:Table},
+  data_snd::SequentialDistributedData{<:Table},
+  parts_rcv::SequentialDistributedData,
+  parts_snd::SequentialDistributedData,
+  t_in::SequentialDistributedData)
+
+  @check num_parts(parts_rcv) == num_parts(data_rcv)
+  @check num_parts(parts_rcv) == num_parts(data_snd)
+  @check num_parts(parts_rcv) == num_parts(t_in)
+
+  map_parts(schedule,t_in)
+  map_parts(wait,t_in)
+
+  @boundscheck _check_rcv_and_snd_match(parts_rcv,parts_snd)
+  for part_rcv in 1:num_parts(parts_rcv)
+    for (i, part_snd) in enumerate(parts_rcv.parts[part_rcv])
+      j = first(findall(k->k==part_rcv,parts_snd.parts[part_snd]))
+      ptrs_rcv = data_rcv.parts[part_rcv].ptrs
+      ptrs_snd = data_snd.parts[part_snd].ptrs
+      @check ptrs_rcv[i+1]-ptrs_rcv[i] == ptrs_snd[j+1]-ptrs_snd[j]
+      for p in 1:(ptrs_rcv[i+1]-ptrs_rcv[i])
+        p_rcv = p+ptrs_rcv[i]-1
+        p_snd = p+ptrs_snd[j]-1
+        data_rcv.parts[part_rcv].data[p_rcv] = data_snd.parts[part_snd].data[p_snd]
+      end
+    end
+  end
+
+  t_out = map_parts(data_rcv) do data_rcv
+    @task nothing
+  end
+  t_out
 end

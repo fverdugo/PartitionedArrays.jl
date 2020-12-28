@@ -65,5 +65,23 @@ map_parts(parts,data_rcv) do part, data_rcv
   @test r == data_rcv
 end
 
+data_snd = map_parts(parts,parts_snd) do part, parts_snd
+  Table([ Int[i,part.id] for i in parts_snd])
+end
+
+data_rcv = exchange(data_snd,parts_rcv,parts_snd)
+
+map_parts(parts,data_rcv) do part, data_rcv
+  if part == 1
+    r = [[1,2],[1,3]]
+  elseif part == 2
+    r = [[2,4]]
+  elseif part == 3
+    r = [[3,1],[3,2]]
+  else
+    r= [[4,1],[4,3]]
+  end
+  @test Table(r) == data_rcv
+end
 
 end # module
