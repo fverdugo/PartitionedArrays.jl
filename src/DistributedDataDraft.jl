@@ -7,6 +7,10 @@ export num_parts
 export map_parts
 export Part
 export Partition
+export async_exchange!
+export exchange!
+export exchange
+export async_exchange
 
 export SequentialBackend
 export sequential

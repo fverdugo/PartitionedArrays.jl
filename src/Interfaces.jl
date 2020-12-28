@@ -35,4 +35,51 @@ struct Part
 end
 
 num_parts(a::Part) = a.num_parts
+Base.:(==)(a::Part,b::Integer) = a.id == b
+Base.:(==)(a::Integer,b::Part) = b == a
+Base.:(==)(a::Part,b::Part) = b.id == a.id
 
+# Non-blocking in-place exchange
+# In this version, sending a number per part is enough
+# We have another version below to send a vector of numbers per part (compressed in a Table)
+# Starts a non-blocking exchange. It returns a DistributedData of Julia Tasks. Calling wait on these
+# tasks will wait until the exchange is done in the corresponding part
+# (i.e., at this point it is save to read/write the buffers again).
+function async_exchange!(
+  data_rcv::DistributedData,
+  data_snd::DistributedData,
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData)
+
+  @abstractmethod
+end
+
+# Blocking in-place exchange
+function exchange!(args...;kwargs...)
+  t = async_exchange!(args...;kwargs...)
+  map_parts(wait,t)
+  first(args)
+end
+
+# Non-blocking allocating exchange
+# the returned data_rcv cannot be consumed in a part until the corresponding task in t is done.
+function async_exchange(
+  data_snd::DistributedData,
+  parts_rcv::DistributedData,
+  parts_snd::DistributedData)
+
+  data_rcv = map_parts(data_snd,parts_rcv) do data_snd, parts_rcv
+    similar(data_snd,eltype(data_snd),length(parts_rcv))
+  end
+
+  t = async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+
+  data_rcv, t
+end
+
+# Blocking allocating exchange
+function exchange(args...;kwargs...)
+  data_rcv, t = async_exchange(args...;kwargs...)
+  map_parts(wait,t)
+  data_rcv
+end
