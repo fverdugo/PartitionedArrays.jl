@@ -49,6 +49,7 @@ t = async_exchange!(
   parts_snd)
 
 map_parts(i->isa(i,Task),t)
+map_parts(schedule,t)
 map_parts(wait,t)
 
 map_parts(parts,data_rcv) do part, data_rcv

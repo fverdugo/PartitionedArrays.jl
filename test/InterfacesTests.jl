@@ -62,6 +62,7 @@ distributed_run(sequential,nparts) do parts
     parts_rcv,
     parts_snd)
 
+  map_parts(schedule,t)
   map_parts(wait,t)
 
   map_parts(parts,data_rcv) do part, data_rcv
@@ -81,8 +82,6 @@ distributed_run(sequential,nparts) do parts
     data_snd,
     parts_rcv,
     parts_snd)
-
-  map_parts(wait,t)
 
   map_parts(parts,data_rcv) do part, data_rcv
     if part == 1

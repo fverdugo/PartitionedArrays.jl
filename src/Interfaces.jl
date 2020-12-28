@@ -42,7 +42,7 @@ Base.:(==)(a::Part,b::Part) = b.id == a.id
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
-# Starts a non-blocking exchange. It returns a DistributedData of Julia Tasks. Calling wait on these
+# Starts a non-blocking exchange. It returns a DistributedData of Julia Tasks. Calling schedule and wait on these
 # tasks will wait until the exchange is done in the corresponding part
 # (i.e., at this point it is save to read/write the buffers again).
 function async_exchange!(
@@ -57,6 +57,7 @@ end
 # Blocking in-place exchange
 function exchange!(args...;kwargs...)
   t = async_exchange!(args...;kwargs...)
+  map_parts(schedule,t)
   map_parts(wait,t)
   first(args)
 end
@@ -80,6 +81,7 @@ end
 # Blocking allocating exchange
 function exchange(args...;kwargs...)
   data_rcv, t = async_exchange(args...;kwargs...)
+  map_parts(schedule,t)
   map_parts(wait,t)
   data_rcv
 end

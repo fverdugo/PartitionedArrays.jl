@@ -51,7 +51,7 @@ function async_exchange!(
     end
   end
   map_parts(data_rcv) do data_rcv
-    @async nothing
+    @task nothing
   end
 end
 
