@@ -7,7 +7,7 @@ struct MPIBackend <: Backend end
 
 const mpi = MPIBackend()
 
-function Partition(b::MPIBackend,nparts::Integer)
+function get_parts(b::MPIBackend,nparts::Integer)
   comm = MPI.COMM_WORLD
   @notimplementedif num_parts(comm) != nparts
   MPIDistributedData(get_part(comm),comm)
@@ -16,7 +16,7 @@ end
 function distributed_run(driver::Function,b::MPIBackend,nparts)
   MPI.Init()
   #try 
-    part = Partition(b,nparts)
+    part = get_parts(b,nparts)
     driver(part)
   #finally
   #  MPI.Finalize()
@@ -31,6 +31,7 @@ end
 num_parts(a::MPIDistributedData) = num_parts(a.comm)
 get_part(a::MPIDistributedData) = get_part(a.comm)
 i_am_master(a::MPIDistributedData) = get_part(a) == 1
+get_backend(a::MPIDistributedData) = mpi
 
 function map_parts(task::Function,args::MPIDistributedData...)
   @assert length(args) > 0

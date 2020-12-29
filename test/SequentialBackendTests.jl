@@ -5,7 +5,7 @@ using Test
 
 nparts = 4
 
-parts = Partition(sequential,nparts)
+parts = get_parts(sequential,nparts)
 
 values = map_parts(parts) do part
   10*part

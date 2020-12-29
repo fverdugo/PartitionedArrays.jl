@@ -6,7 +6,7 @@ using Test
 nparts = 4
 distributed_run(sequential,nparts) do parts
 
-  parts2 = Partition(sequential,nparts)
+  parts2 = get_parts(sequential,nparts)
   map_parts(parts,parts2) do part1, part2
     @test part1 == part2
   end

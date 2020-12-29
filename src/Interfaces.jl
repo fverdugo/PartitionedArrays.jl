@@ -2,17 +2,17 @@
 abstract type Backend end
 
 # Should return a DistributedData{Int}
-function Partition(b::Backend,nparts::Integer)
+function get_parts(b::Backend,nparts::Integer)
   @abstractmethod
 end
 
-function Partition(b::Backend,nparts::Tuple)
-  Partition(b,prod(nparts))
+function get_parts(b::Backend,nparts::Tuple)
+  get_parts(b,prod(nparts))
 end
 
 # This can be overwritten to add a finally clause
 function distributed_run(driver::Function,b::Backend,nparts)
-  part = Partition(b,nparts)
+  part = get_parts(b,nparts)
   driver(part)
 end
 
@@ -20,6 +20,10 @@ end
 abstract type DistributedData{T} end
 
 num_parts(a::DistributedData) = @abstractmethod
+
+get_backend(a::DistributedData) = @abstractmethod
+
+get_parts(a::DistributedData) = get_parts(get_backend(a),num_parts(a))
 
 function map_parts(task::Function,a::DistributedData...)
   @abstractmethod
@@ -178,4 +182,43 @@ function exchange(args...;kwargs...)
   map_parts(schedule,t)
   map_parts(wait,t)
   data_rcv
+end
+
+# Discover snd parts from rcv assuming that srd is a subset of neighbors
+# Assumes that neighbors is a symmetric communication graph
+function discover_parts_snd(parts_rcv::DistributedData, neighbors::DistributedData)
+  @assert num_parts(parts_rcv) == num_parts(neighbors)
+
+  # Tell the neighbors whether I want to receive data from them
+  data_snd = map_parts(neighbors,parts_rcv) do part, neighbors, parts_rcv
+    dict_snd = Dict(( n=>-1 for n in neighbors))
+    for i in parts_rcv
+      dict_snd[i] = part
+    end
+    [ dict_snd[n] for n in neighbors ]
+  end
+  data_rcv = exchange(data_snd,neighbors,neighbors)
+
+  # build parts_snd
+  parts_snd = DistributedData(data_rcv) do part, data_rcv
+    k = findall(j->j>0,data_rcv)
+    data_rcv[k]
+  end
+
+  parts_snd
+end
+
+# If neighbors not provided, all procs are considered neighbors (to be improved)
+function discover_parts_snd(parts_rcv::DistributedData)
+  comm = get_comm(parts_rcv)
+  nparts = num_parts(comm)
+  neighbors = DistributedData(parts_rcv) do part, parts_rcv
+    T = eltype(parts_rcv)
+    [T(i) for i in 1:nparts if i!=part]
+  end
+  discover_parts_snd(parts_rcv,neighbors)
+end
+
+function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
+  discover_parts_snd(parts_rcv)
 end

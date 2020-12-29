@@ -3,7 +3,7 @@ struct SequentialBackend <: Backend end
 
 const sequential = SequentialBackend()
 
-function Partition(b::SequentialBackend,nparts::Integer)
+function get_parts(b::SequentialBackend,nparts::Integer)
   parts = [ part for part in 1:nparts ]
   SequentialDistributedData(parts)
 end
@@ -13,6 +13,8 @@ struct SequentialDistributedData{T} <: DistributedData{T}
 end
 
 num_parts(a::SequentialDistributedData) = length(a.parts)
+
+get_backend(a::SequentialDistributedData) = sequential
 
 function map_parts(task::Function,args::SequentialDistributedData...)
   @assert length(args) > 0
