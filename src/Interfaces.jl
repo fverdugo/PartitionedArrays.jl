@@ -23,15 +23,21 @@ num_parts(a::DistributedData) = @abstractmethod
 
 get_backend(a::DistributedData) = @abstractmethod
 
+Base.iterate(a::DistributedData)  = @abstractmethod
+
+Base.iterate(a::DistributedData,state)  = @abstractmethod
+
 get_parts(a::DistributedData) = get_parts(get_backend(a),num_parts(a))
 
-function map_parts(task::Function,a::DistributedData...)
-  @abstractmethod
-end
+i_am_master(::DistributedData) = @abstractmethod
 
-function i_am_master(::DistributedData)
-  @abstractmethod
-end
+map_parts(task::Function,a::DistributedData...) = @abstractmethod
+
+#function map_parts(task::Function,a...)
+#  map_parts(task,map(DistributedData,a)...)
+#end
+#
+#DistributedData(a::DistributedData) = a
 
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
@@ -55,20 +61,14 @@ function async_exchange!(
   parts_rcv::DistributedData,
   parts_snd::DistributedData)
 
-  t_in = map_parts(parts_rcv) do parts_rcv
-    @task nothing
-  end
+  t_in = _empty_tasks(parts_rcv)
   async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
 end
 
-function async_exchange!(
-  data_rcv::DistributedData,
-  data_snd::DistributedData,
-  parts_rcv::DistributedData,
-  parts_snd::DistributedData,
-  t_in::Nothing)
-
-  async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd)
+function _empty_tasks(a)
+  map_parts(a) do a
+    @task nothing
+  end
 end
 
 # Non-blocking allocating exchange
@@ -77,7 +77,7 @@ function async_exchange(
   data_snd::DistributedData,
   parts_rcv::DistributedData,
   parts_snd::DistributedData,
-  t_in::DistributedData)
+  t_in::DistributedData=_empty_tasks(parts_rcv))
 
   data_rcv = map_parts(data_snd,parts_rcv) do data_snd, parts_rcv
     similar(data_snd,eltype(data_snd),length(parts_rcv))
@@ -86,26 +86,6 @@ function async_exchange(
   t_out = async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
 
   data_rcv, t_out
-end
-
-function async_exchange(
-  data_snd::DistributedData,
-  parts_rcv::DistributedData,
-  parts_snd::DistributedData)
-
-  t_in = map_parts(parts_rcv) do parts_rcv
-    @task nothing
-  end
-  async_exchange(data_snd,parts_rcv,parts_snd,t_in)
-end
-
-function async_exchange(
-  data_snd::DistributedData,
-  parts_rcv::DistributedData,
-  parts_snd::DistributedData,
-  t_in::Nothing)
-
-  async_exchange(data_rcv,data_snd,parts_rcv,parts_snd)
 end
 
 # Non-blocking in-place exchange variable length (compressed in a Table)
@@ -189,8 +169,10 @@ end
 function discover_parts_snd(parts_rcv::DistributedData, neighbors::DistributedData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
 
+  parts = get_parts(parts_rcv)
+
   # Tell the neighbors whether I want to receive data from them
-  data_snd = map_parts(neighbors,parts_rcv) do part, neighbors, parts_rcv
+  data_snd = map_parts(parts,neighbors,parts_rcv) do part, neighbors, parts_rcv
     dict_snd = Dict(( n=>-1 for n in neighbors))
     for i in parts_rcv
       dict_snd[i] = part
@@ -200,7 +182,7 @@ function discover_parts_snd(parts_rcv::DistributedData, neighbors::DistributedDa
   data_rcv = exchange(data_snd,neighbors,neighbors)
 
   # build parts_snd
-  parts_snd = DistributedData(data_rcv) do part, data_rcv
+  parts_snd = map_parts(data_rcv) do data_rcv
     k = findall(j->j>0,data_rcv)
     data_rcv[k]
   end
@@ -210,9 +192,9 @@ end
 
 # If neighbors not provided, all procs are considered neighbors (to be improved)
 function discover_parts_snd(parts_rcv::DistributedData)
-  comm = get_comm(parts_rcv)
-  nparts = num_parts(comm)
-  neighbors = DistributedData(parts_rcv) do part, parts_rcv
+  parts = get_parts(parts_rcv)
+  nparts = num_parts(parts)
+  neighbors = map_parts(parts,parts_rcv) do part, parts_rcv
     T = eltype(parts_rcv)
     [T(i) for i in 1:nparts if i!=part]
   end
@@ -222,3 +204,356 @@ end
 function discover_parts_snd(parts_rcv::DistributedData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
+
+# Arbitrary set of global indices stored in a part
+# gid_to_part can be omitted with nothing since only for some particular parallel
+# data layouts (e.g. uniform partitions) it is efficient to recover this information. 
+# oid: owned id
+# hig: ghost (aka halo) id
+# gid: global id
+# lid: local id (ie union of owned + ghost)
+struct IndexSet{A,B,C,D,E,F,G}
+  part::Int
+  ngids::Int
+  lid_to_gid::A
+  lid_to_part::B
+  gid_to_part::C
+  oid_to_lid::D
+  hid_to_lid::E
+  lid_to_ohid::F
+  gid_to_lid::G
+  function IndexSet(
+    part::Integer,
+    ngids::Integer,
+    lid_to_gid::AbstractVector,
+    lid_to_part::AbstractVector,
+    gid_to_part::Union{AbstractVector,Nothing},
+    oid_to_lid::Union{AbstractVector,AbstractRange},
+    hid_to_lid::Union{AbstractVector,AbstractRange},
+    lid_to_ohid::AbstractVector,
+    gid_to_lid::AbstractDict)
+    A = typeof(lid_to_gid)
+    B = typeof(lid_to_part)
+    C = typeof(gid_to_part)
+    D = typeof(oid_to_lid)
+    E = typeof(hid_to_lid)
+    F = typeof(lid_to_ohid)
+    G = typeof(gid_to_lid)
+    new{A,B,C,D,E,F,G}(
+      part,
+      ngids,
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid,
+      lid_to_ohid,
+      gid_to_lid)
+  end
+end
+
+num_gids(a::IndexSet) = a.ngids
+num_lids(a::IndexSet) = length(a.lid_to_part)
+num_oids(a::IndexSet) = length(a.oid_to_lid)
+num_hids(a::IndexSet) = length(a.hid_to_lid)
+
+function IndexSet(
+  part::Integer,
+  ngids::Integer,
+  lid_to_gid::AbstractVector,
+  lid_to_part::AbstractVector,
+  gid_to_part::Union{AbstractVector,Nothing},
+  oid_to_lid::Union{AbstractVector,AbstractRange},
+  hid_to_lid::Union{AbstractVector,AbstractRange},
+  lid_to_ohid::AbstractVector)
+
+  gid_to_lid = Dict{Int,Int32}()
+  for (lid,gid) in enumerate(lid_to_gid)
+    gid_to_lid[gid] = lid
+  end
+  IndexSet(
+    part,
+    ngids,
+    lid_to_gid,
+    lid_to_part,
+    gid_to_part,
+    oid_to_lid,
+    hid_to_lid,
+    lid_to_ohid,
+    gid_to_lid)
+end
+
+function IndexSet(
+  part::Integer,
+  ngids::Integer,
+  lid_to_gid::AbstractVector,
+  lid_to_part::AbstractVector,
+  gid_to_part::Union{AbstractVector,Nothing},
+  oid_to_lid::Union{AbstractVector,AbstractRange},
+  hid_to_lid::Union{AbstractVector,AbstractRange})
+
+  lid_to_ohid = zeros(Int32,length(lid_to_gid))
+  lid_to_ohid[oid_to_lid] = 1:length(oid_to_lid)
+  lid_to_ohid[hid_to_lid] = -(1:length(hid_to_lid))
+
+  IndexSet(
+    part,
+    ngids,
+    lid_to_gid,
+    lid_to_part,
+    gid_to_part,
+    oid_to_lid,
+    hid_to_lid,
+    lid_to_ohid)
+end
+
+function IndexSet(
+  part::Integer,
+  ngids::Integer,
+  lid_to_gid::AbstractVector,
+  lid_to_part::AbstractVector,
+  gid_to_part::Union{AbstractVector,Nothing}=nothing)
+
+  oid_to_lid = findall(owner->owner==part,lid_to_part)
+  hid_to_lid = findall(owner->owner!=part,lid_to_part)
+  IndexSet(
+    part,
+    ngids,
+    lid_to_gid,
+    lid_to_part,
+    gid_to_part,
+    oid_to_lid,
+    hid_to_lid)
+end
+
+function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
+  xid_to_gid = a.lid_to_gid[xid_to_lid]
+  xid_to_part = a.lid_to_part[xid_to_lid]
+  IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
+end
+
+struct Exchanger{B,C}
+  parts_rcv::B
+  parts_snd::B
+  lids_rcv::C
+  lids_snd::C
+  function Exchanger(
+    parts_rcv::DistributedData{<:AbstractVector{<:Integer}},
+    parts_snd::DistributedData{<:AbstractVector{<:Integer}},
+    lids_rcv::DistributedData{<:Table{<:Integer}},
+    lids_snd::DistributedData{<:Table{<:Integer}})
+
+    B = typeof(parts_rcv)
+    C = typeof(lids_rcv)
+    new{B,C}(parts_rcv,parts_snd,lids_rcv,lids_snd)
+  end
+end
+
+function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
+
+  parts = get_parts(ids)
+
+  parts_rcv = map_parts(parts,ids) do part, ids
+    parts_rcv = Dict((owner=>true for owner in ids.lid_to_part if owner!=part))
+    sort(collect(keys(parts_rcv)))
+  end
+
+  lids_rcv, gids_rcv = map_parts(parts,ids,parts_rcv) do part,ids,parts_rcv
+
+    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
+
+    ptrs = zeros(Int32,length(parts_rcv)+1)
+    for owner in ids.lid_to_part
+      if owner != part
+        ptrs[owner_to_i[owner]+1] +=1
+      end
+    end
+    length_to_ptrs!(ptrs)
+
+    data_lids = zeros(Int32,ptrs[end]-1)
+    data_gids = zeros(Int,ptrs[end]-1)
+
+    for (lid,owner) in enumerate(ids.lid_to_part)
+      if owner != part
+        p = ptrs[owner_to_i[owner]]
+        data_lids[p]=lid
+        data_gids[p]=ids.lid_to_gid[lid]
+        ptrs[owner_to_i[owner]] += 1
+      end
+    end
+    rewind_ptrs!(ptrs)
+
+    lids_rcv = Table(data_lids,ptrs)
+    gids_rcv = Table(data_gids,ptrs)
+
+    lids_rcv, gids_rcv
+  end
+
+  parts_snd = discover_parts_snd(parts_rcv,neighbors)
+
+  gids_snd = exchange(gids_rcv,parts_snd,parts_rcv)
+
+  lids_snd = map_parts(ids,gids_snd) do ids,gids_snd
+    ptrs = gids_snd.ptrs
+    data_lids = zeros(Int32,ptrs[end]-1)
+    for (k,gid) in enumerate(gids_snd.data)
+      data_lids[k] = ids.gid_to_lid[gid]
+    end
+    lids_snd = Table(data_lids,ptrs)
+    lids_snd
+  end
+
+  Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
+end
+
+function Base.reverse(a::Exchanger)
+  Exchanger(a.parts_snd,a.parts_rcv,a.lids_snd,a.lids_rcv)
+end
+
+function allocate_rcv_buffer(::Type{T},a::Exchanger) where T
+  data_rcv = map_parts(a.lids_rcv) do lids_rcv
+    ptrs = lids_rcv.ptrs
+    data = zeros(T,ptrs[end]-1)
+    Table(data,ptrs)
+  end
+  data_rcv
+end
+
+function allocate_snd_buffer(::Type{T},a::Exchanger) where T
+  data_snd = map_parts(a.lids_snd) do lids_snd
+    ptrs = lids_snd.ptrs
+    data = zeros(T,ptrs[end]-1)
+    Table(data,ptrs)
+  end
+  data_snd
+end
+
+function async_exchange!(
+  values::DistributedData{<:AbstractVector{T}},
+  exchanger::Exchanger,
+  t0::DistributedData=_empty_tasks(exchanger.parts_rcv);
+  reduce_op=_replace) where T
+
+  # Allocate buffers
+  data_rcv = allocate_rcv_buffer(T,exchanger)
+  data_snd = allocate_snd_buffer(T,exchanger)
+
+  # Fill snd buffer
+  t1 = map_parts(t0,values,data_snd,exchanger.lids_snd) do t0,values,data_snd,lids_snd 
+    @task begin
+      wait(schedule(t0))
+      for p in 1:length(lids_snd.data)
+        lid = lids_snd.data[p]
+        data_snd.data[p] = values[lid]
+      end
+    end
+  end
+
+  # communicate
+  t2 = async_exchange!(
+    data_rcv,
+    data_snd,
+    exchanger.parts_rcv,
+    exchanger.parts_snd,
+    t1)
+
+  # Fill values from rcv buffer
+  # asynchronously
+  t3 = map_parts(t2,values,data_rcv,exchanger.lids_rcv) do t2,values,data_rcv,lids_rcv 
+    @task begin
+      wait(schedule(t2))
+      for p in 1:length(lids_rcv.data)
+        lid = lids_rcv.data[p]
+        values[lid] = reduce_op(values[lid],data_rcv.data[p])
+      end
+    end
+  end
+
+  t3
+end
+
+_replace(x,y) = y
+
+struct DistributedRange{A,B} <: AbstractUnitRange{Int}
+  ngids::Int
+  lids::A
+  exchanger::B
+  function DistributedRange(
+    ngids::Integer,
+    lids::DistributedData{<:IndexSet},
+    exchanger::Exchanger=Exchanger(lids))
+  
+    A = typeof(lids)
+    B = typeof(exchanger)
+    new{A,B}(
+      ngids,
+      lids,
+      exchanger)
+  end
+end
+
+Base.first(a::DistributedRange) = 1
+Base.last(a::DistributedRange) = a.ngids
+
+num_gids(a::DistributedRange) = a.ngids
+num_parts(a::DistributedRange) = num_parts(a.lids)
+
+struct DistributedVector{T,A,B} <: AbstractVector{T}
+  values::A
+  ids::B
+  function DistributedVector(
+    values::DistributedData{<:AbstractVector{T}},
+    ids::DistributedRange) where T
+
+    A = typeof(values)
+    B = typeof(ids)
+    new{T,A,B}(values,ids)
+  end
+end
+
+function DistributedVector{T}(
+  ::UndefInitializer,
+  ids::DistributedRange) where T
+
+  values = map_parts(ids.lids) do lids
+    nlids = num_lids(lids)
+    Vector{T}(undef,nlids)
+  end
+  DistributedVector(values,ids)
+end
+
+function Base.fill!(a::DistributedVector,v)
+  map_parts(a.values) do lid_to_value
+    fill!(lid_to_value,v)
+  end
+  a
+end
+
+Base.length(a::DistributedVector) = length(a.ids)
+
+function async_exchange!(
+  a::DistributedVector,
+  t0::DistributedData=_empty_tasks(a.ids.exchanger.parts_rcv))
+  async_exchange!(a.values,a.ids.exchanger,t0)
+end
+
+# Non-blocking assembly
+function async_assemble!(
+  a::DistributedVector,
+  t0::DistributedData=_empty_tasks(a.ids.exchanger.parts_rcv);
+  reduce_op=+)
+
+  exchanger_rcv = a.ids.exchanger # receives data at ghost ids from remote parts
+  exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
+  t1 = async_exchange!(a.values,exchanger_snd,t0;reduce_op=reduce_op)
+  async_exchange!(a.values,exchanger_rcv,t1)
+end
+
+# Blocking assembly
+function assemble!(args...;kwargs...)
+  t = async_assemble!(args...;kwargs...)
+  map_parts(schedule,t)
+  map_parts(wait,t)
+  first(args)
+end
+

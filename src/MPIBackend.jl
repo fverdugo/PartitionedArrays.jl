@@ -33,6 +33,24 @@ get_part(a::MPIDistributedData) = get_part(a.comm)
 i_am_master(a::MPIDistributedData) = get_part(a) == 1
 get_backend(a::MPIDistributedData) = mpi
 
+function Base.iterate(a::MPIDistributedData)
+  next = iterate(a.part)
+  if next == nothing
+    return next
+  end
+  item, state = next
+  MPIDistributedData(item,a.comm), state
+end
+
+function Base.iterate(a::MPIDistributedData,state)
+  next = iterate(a.part,state)
+  if next == nothing
+    return next
+  end
+  item, state = next
+  MPIDistributedData(item,a.comm), state
+end
+
 function map_parts(task::Function,args::MPIDistributedData...)
   @assert length(args) > 0
   @assert all(a->a.comm===first(args).comm,args)

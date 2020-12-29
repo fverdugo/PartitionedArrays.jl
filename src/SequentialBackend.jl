@@ -16,6 +16,28 @@ num_parts(a::SequentialDistributedData) = length(a.parts)
 
 get_backend(a::SequentialDistributedData) = sequential
 
+function Base.iterate(a::SequentialDistributedData)
+  next = map_parts(iterate,a)
+  if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
+    return nothing
+  end
+  item = map_parts(first,next)
+  state = map_parts(_second,next)
+  item, state
+end
+
+_second(a) = a[2]
+
+function Base.iterate(a::SequentialDistributedData,state)
+  next = map_parts(iterate,a,state)
+  if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
+    return nothing
+  end
+  item = map_parts(first,next)
+  state = map_parts(_second,next)
+  item, state
+end
+
 function map_parts(task::Function,args::SequentialDistributedData...)
   @assert length(args) > 0
   @assert all(a->length(a.parts)==length(first(args).parts),args)

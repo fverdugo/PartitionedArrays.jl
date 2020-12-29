@@ -84,4 +84,15 @@ map_parts(parts,data_rcv) do part, data_rcv
   @test Table(r) == data_rcv
 end
 
+a_and_b = map_parts(parts) do part
+  10*part, part+10
+end
+
+a,b = a_and_b
+map_parts(a_and_b,a,b) do a_and_b, a, b
+  a1,b1 = a_and_b
+  @test a == a1
+  @test b == b1
+end
+
 end # module

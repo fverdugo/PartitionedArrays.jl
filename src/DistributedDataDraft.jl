@@ -11,6 +11,19 @@ export exchange!
 export exchange
 export async_exchange
 export Table
+export discover_parts_snd
+export IndexSet
+export num_gids
+export num_lids
+export num_oids
+export num_hids
+export Exchanger
+export allocate_rcv_buffer
+export allocate_snd_buffer
+export DistributedRange
+export DistributedVector
+export async_assemble!
+export assemble!
 
 export SequentialBackend
 export sequential
