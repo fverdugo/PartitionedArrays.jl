@@ -5,7 +5,6 @@ export distributed_run
 export DistributedData
 export num_parts
 export map_parts
-export Part
 export Partition
 export async_exchange!
 export exchange!

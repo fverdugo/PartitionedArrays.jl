@@ -4,7 +4,7 @@ struct SequentialBackend <: Backend end
 const sequential = SequentialBackend()
 
 function Partition(b::SequentialBackend,nparts::Integer)
-  parts = [ Part(part,nparts) for part in 1:nparts ]
+  parts = [ part for part in 1:nparts ]
   SequentialDistributedData(parts)
 end
 

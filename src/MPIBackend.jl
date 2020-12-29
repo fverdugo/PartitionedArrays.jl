@@ -1,8 +1,7 @@
 
 
-get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
+get_part(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
-get_part(comm::MPI.Comm) = Part(get_part_id(comm),num_parts(comm))
 
 struct MPIBackend <: Backend end
 
@@ -30,9 +29,8 @@ struct MPIDistributedData{T} <: DistributedData{T}
 end
 
 num_parts(a::MPIDistributedData) = num_parts(a.comm)
-get_part_id(a::MPIDistributedData) = get_part_id(a.comm)
 get_part(a::MPIDistributedData) = get_part(a.comm)
-i_am_master(a::MPIDistributedData) = get_part_id(a) == 1
+i_am_master(a::MPIDistributedData) = get_part(a) == 1
 
 function map_parts(task::Function,args::MPIDistributedData...)
   @assert length(args) > 0
@@ -45,7 +43,7 @@ end
 function Base.show(io::IO,k::MIME"text/plain",data::MPIDistributedData)
   MPI.Barrier(data.comm)
   str = """
-  On part $(get_part_id(data)) of $(num_parts(data)):
+  On part $(get_part(data)) of $(num_parts(data)):
   $(data.part)
   """
   print(io,str)
@@ -82,7 +80,7 @@ function async_exchange!(
     for (i,part_snd) in enumerate(parts_snd.part)
       rank_snd = part_snd-1
       buff_snd = view(data_snd.part,i:i)
-      tag_snd = get_part_id(comm)
+      tag_snd = get_part(comm)
       reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
       push!(req_all,reqs)
     end
@@ -131,7 +129,7 @@ function async_exchange!(
       rank_snd = part_snd-1
       ptrs_snd = data_snd.part.ptrs
       buff_snd = view(data_snd.part.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))
-      tag_snd = get_part_id(comm)
+      tag_snd = get_part(comm)
       reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
       push!(req_all,reqs)
     end

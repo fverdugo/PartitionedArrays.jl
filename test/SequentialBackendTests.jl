@@ -8,11 +8,11 @@ nparts = 4
 parts = Partition(sequential,nparts)
 
 values = map_parts(parts) do part
-  10*part.id
+  10*part
 end
 
 map_parts(parts,values) do part, value
-  @test 10*part.id == value
+  @test 10*part == value
 end
 
 parts_rcv = map_parts(parts) do part
@@ -66,7 +66,7 @@ map_parts(parts,data_rcv) do part, data_rcv
 end
 
 data_snd = map_parts(parts,parts_snd) do part, parts_snd
-  Table([ Int[i,part.id] for i in parts_snd])
+  Table([ Int[i,part] for i in parts_snd])
 end
 
 data_rcv = exchange(data_snd,parts_rcv,parts_snd)

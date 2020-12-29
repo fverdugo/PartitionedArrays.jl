@@ -1,7 +1,7 @@
 
 abstract type Backend end
 
-# Should return a DistributedData{Part}
+# Should return a DistributedData{Int}
 function Partition(b::Backend,nparts::Integer)
   @abstractmethod
 end
@@ -28,16 +28,6 @@ end
 function i_am_master(::DistributedData)
   @abstractmethod
 end
-
-struct Part
-  id::Int
-  num_parts::Int
-end
-
-num_parts(a::Part) = a.num_parts
-Base.:(==)(a::Part,b::Integer) = a.id == b
-Base.:(==)(a::Integer,b::Part) = b == a
-Base.:(==)(a::Part,b::Part) = b.id == a.id
 
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
