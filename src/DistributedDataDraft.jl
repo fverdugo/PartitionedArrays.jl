@@ -1,5 +1,9 @@
 module DistributedDataDraft
 
+using SparseArrays
+using LinearAlgebra
+import MPI
+
 export Backend
 export distributed_run
 export DistributedData
@@ -25,6 +29,7 @@ export DistributedRange
 export DistributedVector
 export async_assemble!
 export assemble!
+export DistributedSparseMatrix
 
 export SequentialBackend
 export sequential
@@ -38,7 +43,6 @@ include("Interfaces.jl")
 
 include("SequentialBackend.jl")
 
-import MPI
 include("MPIBackend.jl")
 
 end

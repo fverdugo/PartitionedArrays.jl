@@ -557,3 +557,47 @@ function assemble!(args...;kwargs...)
   first(args)
 end
 
+struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
+  values::A
+  row_ids::B
+  col_ids::C
+  function DistributedSparseMatrix(
+    values::DistributedData{<:AbstractSparseMatrix{T}},
+    row_ids::DistributedRange,
+    col_ids::DistributedRange) where T
+
+    A = typeof(values)
+    B = typeof(row_ids)
+    C = typeof(col_ids)
+    new{T,A,B,C}(values,row_ids,col_ids)
+  end
+end
+
+Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
+
+function LinearAlgebra.mul!(
+  c::DistributedVector,
+  a::DistributedSparseMatrix,
+  b::DistributedVector,
+  α::Number,
+  β::Number)
+
+  @assert c.ids === a.row_ids
+  @assert b.ids === a.col_ids
+  t = async_exchange!(b)
+  map_parts(t,c.values,a.values,b.values) do t,c,a,b
+    # TODO start multiplying the diagonal block
+    # before waiting for the ghost values of b
+    wait(schedule(t))
+    # If a is in an assembled state the c ghost values of c will be correct
+    # otherwise one would need to call exchange!(c)
+    # Note that it is cheaper to call exchange!(c) than assemble!(a)
+    mul!(c,a,b,α,β)
+  end
+  c
+end
+
+
+
+
+

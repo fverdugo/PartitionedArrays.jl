@@ -1,4 +1,9 @@
 
+using LinearAlgebra
+using SparseArrays
+using DistributedDataDraft
+using Test
+
 function test_interfaces(parts)
 
   nparts = num_parts(parts)
@@ -196,6 +201,27 @@ function test_interfaces(parts)
   end
 
   assemble!(v)
+
+  col_ids = ids
+  row_ids = col_ids
+
+  values = map_parts(row_ids.lids,col_ids.lids) do row_ids, col_ids
+    i = collect(1:num_lids(row_ids))
+    j = i
+    v = fill(2.0,length(i))
+    sparse(i,j,v,num_lids(row_ids),num_lids(col_ids))
+  end
+
+  x = DistributedVector{Float64}(undef,col_ids)
+  fill!(x,3)
+  b = DistributedVector{Float64}(undef,row_ids)
+
+  A = DistributedSparseMatrix(values,row_ids,col_ids)
+  mul!(b,A,x)
+
+  map_parts(b.values) do values
+    @test all( values .== 6 )
+  end
 
 end
 
