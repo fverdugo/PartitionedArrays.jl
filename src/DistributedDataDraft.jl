@@ -6,6 +6,7 @@ export DistributedData
 export num_parts
 export map_parts
 export get_parts
+export get_backend
 export async_exchange!
 export exchange!
 export exchange

@@ -1,3 +1,5 @@
+module RunTests
+
 using DistributedDataDraft
 using Test
 
@@ -6,4 +8,6 @@ using Test
 @testset "SequentialBackend" begin include("SequentialBackendTests.jl") end
 
 @testset "MPIBackend" begin include("MPIBackendTests.jl") end
+
+end # module
 

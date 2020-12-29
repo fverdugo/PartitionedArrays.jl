@@ -8,7 +8,8 @@ repodir = joinpath(testdir,"..")
 
 files_and_procs = [
   "test_mpi_hello.jl"=>3,
-  "test_mpi.jl"=>4]
+  "test_mpi.jl"=>4,
+  "test_interfaces_mpi.jl"=>4]
 
 for (file,procs) in files_and_procs
   mpiexec() do cmd
