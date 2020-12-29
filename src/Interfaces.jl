@@ -557,19 +557,22 @@ function assemble!(args...;kwargs...)
   first(args)
 end
 
-struct DistributedSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
+struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   values::A
   row_ids::B
   col_ids::C
+  exchanger::D
   function DistributedSparseMatrix(
     values::DistributedData{<:AbstractSparseMatrix{T}},
     row_ids::DistributedRange,
-    col_ids::DistributedRange) where T
+    col_ids::DistributedRange,
+    exchanger=_matrix_exchanger(values,row_ids.exchanger,row_ids.lids,col_ids.lids)) where T
 
     A = typeof(values)
     B = typeof(row_ids)
     C = typeof(col_ids)
-    new{T,A,B,C}(values,row_ids,col_ids)
+    D = typeof(exchanger)
+    new{T,A,B,C,D}(values,row_ids,col_ids,exchanger)
   end
 end
 
@@ -597,7 +600,95 @@ function LinearAlgebra.mul!(
   c
 end
 
+function _matrix_exchanger(values,row_exchanger,row_lids,col_lids)
 
+  part = get_parts(row_lids)
+  parts_rcv = row_exchanger.parts_rcv
+  parts_snd = row_exchanger.parts_snd
+  findnz_values = map_parts(findnz,values)
 
+  function setup_rcv(part,parts_rcv,row_lids,col_lids,findnz_values)
+    k_li, k_lj, = findnz_values
+    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
+    ptrs = zeros(Int32,length(parts_rcv)+1)
+    for k in 1:length(k_li)
+      li = k_li[k]
+      owner = row_lids.lid_to_part[li]
+      if owner != part
+        ptrs[owner_to_i[owner]+1] +=1
+      end
+    end
+    length_to_ptrs!(ptrs)
+    k_rcv_data = zeros(Int,ptrs[end]-1)
+    gi_rcv_data = zeros(Int,ptrs[end]-1)
+    gj_rcv_data = zeros(Int,ptrs[end]-1)
+    for k in 1:length(k_li)
+      li = k_li[k]
+      lj = k_lj[k]
+      owner = row_lids.lid_to_part[li]
+      if owner != part
+        p = ptrs[owner_to_i[owner]]
+        k_rcv_data[p] = k
+        gi_rcv_data[p] = row_lids.lid_to_gid[li]
+        gj_rcv_data[p] = col_lids.lid_to_gid[lj]
+        ptrs[owner_to_i[owner]] += 1
+      end
+    end
+    rewind_ptrs!(ptrs)
+    k_rcv = Table(k_rcv_data,ptrs)
+    gi_rcv = Table(gi_rcv_data,ptrs)
+    gj_rcv = Table(gj_rcv_data,ptrs)
+    k_rcv, gi_rcv, gj_rcv
+  end
+  
+  k_rcv, gi_rcv, gj_rcv = map_parts(setup_rcv,part,parts_rcv,row_lids,col_lids,findnz_values)
+
+  gi_snd = exchange(gi_rcv,parts_snd,parts_rcv)
+  gj_snd = exchange(gj_rcv,parts_snd,parts_rcv)
+
+  function setup_snd(part,row_lids,col_lids,gi_snd,gj_snd,findnz_values)
+    ptrs = gi_snd.ptrs
+    k_snd_data = zeros(Int,ptrs[end]-1)
+    k_li, k_lj, = findnz_values
+    k_v = collect(1:length(k_li))
+    # TODO this can be optimized:
+    li_lj_to_k = sparse(k_li,k_lj,k_v,num_lids(row_lids),num_lids(col_lids))
+    for p in 1:length(gi_snd.data)
+      gi = gi_snd.data[p]
+      gj = gj_snd.data[p]
+      li = row_lids.gid_to_lid[gi]
+      lj = col_lids.gid_to_lid[gj]
+      k = li_lj_to_k[li,lj]
+      @assert k > 0 "The sparsity patern of the ghost layer is inconsistent"
+      k_snd_data[p] = k
+    end
+    k_snd = Table(k_snd_data,ptrs)
+    k_snd
+  end
+
+  k_snd = map_parts(setup_snd,part,row_lids,col_lids,gi_snd,gj_snd,findnz_values)
+
+  Exchanger(parts_rcv,parts_snd,k_rcv,k_snd)
+end
+
+function async_exchange!(
+  a::DistributedSparseMatrix,
+  t0::DistributedData=_empty_tasks(a.exchanger.parts_rcv))
+  nzval = map_parts(nonzeros,a.values)
+  async_exchange!(nzval,a.exchanger,t0)
+end
+
+# Non-blocking assembly
+function async_assemble!(
+  a::DistributedSparseMatrix,
+  t0::DistributedData=_empty_tasks(a.exchanger.parts_rcv);
+  reduce_op=+)
+
+  exchanger_rcv = a.exchanger # receives data at ghost ids from remote parts
+  exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
+  nzval = map_parts(nonzeros,a.values)
+  t1 = async_exchange!(nzval,exchanger_snd,t0;reduce_op=reduce_op)
+  async_exchange!(nzval,exchanger_rcv,t1)
+end
 
 

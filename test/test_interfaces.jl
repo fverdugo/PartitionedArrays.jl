@@ -223,5 +223,8 @@ function test_interfaces(parts)
     @test all( values .== 6 )
   end
 
+  exchange!(A)
+  assemble!(A)
+
 end
 
