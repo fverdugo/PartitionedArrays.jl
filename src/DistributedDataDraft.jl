@@ -9,7 +9,7 @@ export distributed_run
 export DistributedData
 export num_parts
 export map_parts
-export get_parts
+export get_part_ids
 export get_backend
 export async_exchange!
 export exchange!

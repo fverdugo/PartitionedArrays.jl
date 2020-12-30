@@ -3,7 +3,7 @@ struct SequentialBackend <: Backend end
 
 const sequential = SequentialBackend()
 
-function get_parts(b::SequentialBackend,nparts::Integer)
+function get_part_ids(b::SequentialBackend,nparts::Integer)
   parts = [ part for part in 1:nparts ]
   SequentialDistributedData(parts)
 end
@@ -45,8 +45,6 @@ function map_parts(task::Function,args::SequentialDistributedData...)
   parts_out = map(task,parts_in...)
   SequentialDistributedData(parts_out)
 end
-
-i_am_master(a::SequentialDistributedData) = true
 
 function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
   for part in 1:num_parts(data)

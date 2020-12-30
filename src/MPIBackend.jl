@@ -1,22 +1,22 @@
 
 
-get_part(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
+get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
 
 struct MPIBackend <: Backend end
 
 const mpi = MPIBackend()
 
-function get_parts(b::MPIBackend,nparts::Integer)
+function get_part_ids(b::MPIBackend,nparts::Integer)
   comm = MPI.COMM_WORLD
   @notimplementedif num_parts(comm) != nparts
-  MPIDistributedData(get_part(comm),comm)
+  MPIDistributedData(get_part_id(comm),comm)
 end
 
 function distributed_run(driver::Function,b::MPIBackend,nparts)
   MPI.Init()
   #try 
-    part = get_parts(b,nparts)
+    part = get_part_ids(b,nparts)
     driver(part)
   #finally
   #  MPI.Finalize()
@@ -29,8 +29,7 @@ struct MPIDistributedData{T} <: DistributedData{T}
 end
 
 num_parts(a::MPIDistributedData) = num_parts(a.comm)
-get_part(a::MPIDistributedData) = get_part(a.comm)
-i_am_master(a::MPIDistributedData) = get_part(a) == 1
+get_part_id(a::MPIDistributedData) = get_part_id(a.comm)
 get_backend(a::MPIDistributedData) = mpi
 
 function Base.iterate(a::MPIDistributedData)
@@ -62,7 +61,7 @@ end
 function Base.show(io::IO,k::MIME"text/plain",data::MPIDistributedData)
   MPI.Barrier(data.comm)
   str = """
-  On part $(get_part(data)) of $(num_parts(data)):
+  On part $(get_part_id(data)) of $(num_parts(data)):
   $(data.part)
   """
   print(io,str)
@@ -99,7 +98,7 @@ function async_exchange!(
     for (i,part_snd) in enumerate(parts_snd.part)
       rank_snd = part_snd-1
       buff_snd = view(data_snd.part,i:i)
-      tag_snd = get_part(comm)
+      tag_snd = get_part_id(comm)
       reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
       push!(req_all,reqs)
     end
@@ -148,7 +147,7 @@ function async_exchange!(
       rank_snd = part_snd-1
       ptrs_snd = data_snd.part.ptrs
       buff_snd = view(data_snd.part.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))
-      tag_snd = get_part(comm)
+      tag_snd = get_part_id(comm)
       reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
       push!(req_all,reqs)
     end

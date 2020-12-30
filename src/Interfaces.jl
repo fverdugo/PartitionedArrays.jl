@@ -2,17 +2,17 @@
 abstract type Backend end
 
 # Should return a DistributedData{Int}
-function get_parts(b::Backend,nparts::Integer)
+function get_part_ids(b::Backend,nparts::Integer)
   @abstractmethod
 end
 
-function get_parts(b::Backend,nparts::Tuple)
-  get_parts(b,prod(nparts))
+function get_part_ids(b::Backend,nparts::Tuple)
+  get_part_ids(b,prod(nparts))
 end
 
 # This can be overwritten to add a finally clause
 function distributed_run(driver::Function,b::Backend,nparts)
-  part = get_parts(b,nparts)
+  part = get_part_ids(b,nparts)
   driver(part)
 end
 
@@ -27,9 +27,7 @@ Base.iterate(a::DistributedData)  = @abstractmethod
 
 Base.iterate(a::DistributedData,state)  = @abstractmethod
 
-get_parts(a::DistributedData) = get_parts(get_backend(a),num_parts(a))
-
-i_am_master(::DistributedData) = @abstractmethod
+get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),num_parts(a))
 
 map_parts(task::Function,a::DistributedData...) = @abstractmethod
 
@@ -169,7 +167,7 @@ end
 function discover_parts_snd(parts_rcv::DistributedData, neighbors::DistributedData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
 
-  parts = get_parts(parts_rcv)
+  parts = get_part_ids(parts_rcv)
 
   # Tell the neighbors whether I want to receive data from them
   data_snd = map_parts(parts,neighbors,parts_rcv) do part, neighbors, parts_rcv
@@ -192,7 +190,7 @@ end
 
 # If neighbors not provided, all procs are considered neighbors (to be improved)
 function discover_parts_snd(parts_rcv::DistributedData)
-  parts = get_parts(parts_rcv)
+  parts = get_part_ids(parts_rcv)
   nparts = num_parts(parts)
   neighbors = map_parts(parts,parts_rcv) do part, parts_rcv
     T = eltype(parts_rcv)
@@ -351,7 +349,7 @@ end
 
 function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
 
-  parts = get_parts(ids)
+  parts = get_part_ids(ids)
 
   parts_rcv = map_parts(parts,ids) do part, ids
     parts_rcv = Dict((owner=>true for owner in ids.lid_to_part if owner!=part))
@@ -602,7 +600,7 @@ end
 
 function _matrix_exchanger(values,row_exchanger,row_lids,col_lids)
 
-  part = get_parts(row_lids)
+  part = get_part_ids(row_lids)
   parts_rcv = row_exchanger.parts_rcv
   parts_snd = row_exchanger.parts_snd
   findnz_values = map_parts(findnz,values)
