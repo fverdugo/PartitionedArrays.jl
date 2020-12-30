@@ -56,6 +56,35 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
   end
 end
 
+get_part(a::SequentialDistributedData) = get_master_part(a)
+
+get_master_part(a::SequentialDistributedData) = a.parts[MASTER]
+
+function gather!(rcv::SequentialDistributedData,snd::SequentialDistributedData)
+  @assert num_parts(rcv) == num_parts(snd)
+  @assert length(rcv.parts[MASTER]) == num_parts(snd)
+  for part in 1:num_parts(snd)
+    rcv.parts[MASTER][part] = snd.parts[part]
+  end
+  rcv
+end
+
+function gather_all!(rcv::SequentialDistributedData,snd::SequentialDistributedData)
+  @assert num_parts(rcv) == num_parts(snd)
+  for part_rcv in 1:num_parts(rcv)
+    @assert length(rcv.parts[part_rcv]) == num_parts(snd)
+    for part_snd in 1:num_parts(snd)
+      rcv.parts[part_rcv][part_snd] = snd.parts[part_snd]
+    end
+  end
+  rcv
+end
+
+function scatter(snd::SequentialDistributedData)
+  @assert length(snd.parts[MASTER]) == num_parts(snd)
+  SequentialDistributedData(snd.parts[MASTER])
+end
+
 function async_exchange!(
   data_rcv::SequentialDistributedData,
   data_snd::SequentialDistributedData,

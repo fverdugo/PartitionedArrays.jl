@@ -11,6 +11,15 @@ export num_parts
 export map_parts
 export get_part_ids
 export get_backend
+export MASTER
+export get_part
+export get_master_part
+export gather!
+export gather_all!
+export gather
+export gather_all
+export scatter
+export bcast
 export async_exchange!
 export exchange!
 export exchange

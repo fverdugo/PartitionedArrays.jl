@@ -95,4 +95,35 @@ map_parts(a_and_b,a,b) do a_and_b, a, b
   @test b == b1
 end
 
+rcv = gather(parts) 
+
+map_parts(parts,rcv) do part, rcv
+  if part == MASTER
+    @test rcv == collect(1:nparts)
+  else
+    @test length(rcv) == 0
+  end
+end
+
+@test get_master_part(rcv) == collect(1:nparts)
+
+rcv = scatter(rcv)
+map_parts(parts,rcv) do part, rcv
+  @test part == rcv
+end
+
+rcv = gather_all(parts) 
+
+map_parts(rcv) do rcv
+  @test rcv == collect(1:nparts)
+end
+
+@test get_part(rcv) == collect(1:nparts)
+
+rcv = bcast(parts)
+
+map_parts(rcv) do rcv
+  @test rcv == 1
+end
+
 end # module

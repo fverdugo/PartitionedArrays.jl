@@ -37,6 +37,64 @@ map_parts(task::Function,a::DistributedData...) = @abstractmethod
 #
 #DistributedData(a::DistributedData) = a
 
+const MASTER = 1
+
+# import the master part to the main scope
+# in MPI this will broadcast the master part to all procs
+get_master_part(a::DistributedData) = @abstractmethod
+
+# This one is safe to use only when all parts contain the same value, e.g. the result of a gather_all call.
+get_part(a::DistributedData) = @abstractmethod
+
+gather!(rcv::DistributedData,snd::DistributedData) = @abstractmethod
+
+gather_all!(rcv::DistributedData,snd::DistributedData) = @abstractmethod
+
+function gather(snd::DistributedData)
+  np = num_parts(snd)
+  parts = get_part_ids(snd)
+  rcv = map_parts(parts,snd) do part, snd
+    T = typeof(snd)
+    if part == MASTER
+      Vector{T}(undef,np)
+    else
+      Vector{T}(undef,0)
+    end
+  end
+  gather!(rcv,snd)
+  rcv
+end
+
+function gather_all(snd::DistributedData)
+  np = num_parts(snd)
+  rcv = map_parts(snd) do snd
+    T = typeof(snd)
+    Vector{T}(undef,np)
+  end
+  gather_all!(rcv,snd)
+  rcv
+end
+
+function scatter(snd::DistributedData)
+  @abstractmethod
+end
+
+function bcast(snd::DistributedData)
+  np = num_parts(snd)
+  parts = get_part_ids(snd)
+  snd2 = map_parts(parts,snd) do part, snd
+    T = typeof(snd)
+    if part == MASTER
+      v = Vector{T}(undef,np)
+      fill!(v,snd)
+    else
+      v = Vector{T}(undef,0)
+    end
+    v
+  end
+  scatter(snd2)
+end
+
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)

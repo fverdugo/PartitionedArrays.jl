@@ -68,6 +68,48 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIDistributedData)
   MPI.Barrier(data.comm)
 end
 
+get_part(a::MPIDistributedData) = a.part
+
+function get_master_part(a::MPIDistributedData)
+  get_part(bcast(a))
+end
+
+function gather!(rcv::MPIDistributedData,snd::MPIDistributedData)
+  @assert rcv.comm === snd.comm
+  if get_part_id(snd) == MASTER
+    @assert length(rcv.part) == num_parts(snd)
+    rcv.part[MASTER] = snd.part
+    MPI.Gather!(MPI.IN_PLACE,MPI.UBuffer(rcv.part,1),MASTER-1,snd.comm)
+  else
+    MPI.Gather!(Ref(snd.part),nothing,MASTER-1,snd.comm)
+  end
+  rcv
+end
+
+function gather_all!(rcv::MPIDistributedData,snd::MPIDistributedData)
+  @assert rcv.comm === snd.comm
+  @assert length(rcv.part) == num_parts(snd)
+  MPI.Allgather!(Ref(snd.part),MPI.UBuffer(rcv.part,1),snd.comm)
+  rcv
+end
+
+function scatter(snd::MPIDistributedData)
+  if get_part_id(snd) == MASTER
+    part = snd.part[MASTER]
+    MPI.Scatter!(MPI.UBuffer(snd.part,1),MPI.IN_PLACE,MASTER-1,snd.comm)
+  else
+    rcv = Vector{eltype(snd.part)}(undef,1)
+    MPI.Scatter!(nothing,rcv,MASTER-1,snd.comm)        
+    part = rcv[1]
+  end
+  MPIDistributedData(part,snd.comm)
+end
+
+function bcast(snd::MPIDistributedData)
+  part = MPI.Bcast!(Ref(copy(snd.part)),MASTER-1,snd.comm)
+  MPIDistributedData(part[],snd.comm)
+end
+
 function async_exchange!(
   data_rcv::MPIDistributedData,
   data_snd::MPIDistributedData,
