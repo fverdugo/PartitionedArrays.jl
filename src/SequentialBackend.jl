@@ -56,9 +56,8 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
   end
 end
 
+get_part(a::SequentialDistributedData,part::Integer) = a.parts[part]
 get_part(a::SequentialDistributedData) = get_master_part(a)
-
-get_master_part(a::SequentialDistributedData) = a.parts[MASTER]
 
 function gather!(rcv::SequentialDistributedData,snd::SequentialDistributedData)
   @assert num_parts(rcv) == num_parts(snd)

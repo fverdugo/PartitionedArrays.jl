@@ -126,4 +126,6 @@ end
 
 @test get_master_part(rcv) == MASTER
 
+@test get_part(parts,3) == 3
+
 end

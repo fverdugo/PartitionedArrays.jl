@@ -70,8 +70,9 @@ end
 
 get_part(a::MPIDistributedData) = a.part
 
-function get_master_part(a::MPIDistributedData)
-  get_part(bcast(a))
+function get_part(a::MPIDistributedData,part::Integer)
+  part = MPI.Bcast!(Ref(copy(a.part)),part-1,a.comm)
+  part[]
 end
 
 function gather!(rcv::MPIDistributedData,snd::MPIDistributedData)
@@ -106,8 +107,7 @@ function scatter(snd::MPIDistributedData)
 end
 
 function bcast(snd::MPIDistributedData)
-  part = MPI.Bcast!(Ref(copy(snd.part)),MASTER-1,snd.comm)
-  MPIDistributedData(part[],snd.comm)
+  MPIDistributedData(get_master_part(snd),snd.comm)
 end
 
 function async_exchange!(

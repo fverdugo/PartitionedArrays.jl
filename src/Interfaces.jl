@@ -41,10 +41,12 @@ const MASTER = 1
 
 # import the master part to the main scope
 # in MPI this will broadcast the master part to all procs
-get_master_part(a::DistributedData) = @abstractmethod
+get_master_part(a::DistributedData) = get_part(a,MASTER)
 
 # This one is safe to use only when all parts contain the same value, e.g. the result of a gather_all call.
 get_part(a::DistributedData) = @abstractmethod
+
+get_part(a::DistributedData,part::Integer) = @abstractmethod
 
 gather!(rcv::DistributedData,snd::DistributedData) = @abstractmethod
 
@@ -567,6 +569,13 @@ struct DistributedVector{T,A,B} <: AbstractVector{T}
   end
 end
 
+Base.size(a::DistributedVector) = (length(a.ids),)
+Base.IndexStyle(::Type{<:DistributedVector}) = IndexLinear()
+function Base.getindex(a::DistributedVector,gid::Integer)
+  # In practice this function should not be used
+  @notimplemented
+end
+
 function DistributedVector{T}(
   ::UndefInitializer,
   ids::DistributedRange) where T
@@ -584,8 +593,6 @@ function Base.fill!(a::DistributedVector,v)
   end
   a
 end
-
-Base.length(a::DistributedVector) = length(a.ids)
 
 function async_exchange!(
   a::DistributedVector,
