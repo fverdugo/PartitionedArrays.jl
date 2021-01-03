@@ -35,6 +35,10 @@ export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
 export DistributedRange
+export add_gid
+export add_gid!
+export to_lid!
+export to_gid!
 export DistributedVector
 export async_assemble!
 export assemble!

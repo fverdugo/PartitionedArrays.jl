@@ -390,6 +390,38 @@ function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
   IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
 end
 
+function add_gid!(a::IndexSet,gid::Integer)
+  if !haskey(a.gid_to_lid,gid)
+    part = a.gid_to_part[gid]
+    lid = Int32(num_lids(a)+1)
+    hid = Int32(num_hids(a)+1)
+    push!(a.lid_to_gid,gid)
+    push!(a.lid_to_part,part)
+    push!(a.hid_to_lid,lid)
+    push!(a.lid_to_ohid,-hid)
+    a.gid_to_lid[gid] = lid
+  end
+  a
+end
+
+function to_lid!(ids::AbstractArray{<:Integer},a::IndexSet)
+  for i in eachindex(ids)
+    gid = ids[i]
+    lid = a.gid_to_lid[gid]
+    ids[i] = lid
+  end
+  ids
+end
+
+function to_gid!(ids::AbstractArray{<:Integer},a::IndexSet)
+  for i in eachindex(ids)
+    lid = ids[i]
+    gid = a.lid_to_gid[lid]
+    ids[i] = gid
+  end
+  ids
+end
+
 struct Exchanger{B,C}
   parts_rcv::B
   parts_snd::B
@@ -555,6 +587,85 @@ Base.last(a::DistributedRange) = a.ngids
 
 num_gids(a::DistributedRange) = a.ngids
 num_parts(a::DistributedRange) = num_parts(a.lids)
+
+function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
+  np = num_parts(parts)
+  lids = map_parts(parts) do part
+    gids = _oid_to_gid(ngids,np,part)
+    lid_to_gid = collect(gids)
+    lid_to_part = fill(part,length(gids))
+    part_to_gid = _part_to_gid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_gid)
+    oid_to_lid = Int32(1):Int32(length(gids))
+    hid_to_lid = collect(Int32(1):Int32(0))
+    IndexSet(
+      part,
+      ngids,
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  DistributedRange(ngids,lids)
+end
+
+function _oid_to_gid(ngids,np,p)
+  _olength = ngids ÷ np
+  _offset = _olength * (p-1)
+  _rem = ngids % np
+  if _rem < (np-p+1)
+    olength = _olength
+    offset = _offset
+  else
+    olength = _olength + 1
+    offset = _offset + p - (np-_rem) - 1
+  end
+  Int(1+offset):Int(olength+offset)
+end
+
+function _part_to_gid(ngids,np)
+  [first(_oid_to_gid(ngids,np,p)) for p in 1:np]
+end
+
+struct GidToPart <: AbstractVector{Int}
+  ngids::Int
+  part_to_gid::Vector{Int}
+end
+Base.size(a::GidToPart) = (a.ngids,)
+Base.IndexStyle(::Type{<:GidToPart}) = IndexLinear()
+function Base.getindex(a::GidToPart,gid::Integer)
+  @boundscheck begin
+    if !( 1<=gid && gid<=length(a) )
+      throw(BoundsError(a,gid))
+    end
+  end
+  searchsortedlast(a.part_to_gid,gid)
+end
+
+function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:Integer}})
+  map_parts(a.lids,gids) do lids,gids
+    for gid in gids
+      add_gid!(lids,gid)
+    end
+  end
+  a
+end
+
+function add_gid(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:Integer}})
+  lids = map_parts(deepcopy,a.lids)
+  b = DistributedRange(a.ngids,lids)
+  add_gid!(b,gids)
+  b
+end
+
+function to_lid!(ids::DistributedData{<:AbstractArray{<:Integer}},a::DistributedRange)
+  map_parts(to_lid!,ids,a.lids)
+end
+
+function to_gid!(ids::DistributedData{<:AbstractArray{<:Integer}},a::DistributedRange)
+  map_parts(to_gid!,ids,a.lids)
+end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A

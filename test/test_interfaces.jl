@@ -171,7 +171,6 @@ function test_interfaces(parts)
   exchange!(values,exchanger_snd;reduce_op=+)
   exchange!(values,exchanger_rcv)
 
-
   ids = DistributedRange(n,lids)
 
   map_parts(ids.lids) do lids
@@ -179,6 +178,25 @@ function test_interfaces(parts)
   end
   @test num_parts(ids) == nparts
   @test num_gids(ids) == n
+
+  ids2 = DistributedRange(parts,n)
+
+  gids = map_parts(parts) do part
+    if part == 1
+      gids = [1,4,6]
+    elseif part == 2
+      gids = [3,1,2,8]
+    elseif part == 3
+      gids = [1,9,6]
+    else
+      gids = [3,2,8,10]
+    end
+  end
+
+  ids3 = add_gid(ids2,gids)
+
+  to_lid!(gids,ids3)
+  to_gid!(gids,ids3)
 
   v = DistributedVector{Float64}(undef,ids)
   fill!(v,1.0)
