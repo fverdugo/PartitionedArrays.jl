@@ -197,6 +197,41 @@ function test_interfaces(parts)
 
   to_lid!(gids,ids3)
   to_gid!(gids,ids3)
+  v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:global)
+  v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:local)
+  v = DistributedVector(gids,map_parts(copy,gids),n;ids=:global)
+  u = 2*v
+  map_parts(u.values,v.values) do u,v
+    @test u == 2*v
+  end
+  u = v + u
+  map_parts(u.values,v.values) do u,v
+    @test u == 3*v
+  end
+
+  map_parts(parts,local_view(v)) do part,v
+    if part == 3
+      v[1] = 6
+    end
+  end
+
+  map_parts(parts,local_view(v)) do part,v
+    if part == 3
+      @test v[1] == 6
+    end
+  end
+
+  map_parts(parts,global_view(v)) do part,v
+    if part == 4
+      v[9] = 6
+    end
+  end
+
+  map_parts(parts,global_view(v)) do part,v
+    if part == 4
+      @test v[9] == 6
+    end
+  end
 
   v = DistributedVector{Float64}(undef,ids)
   fill!(v,1.0)
@@ -220,6 +255,26 @@ function test_interfaces(parts)
 
   assemble!(v)
 
+  I,J,V = map_parts(parts) do part
+    if part == 1
+      [1,2], [2,6], [1.0,2.0]
+    elseif part == 2
+      [3,3,4], [4,8,4], [1.0,2.0,3.0]
+    elseif part == 3
+      [5,5], [5,6], [1.0,2.0]
+    else
+      [9,9,8], [3,2,9], [1.0,2.0,3.0]
+    end
+  end
+  A = DistributedSparseMatrix(I,J,V,n,n;ids=:global)
+  local_view(A)
+  global_view(A)
+
+  x = DistributedVector{Float64}(undef,A.col_ids)
+  fill!(x,1.0)
+  y = A*x
+  r = y - y
+
   col_ids = ids
   row_ids = col_ids
 
@@ -233,6 +288,7 @@ function test_interfaces(parts)
   x = DistributedVector{Float64}(undef,col_ids)
   fill!(x,3)
   b = DistributedVector{Float64}(undef,row_ids)
+
 
   A = DistributedSparseMatrix(values,row_ids,col_ids)
   mul!(b,A,x)

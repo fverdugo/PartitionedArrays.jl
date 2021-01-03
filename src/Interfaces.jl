@@ -698,11 +698,126 @@ function DistributedVector{T}(
   DistributedVector(values,ids)
 end
 
+function DistributedVector(
+  init,
+  I::DistributedData{<:AbstractArray{<:Integer}},
+  V::DistributedData{<:AbstractArray},
+  rows::DistributedRange;
+  ids::Symbol)
+
+  @assert ids in (:global,:local)
+  if ids == :global
+    to_lid!(I,rows)
+  end
+
+  values = map_parts(rows.lids,I,V) do lids,I,V
+    values = init(num_lids(lids))
+    fill!(values,zero(eltype(values)))
+    for i in 1:length(I)
+      lid = I[i]
+      values[lid] += V[i]
+    end
+    values
+  end
+
+  DistributedVector(values,rows)
+end
+
+function DistributedVector(
+  I::DistributedData{<:AbstractArray{<:Integer}},
+  V::DistributedData{<:AbstractArray{T}},
+  rows;
+  ids::Symbol) where T
+  DistributedVector(n->zeros(T,n),I,V,rows;ids=ids)
+end
+
+function DistributedVector(
+  init,
+  I::DistributedData{<:AbstractArray{<:Integer}},
+  V::DistributedData{<:AbstractArray},
+  n::Integer;
+  ids::Symbol)
+
+  @assert ids == :global
+  parts = get_part_ids(I)
+  rows = DistributedRange(parts,n)
+  add_gid!(rows,I)
+  DistributedVector(init,I,V,rows;ids=ids)
+end
+
+function Base.:*(a::Number,b::DistributedVector)
+  values = map_parts(b.values) do values
+    a*values
+  end
+  DistributedVector(values,b.ids)
+end
+
+function Base.:*(b::DistributedVector,a::Number)
+  a*b
+end
+
+for op in (:+,:-)
+  @eval begin
+
+    function Base.$op(a::DistributedVector)
+      values = map_parts(a.values) do a
+        $op(a)
+      end
+      DistributedVector(values,a.ids)
+    end
+
+    function Base.$op(a::DistributedVector,b::DistributedVector)
+      @assert a.ids === b.ids
+      values = map_parts(a.values,b.values) do a,b
+        $op(a,b)
+      end
+      DistributedVector(values,a.ids)
+    end
+
+  end
+end
+
 function Base.fill!(a::DistributedVector,v)
   map_parts(a.values) do lid_to_value
     fill!(lid_to_value,v)
   end
   a
+end
+
+function local_view(a::DistributedVector)
+  a.values
+end
+
+function global_view(a::DistributedVector)
+  map_parts(a.values,a.ids.lids) do values, lids
+    GlobalView(values,(lids.gid_to_lid,),(lids.ngids,))
+  end
+end
+
+struct GlobalView{T,N,A,B} <: AbstractArray{T,N}
+  values::A
+  d_to_gid_to_lid::B
+  global_size::NTuple{N,Int}
+  function GlobalView(
+    values::AbstractArray{T,N},
+    d_to_gid_to_lid::NTuple{N},
+    global_size::NTuple{N}) where {T,N}
+
+    A = typeof(values)
+    B = typeof(d_to_gid_to_lid)
+    new{T,N,A,B}(values,d_to_gid_to_lid,global_size)
+  end
+end
+
+Base.size(a::GlobalView) = a.global_size
+Base.IndexStyle(::Type{<:GlobalView}) = IndexCartesian()
+function Base.getindex(a::GlobalView{T,N},gid::Vararg{Integer,N}) where {T,N}
+  lid = map((g,gid_to_lid)->gid_to_lid[g],gid,a.d_to_gid_to_lid)
+  a.values[lid...]
+end
+function Base.setindex!(a::GlobalView{T,N},v,gid::Vararg{Integer,N}) where {T,N}
+  lid = map((g,gid_to_lid)->gid_to_lid[g],gid,a.d_to_gid_to_lid)
+  a.values[lid...] = v
 end
 
 function async_exchange!(
@@ -720,7 +835,12 @@ function async_assemble!(
   exchanger_rcv = a.ids.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
   t1 = async_exchange!(a.values,exchanger_snd,t0;reduce_op=reduce_op)
-  async_exchange!(a.values,exchanger_rcv,t1)
+  map_parts(t1,a.values,a.ids.lids) do t1,values,lids
+    @task begin
+      wait(schedule(t1))
+      values[lids.hid_to_lid] .= zero(eltype(values))
+    end
+  end
 end
 
 # Blocking assembly
@@ -750,6 +870,57 @@ struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   end
 end
 
+function DistributedSparseMatrix(
+  init,
+  I::DistributedData{<:AbstractArray{<:Integer}},
+  J::DistributedData{<:AbstractArray{<:Integer}},
+  V::DistributedData{<:AbstractArray},
+  rows::DistributedRange,
+  cols::DistributedRange;
+  ids::Symbol)
+
+  @assert ids in (:global,:local)
+  if ids == :global
+    to_lid!(I,rows)
+    to_lid!(J,cols)
+  end
+
+  values = map_parts(I,J,V,rows.lids,cols.lids) do I,J,V,rlids,clids
+    init(I,J,V,num_lids(rlids),num_lids(clids))
+  end
+
+  DistributedSparseMatrix(values,rows,cols)
+end
+
+function DistributedSparseMatrix(
+  init,
+  I::DistributedData{<:AbstractArray{<:Integer}},
+  J::DistributedData{<:AbstractArray{<:Integer}},
+  V::DistributedData{<:AbstractArray},
+  nrows::Integer,
+  ncols::Integer;
+  ids::Symbol)
+
+  @assert ids == :global
+  parts = get_part_ids(I)
+  rows = DistributedRange(parts,nrows)
+  cols = DistributedRange(parts,ncols)
+  add_gid!(rows,I)
+  add_gid!(cols,J)
+  DistributedSparseMatrix(init,I,J,V,rows,cols;ids=ids)
+end
+
+function DistributedSparseMatrix(
+  I::DistributedData{<:AbstractArray{<:Integer}},
+  J::DistributedData{<:AbstractArray{<:Integer}},
+  V::DistributedData{<:AbstractArray},
+  rows,
+  cols;
+  ids::Symbol)
+
+  DistributedSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
+end
+
 Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
 
 function LinearAlgebra.mul!(
@@ -766,12 +937,19 @@ function LinearAlgebra.mul!(
     # TODO start multiplying the diagonal block
     # before waiting for the ghost values of b
     wait(schedule(t))
-    # If a is in an assembled state the c ghost values of c will be correct
-    # otherwise one would need to call exchange!(c)
-    # Note that it is cheaper to call exchange!(c) than assemble!(a)
     mul!(c,a,b,α,β)
   end
   c
+end
+
+function local_view(a::DistributedSparseMatrix)
+  a.values
+end
+
+function global_view(a::DistributedSparseMatrix)
+  map_parts(a.values,a.row_ids.lids,a.col_ids.lids) do values,rlids,clids
+    GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
+  end
 end
 
 function _matrix_exchanger(values,row_exchanger,row_lids,col_lids)
@@ -845,6 +1023,7 @@ function _matrix_exchanger(values,row_exchanger,row_lids,col_lids)
   Exchanger(parts_rcv,parts_snd,k_rcv,k_snd)
 end
 
+# Non-blocking exchange
 function async_exchange!(
   a::DistributedSparseMatrix,
   t0::DistributedData=_empty_tasks(a.exchanger.parts_rcv))
@@ -862,7 +1041,42 @@ function async_assemble!(
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
   nzval = map_parts(nonzeros,a.values)
   t1 = async_exchange!(nzval,exchanger_snd,t0;reduce_op=reduce_op)
-  async_exchange!(nzval,exchanger_rcv,t1)
+  map_parts(t1,nzval,exchanger_snd.lids_snd) do t1,nzval,lids_snd
+    @task begin
+      wait(schedule(t1))
+      nzval[lids_snd.data] .= zero(eltype(nzval))
+    end
+  end
 end
 
+function Base.:*(a::Number,b::DistributedSparseMatrix)
+  values = map_parts(b.values) do values
+    a*values
+  end
+  DistributedSparseMatrix(values,b.row_ids,b.col_ids,b.exchanger)
+end
+
+function Base.:*(b::DistributedSparseMatrix,a::Number)
+  a*b
+end
+
+function Base.:*(a::DistributedSparseMatrix{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
+  T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
+  c = DistributedVector{T}(undef,a.row_ids)
+  mul!(c,a,b)
+  c
+end
+
+for op in (:+,:-)
+  @eval begin
+
+    function Base.$op(a::DistributedSparseMatrix)
+      values = map_parts(a.values) do a
+        $op(a)
+      end
+      DistributedSparseMatrix(values,a.row_ids,a.col_ids,a.exchanger)
+    end
+
+  end
+end
 

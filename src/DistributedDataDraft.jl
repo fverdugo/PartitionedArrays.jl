@@ -40,6 +40,8 @@ export add_gid!
 export to_lid!
 export to_gid!
 export DistributedVector
+export local_view
+export global_view
 export async_assemble!
 export assemble!
 export DistributedSparseMatrix
