@@ -31,6 +31,9 @@ get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),num_parts(a))
 
 map_parts(task::Function,a::DistributedData...) = @abstractmethod
 
+Base.eltype(a::DistributedData{T}) where T = T
+Base.eltype(::Type{<:DistributedData{T}}) where T = T
+
 #function map_parts(task::Function,a...)
 #  map_parts(task,map(DistributedData,a)...)
 #end
@@ -95,6 +98,21 @@ function bcast(snd::DistributedData)
     v
   end
   scatter(snd2)
+end
+
+function reduce_master(op,snd::DistributedData;init)
+  a = gather(snd)
+  map_parts(i->reduce(op,i;init=init),a)
+end
+
+function reduce_all(args...;kwargs...)
+  b = reduce_master(args...;kwargs...)
+  bcast(b)
+end
+
+function Base.reduce(op,a::DistributedData;init)
+  b = reduce_master(op,a;init=init)
+  get_master_part(b)
 end
 
 # Non-blocking in-place exchange
@@ -681,10 +699,121 @@ struct DistributedVector{T,A,B} <: AbstractVector{T}
 end
 
 Base.size(a::DistributedVector) = (length(a.ids),)
+Base.axes(a::DistributedVector) = (a.ids,)
 Base.IndexStyle(::Type{<:DistributedVector}) = IndexLinear()
 function Base.getindex(a::DistributedVector,gid::Integer)
   # In practice this function should not be used
   @notimplemented
+end
+
+function Base.similar(a::DistributedVector)
+  similar(a,eltype(a),axes(a))
+end
+
+function Base.similar(a::DistributedVector,::Type{T}) where T
+  similar(a,T,axes(a))
+end
+
+function Base.similar(a::DistributedVector,::Type{T},axes::Tuple{Int}) where T
+  @notimplemented
+end
+
+function Base.similar(a::DistributedVector,::Type{T},axes::Tuple{<:DistributedRange}) where T
+  rows = axes[1]
+  values = map_parts(a.values,rows.lids) do values, lids
+    similar(values,T,num_lids(lids))
+  end
+  DistributedVector(values,rows)
+end
+
+function Base.similar(
+  ::Type{<:DistributedVector{T,<:DistributedData{A}}},axes::Tuple{Int}) where {T,A}
+  @notimplemented
+end
+
+function Base.similar(
+  ::Type{<:DistributedVector{T,<:DistributedData{A}}},axes::Tuple{<:DistributedRange}) where {T,A}
+  rows = axes[1]
+  values = map_parts(rows.lids) do lids
+    similar(A,num_lids(lids))
+  end
+  DistributedVector(values,rows)
+end
+
+function Base.copy!(a::DistributedVector,b::DistributedVector)
+  map_parts(copy!,a.values,b.values)
+  a
+end
+
+function Base.copyto!(a::DistributedVector,b::DistributedVector)
+  map_parts(copyto!,a.values,b.values)
+  a
+end
+
+function Base.copy(b::DistributedVector)
+  a = similar(b)
+  copy!(a,b)
+  a
+end
+
+struct DistributedBroadcasted{A,B}
+  values::A
+  ids::B
+end
+
+@inline function Base.materialize(bc::DistributedBroadcasted)
+  values = map_parts(Base.materialize,bc.values)
+  DistributedVector(values,bc.ids)
+end
+
+@inline function Base.materialize!(a::DistributedVector,b::DistributedBroadcasted)
+  @assert a.ids === b.ids
+  map_parts(a.values,b.values) do dest, x
+    Base.materialize!(dest,x)
+  end
+  a
+end
+
+Base.BroadcastStyle(::Type{<:DistributedVector}) = Base.Broadcast.ArrayStyle{DistributedVector}()
+
+function Base.broadcasted(
+  ::Base.Broadcast.ArrayStyle{DistributedVector},
+  f,
+  args::Union{DistributedVector,DistributedBroadcasted}...)
+
+  values = map(i->i.values,args)
+  values = map_parts((largs...)->Base.broadcasted(f,largs...),values...)
+  a1 = first(args)
+  @notimplementedif any(ai->ai.ids!==a1.ids,args)
+  DistributedBroadcasted(values,a1.ids)
+end
+
+function Base.broadcasted(
+  ::Base.Broadcast.ArrayStyle{DistributedVector},
+  f,
+  a::Number,
+  b::Union{DistributedVector,DistributedBroadcasted})
+
+  values = map_parts(b->Base.broadcasted(f,a,b),b.values)
+  DistributedBroadcasted(values,b.ids)
+end
+
+function Base.broadcasted(
+  ::Base.Broadcast.ArrayStyle{DistributedVector},
+  f,
+  a::Union{DistributedVector,DistributedBroadcasted},
+  b::Number)
+
+  values = map_parts(a->Base.broadcasted(f,a,b),a.values)
+  DistributedBroadcasted(values,a.ids)
+end
+
+function LinearAlgebra.norm(a::DistributedVector,p::Real=2)
+  contibs = map_parts(a.values,a.ids.lids) do lid_to_value, lids
+    oid_to_value = view(lid_to_value,lids.oid_to_lid)
+    norm(oid_to_value,p)^p
+  end
+  reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
 end
 
 function DistributedVector{T}(
@@ -870,6 +999,14 @@ struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   end
 end
 
+Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
+Base.axes(a::DistributedSparseMatrix) = (a.row_ids,a.col_ids)
+Base.IndexStyle(::Type{<:DistributedSparseMatrix}) = IndexCartesian()
+function Base.getindex(a::DistributedSparseMatrix,gi::Integer,gj::Integer)
+  #This should not be used in practice
+  @notimplemented
+end
+
 function DistributedSparseMatrix(
   init,
   I::DistributedData{<:AbstractArray{<:Integer}},
@@ -920,8 +1057,6 @@ function DistributedSparseMatrix(
 
   DistributedSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
 end
-
-Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
 
 function LinearAlgebra.mul!(
   c::DistributedVector,
@@ -1078,5 +1213,82 @@ for op in (:+,:-)
     end
 
   end
+end
+
+struct Jacobi{T,A,B,C} <: LinearMaps.LinearMap{T}
+  diaginv::A
+  row_ids::B
+  col_ids::C
+  function Jacobi(
+    diaginv::DistributedData{<:AbstractVector{T}},
+    row_ids::DistributedRange,
+    col_ids::DistributedRange) where T
+
+    A = typeof(diaginv)
+    B = typeof(row_ids)
+    C = typeof(col_ids)
+    new{T,A,B,C}(diaginv,row_ids,col_ids)
+  end
+end
+
+function Jacobi(a::DistributedSparseMatrix)
+  diaginv = map_parts(a.values,a.row_ids.lids,a.col_ids.lids) do values, rlids, clids
+    @assert num_oids(rlids) == num_oids(clids)
+    @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
+    ldiag = collect(diag(values))
+    odiag = ldiag[rlids.oid_to_lid]
+    diaginv = inv.(odiag)
+  end
+  Jacobi(diaginv,a.col_ids,a.row_ids)
+end
+
+Base.size(a::Jacobi) = (num_gids(a.row_ids),num_gids(a.col_ids))
+LinearMaps.MulStyle(::Type{<:Jacobi}) = LinearMaps.FiveArg()
+LinearMaps.MulStyle(::T) where T<:Jacobi = LinearMaps.MulStyle(T)
+
+function LinearAlgebra.mul!(
+  c::DistributedVector,
+  a::Jacobi,
+  b::DistributedVector,
+  α::Number,
+  β::Number)
+
+  @assert c.ids === a.row_ids
+  @assert b.ids === a.col_ids
+  map_parts(c.values,a.diaginv,b.values,a.row_ids.lids,a.col_ids.lids) do c,diaginv,b,rlids,clids
+    @assert num_oids(rlids) == num_oids(clids)
+    for li in eachindex(c)
+      c[li] = β*c[li]
+    end
+    for oid in 1:num_oids(rlids)
+      li = rlids.oid_to_lid[oid]
+      lj = clids.oid_to_lid[oid]
+      c[li] += α*diaginv[oid]*b[lj]
+    end
+  end
+  c
+end
+
+function LinearAlgebra.mul!(
+  c::DistributedVector,
+  a::Jacobi,
+  b::DistributedVector)
+  mul!(c,a,b,1,0)
+end
+
+function Base.:*(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
+  T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
+  c = DistributedVector{T}(undef,a.row_ids)
+  mul!(c,a,b)
+  c
+end
+
+# Misc functions that could be removed if IterativeSolvers / LinearMaps would be implemented in terms
+# of axes(A,d) instead of size(A,d)
+function IterativeSolvers.zerox(A::DistributedSparseMatrix,b::DistributedVector)
+  T = IterativeSolvers.Adivtype(A, b)
+  x = similar(b, T, axes(A, 2))
+  fill!(x, zero(T))
+  return x
 end
 

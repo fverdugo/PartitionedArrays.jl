@@ -3,6 +3,8 @@ module DistributedDataDraft
 using SparseArrays
 using LinearAlgebra
 import MPI
+import LinearMaps
+import IterativeSolvers
 
 export Backend
 export distributed_run
@@ -20,6 +22,8 @@ export gather
 export gather_all
 export scatter
 export bcast
+export reduce_master
+export reduce_all
 export async_exchange!
 export exchange!
 export exchange
@@ -45,6 +49,7 @@ export global_view
 export async_assemble!
 export assemble!
 export DistributedSparseMatrix
+export Jacobi
 
 export SequentialBackend
 export sequential

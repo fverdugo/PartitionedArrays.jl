@@ -3,6 +3,7 @@ using LinearAlgebra
 using SparseArrays
 using DistributedDataDraft
 using Test
+using IterativeSolvers
 
 function test_interfaces(parts)
 
@@ -58,6 +59,13 @@ function test_interfaces(parts)
       r= [40,40]
     end
     @test r == data_rcv
+  end
+
+  a = reduce_master(+,parts,init=0)
+  @test get_master_part(a) == 1+2+3+4
+  b = reduce_all(+,parts,init=0)
+  map_parts(b) do b
+    @test b == 1+2+3+4
   end
 
   data_rcv, t = async_exchange(
@@ -209,6 +217,24 @@ function test_interfaces(parts)
     @test u == 3*v
   end
 
+  w = similar(v)
+  w = similar(v,Float64)
+  w = similar(v,Float64,ids3)
+  w = similar(typeof(v),ids3)
+  w = zero(v)
+  @test norm(w) == 0
+
+  w = v .- u
+  @test isa(w,DistributedVector)
+  w =  1 .+ v
+  @test isa(w,DistributedVector)
+  w =  v .+ 1
+  @test isa(w,DistributedVector)
+  w =  v .+ w .- u
+  @test isa(w,DistributedVector)
+
+  w .= v .- u
+
   map_parts(parts,local_view(v)) do part,v
     if part == 3
       v[1] = 6
@@ -255,26 +281,6 @@ function test_interfaces(parts)
 
   assemble!(v)
 
-  I,J,V = map_parts(parts) do part
-    if part == 1
-      [1,2], [2,6], [1.0,2.0]
-    elseif part == 2
-      [3,3,4], [4,8,4], [1.0,2.0,3.0]
-    elseif part == 3
-      [5,5], [5,6], [1.0,2.0]
-    else
-      [9,9,8], [3,2,9], [1.0,2.0,3.0]
-    end
-  end
-  A = DistributedSparseMatrix(I,J,V,n,n;ids=:global)
-  local_view(A)
-  global_view(A)
-
-  x = DistributedVector{Float64}(undef,A.col_ids)
-  fill!(x,1.0)
-  y = A*x
-  r = y - y
-
   col_ids = ids
   row_ids = col_ids
 
@@ -299,6 +305,31 @@ function test_interfaces(parts)
 
   exchange!(A)
   assemble!(A)
+
+  I,J,V = map_parts(parts) do part
+    if part == 1
+      [1,2,1,2], [2,6,1,2], [1.0,2.0,30.0,10.0]
+    elseif part == 2
+      [3,3,4], [3,8,4], [10.0,2.0,30.0]
+    elseif part == 3
+      [5,5,6,7], [5,6,6,7], [10.0,2.0,30.0,1.0]
+    else
+      [9,9,8,10], [9,2,8,10], [10.0,2.0,30.0,50.0]
+    end
+  end
+  A = DistributedSparseMatrix(I,J,V,n,n;ids=:global)
+  local_view(A)
+  global_view(A)
+
+  x = DistributedVector{Float64}(undef,A.col_ids)
+  fill!(x,1.0)
+  y = A*x
+  dy = y - y
+
+  P = Jacobi(A)
+  x = P*y
+
+  #x1 = IterativeSolvers.cg(A,y)
 
 end
 
