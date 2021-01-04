@@ -1,5 +1,22 @@
 module SequentialBackendTests
 
+@testset "Backend" begin include("SequentialBackendTests.jl") end
+
+@testset "Interfaces" begin include("SequentialBackendTests.jl") end
+
+module InterfacesSequentialBackendTests
+  include("test_interfaces.jl")
+  nparts = 4
+  distributed_run(test_interfaces,sequential,nparts)
+
+end
+
+
+
+
+
+
+
 using DistributedDataDraft
 using Test
 
