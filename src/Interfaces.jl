@@ -586,7 +586,8 @@ end
 
 _replace(x,y) = y
 
-struct DistributedRange{A,B} <: AbstractUnitRange{Int}
+# TODO mutable is needed to correctly implement add_gid!
+mutable struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
   exchanger::B
@@ -671,6 +672,7 @@ function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:In
       add_gid!(lids,gid)
     end
   end
+  a.exchanger = Exchanger(a.lids)
   a
 end
 
@@ -919,7 +921,10 @@ function Base.fill!(a::DistributedVector,v)
 end
 
 function Base.reduce(op,a::DistributedVector;init)
-  b = map_parts(values->reduce(op,values,init=init),a.values)
+  b = map_parts(a.values,a.ids.lids) do values,lids
+    owned_values = view(values,lids.oid_to_lid)
+    reduce(op,owned_values,init=init)
+  end
   reduce(op,b,init=init)
 end
 
@@ -928,7 +933,11 @@ function Base.sum(a::DistributedVector)
 end
 
 function LinearAlgebra.dot(a::DistributedVector,b::DistributedVector)
-  c = map_parts(dot,a.values,b.values)
+  c = map_parts(a.values,b.values,a.ids.lids,b.ids.lids) do a,b,alids,blids
+    a_owned = view(a,alids.oid_to_lid)
+    b_owned = view(b,blids.oid_to_lid)
+    dot(a_owned,b_owned)
+  end
   sum(c)
 end
 
@@ -1240,6 +1249,7 @@ end
 
 # This structs implements the same methods as the Identity preconditioner
 # in the IterativeSolvers package.
+# TODO swap row and cols
 struct Jacobi{T,A,B,C}
   diaginv::A
   row_ids::B
@@ -1264,7 +1274,7 @@ function Jacobi(a::DistributedSparseMatrix)
     odiag = ldiag[rlids.oid_to_lid]
     diaginv = inv.(odiag)
   end
-  Jacobi(diaginv,a.col_ids,a.row_ids)
+  Jacobi(diaginv,a.row_ids,a.col_ids)
 end
 
 function LinearAlgebra.ldiv!(
@@ -1272,14 +1282,14 @@ function LinearAlgebra.ldiv!(
   a::Jacobi,
   b::DistributedVector)
 
-  @assert c.ids === a.row_ids
-  @assert b.ids === a.col_ids
+  @assert c.ids === a.col_ids
+  @assert b.ids === a.row_ids
   map_parts(c.values,a.diaginv,b.values,a.row_ids.lids,a.col_ids.lids) do c,diaginv,b,rlids,clids
     @assert num_oids(rlids) == num_oids(clids)
     for oid in 1:num_oids(rlids)
       li = rlids.oid_to_lid[oid]
       lj = clids.oid_to_lid[oid]
-      c[li] = diaginv[oid]*b[lj]
+      c[lj] = diaginv[oid]*b[li]
     end
   end
   c
@@ -1293,7 +1303,7 @@ end
 
 function Base.:\(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = DistributedVector{T}(undef,a.row_ids)
+  c = DistributedVector{T}(undef,a.col_ids)
   ldiv!(c,a,b)
   c
 end
