@@ -115,6 +115,10 @@ function Base.reduce(op,a::DistributedData;init)
   get_master_part(b)
 end
 
+function Base.sum(a::DistributedData)
+  reduce(+,a,init=zero(eltype(a)))
+end
+
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
@@ -774,10 +778,7 @@ end
   a
 end
 
-Base.BroadcastStyle(::Type{<:DistributedVector}) = Base.Broadcast.ArrayStyle{DistributedVector}()
-
 function Base.broadcasted(
-  ::Base.Broadcast.ArrayStyle{DistributedVector},
   f,
   args::Union{DistributedVector,DistributedBroadcasted}...)
 
@@ -789,7 +790,6 @@ function Base.broadcasted(
 end
 
 function Base.broadcasted(
-  ::Base.Broadcast.ArrayStyle{DistributedVector},
   f,
   a::Number,
   b::Union{DistributedVector,DistributedBroadcasted})
@@ -799,7 +799,6 @@ function Base.broadcasted(
 end
 
 function Base.broadcasted(
-  ::Base.Broadcast.ArrayStyle{DistributedVector},
   f,
   a::Union{DistributedVector,DistributedBroadcasted},
   b::Number)
@@ -825,6 +824,12 @@ function DistributedVector{T}(
     Vector{T}(undef,nlids)
   end
   DistributedVector(values,ids)
+end
+
+function DistributedVector(v::Number, ids::DistributedRange)
+  a = DistributedVector{typeof(v)}(undef,ids)
+  fill!(a,v)
+  a
 end
 
 function DistributedVector(
@@ -911,6 +916,20 @@ function Base.fill!(a::DistributedVector,v)
     fill!(lid_to_value,v)
   end
   a
+end
+
+function Base.reduce(op,a::DistributedVector;init)
+  b = map_parts(values->reduce(op,values,init=init),a.values)
+  reduce(op,b,init=init)
+end
+
+function Base.sum(a::DistributedVector)
+  reduce(+,a,init=zero(eltype(a)))
+end
+
+function LinearAlgebra.dot(a::DistributedVector,b::DistributedVector)
+  c = map_parts(dot,a.values,b.values)
+  sum(c)
 end
 
 function local_view(a::DistributedVector)
@@ -1041,7 +1060,11 @@ function DistributedSparseMatrix(
   @assert ids == :global
   parts = get_part_ids(I)
   rows = DistributedRange(parts,nrows)
-  cols = DistributedRange(parts,ncols)
+  if nrows == ncols
+    cols = rows
+  else
+    cols = DistributedRange(parts,ncols)
+  end
   add_gid!(rows,I)
   add_gid!(cols,J)
   DistributedSparseMatrix(init,I,J,V,rows,cols;ids=ids)
@@ -1215,7 +1238,9 @@ for op in (:+,:-)
   end
 end
 
-struct Jacobi{T,A,B,C} <: LinearMaps.LinearMap{T}
+# This structs implements the same methods as the Identity preconditioner
+# in the IterativeSolvers package.
+struct Jacobi{T,A,B,C}
   diaginv::A
   row_ids::B
   col_ids::C
@@ -1242,48 +1267,38 @@ function Jacobi(a::DistributedSparseMatrix)
   Jacobi(diaginv,a.col_ids,a.row_ids)
 end
 
-Base.size(a::Jacobi) = (num_gids(a.row_ids),num_gids(a.col_ids))
-LinearMaps.MulStyle(::Type{<:Jacobi}) = LinearMaps.FiveArg()
-LinearMaps.MulStyle(::T) where T<:Jacobi = LinearMaps.MulStyle(T)
-
-function LinearAlgebra.mul!(
+function LinearAlgebra.ldiv!(
   c::DistributedVector,
   a::Jacobi,
-  b::DistributedVector,
-  α::Number,
-  β::Number)
+  b::DistributedVector)
 
   @assert c.ids === a.row_ids
   @assert b.ids === a.col_ids
   map_parts(c.values,a.diaginv,b.values,a.row_ids.lids,a.col_ids.lids) do c,diaginv,b,rlids,clids
     @assert num_oids(rlids) == num_oids(clids)
-    for li in eachindex(c)
-      c[li] = β*c[li]
-    end
     for oid in 1:num_oids(rlids)
       li = rlids.oid_to_lid[oid]
       lj = clids.oid_to_lid[oid]
-      c[li] += α*diaginv[oid]*b[lj]
+      c[li] = diaginv[oid]*b[lj]
     end
   end
   c
 end
 
-function LinearAlgebra.mul!(
-  c::DistributedVector,
+function LinearAlgebra.ldiv!(
   a::Jacobi,
   b::DistributedVector)
-  mul!(c,a,b,1,0)
+  ldiv!(b,a,b)
 end
 
-function Base.:*(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
-  T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
+function Base.:\(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
+  T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
   c = DistributedVector{T}(undef,a.row_ids)
-  mul!(c,a,b)
+  ldiv!(c,a,b)
   c
 end
 
-# Misc functions that could be removed if IterativeSolvers / LinearMaps would be implemented in terms
+# Misc functions that could be removed if IterativeSolvers would be implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::DistributedSparseMatrix,b::DistributedVector)
   T = IterativeSolvers.Adivtype(A, b)

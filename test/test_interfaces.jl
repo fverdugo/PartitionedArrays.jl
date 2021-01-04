@@ -67,6 +67,8 @@ function test_interfaces(parts)
   map_parts(b) do b
     @test b == 1+2+3+4
   end
+  @test reduce(+,parts,init=0) == 1+2+3+4
+  @test sum(parts) == 1+2+3+4
 
   data_rcv, t = async_exchange(
     data_snd,
@@ -223,6 +225,7 @@ function test_interfaces(parts)
   w = similar(typeof(v),ids3)
   w = zero(v)
   @test norm(w) == 0
+  @test sum(w) == 0
 
   w = v .- u
   @test isa(w,DistributedVector)
@@ -232,8 +235,11 @@ function test_interfaces(parts)
   @test isa(w,DistributedVector)
   w =  v .+ w .- u
   @test isa(w,DistributedVector)
+  w =  v .+ 1 .- u
+  @test isa(w,DistributedVector)
 
   w .= v .- u
+  w .= v .- 1 .- u
 
   map_parts(parts,local_view(v)) do part,v
     if part == 3
@@ -327,9 +333,16 @@ function test_interfaces(parts)
   dy = y - y
 
   P = Jacobi(A)
-  x = P*y
+  x = P\y
 
-  #x1 = IterativeSolvers.cg(A,y)
+  y = DistributedVector(1.0,A.row_ids)
+  x = IterativeSolvers.cg(A,y)
+  x = IterativeSolvers.cg(A,y,Pl=P)
+
+  x = DistributedVector(0.0,A.col_ids)
+  IterativeSolvers.cg!(x,A,y)
+  fill!(x,0.0)
+  IterativeSolvers.cg!(x,A,y,Pl=P)
 
 end
 

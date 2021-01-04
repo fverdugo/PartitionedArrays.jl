@@ -3,7 +3,6 @@ module DistributedDataDraft
 using SparseArrays
 using LinearAlgebra
 import MPI
-import LinearMaps
 import IterativeSolvers
 
 export Backend
