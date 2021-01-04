@@ -1,21 +1,11 @@
 module MPITests
 
-using MPI
 using Test
 
-testdir = joinpath(@__DIR__,"..")
-repodir = joinpath(testdir,"..")
+@testset "Hello" begin include("HelloTests.jl") end
 
-files_and_procs = [
-  "HelloTests.jl"=>3,
-  "MPIBackendTests.jl"=>4,
-  "MPIBackendTests.jl"=>4]
+@testset "MPIBackend" begin include("MPIBackendTests.jl") end
 
-for (file,procs) in files_and_procs
-  mpiexec() do cmd
-    run(`$cmd -n $procs $(Base.julia_cmd()) --project=$repodir $(joinpath(@__DIR__,file))`)
-    @test true
-  end
-end
+@testset "Interfaces" begin include("InterfacesTests.jl") end
 
 end

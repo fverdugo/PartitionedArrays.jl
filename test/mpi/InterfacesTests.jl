@@ -1,3 +1,6 @@
-include("../test_interfaces.jl")
-nparts = 4
-distributed_run(test_interfaces,mpi,nparts)
+module InterfacesTests
+
+include("mpiexec.jl")
+run_mpi_driver(procs=4,file="driver_interfaces.jl")
+
+end # module

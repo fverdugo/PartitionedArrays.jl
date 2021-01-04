@@ -1,7 +1,6 @@
-using MPI
-MPI.Init()
-comm = MPI.COMM_WORLD
-print("Hello world, I am rank $(MPI.Comm_rank(comm)) of $(MPI.Comm_size(comm))\n")
-MPI.Barrier(comm)
-MPI.Finalize()
+module HelloTests
 
+include("mpiexec.jl")
+run_mpi_driver(procs=3,file="driver_hello.jl")
+
+end # module
