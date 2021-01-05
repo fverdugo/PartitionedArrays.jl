@@ -643,7 +643,7 @@ function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
 end
 
 function DistributedRange(
-  parts::DistributedData{<:Integer,N},
+  parts::DistributedData{<:Integer},
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)

@@ -28,8 +28,11 @@ function test_fdm(parts)
   #stencil = [ (coeff,CartesianIndex(point)) for (coeff,point) in zip(coeffs,points) ]
 
   # TODO create an empty Exchanger
-  # TODO allow to pass ns to have a better partition
-  rows = DistributedRange(parts,n)
+  if ndims(parts) == length(ns)
+    rows = DistributedRange(parts,ns)
+  else
+    rows = DistributedRange(parts,n)
+  end
   
   I,J,V = map_parts(rows.lids) do rows
     cis = CartesianIndices(ns)
