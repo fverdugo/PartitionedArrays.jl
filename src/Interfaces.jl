@@ -642,7 +642,32 @@ function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
   DistributedRange(ngids,lids)
 end
 
-function _oid_to_gid(ngids,np,p)
+function DistributedRange(
+  parts::DistributedData{<:Integer,N},
+  ngids::NTuple{N,<:Integer}) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    gids = _oid_to_gid(ngids,np,part)
+    lid_to_gid = gids
+    lid_to_part = fill(part,length(gids))
+    part_to_gid = _part_to_gid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_gid)
+    oid_to_lid = Int32(1):Int32(length(gids))
+    hid_to_lid = collect(Int32(1):Int32(0))
+    IndexSet(
+      part,
+      prod(ngids),
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  DistributedRange(prod(ngids),lids)
+end
+
+function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
   _olength = ngids ÷ np
   _offset = _olength * (p-1)
   _rem = ngids % np
@@ -656,23 +681,74 @@ function _oid_to_gid(ngids,np,p)
   Int(1+offset):Int(olength+offset)
 end
 
-function _part_to_gid(ngids,np)
+function _oid_to_gid(ngids::Tuple,np::Tuple,p::Integer)
+  cp = Tuple(CartesianIndices(np)[p])
+  _oid_to_gid(ngids,np,cp)
+end
+
+function _oid_to_gid(ngids::Tuple,np::Tuple,p::Tuple)
+  D = length(np)
+  @assert length(ngids) == D
+  d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
+  _id_tensor_product(d_to_odid_to_gdid,ngids)
+end
+
+function _id_tensor_product(d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tuple)
+  d_to_nldids = map(length,d_to_dlid_to_gdid)
+  lcis = CartesianIndices(d_to_nldids)
+  llis = LinearIndices(d_to_nldids)
+  glis = LinearIndices(d_to_ngdids)
+  D = length(d_to_ngdids)
+  gci = zeros(Int,D)
+  lid_to_gid = zeros(Int,length(lcis))
+  for lci in lcis
+    for d in 1:D
+      ldid = lci[d]
+      gdid = d_to_dlid_to_gdid[d][ldid]
+      gci[d] = gdid
+    end
+    lid = llis[lci]
+    lid_to_gid[lid] = glis[CartesianIndex(Tuple(gci))]
+  end
+  lid_to_gid
+end
+
+function _part_to_gid(ngids::Integer,np::Integer)
   [first(_oid_to_gid(ngids,np,p)) for p in 1:np]
 end
 
-struct GidToPart <: AbstractVector{Int}
-  ngids::Int
-  part_to_gid::Vector{Int}
+function _part_to_gid(ngids::Tuple,np::Tuple)
+  map(_part_to_gid,ngids,np)
 end
-Base.size(a::GidToPart) = (a.ngids,)
+
+struct GidToPart{A,B} <: AbstractVector{Int}
+  ngids::A
+  part_to_gid::B
+end
+
+Base.size(a::GidToPart) = (prod(a.ngids),)
 Base.IndexStyle(::Type{<:GidToPart}) = IndexLinear()
+
 function Base.getindex(a::GidToPart,gid::Integer)
   @boundscheck begin
     if !( 1<=gid && gid<=length(a) )
       throw(BoundsError(a,gid))
     end
   end
-  searchsortedlast(a.part_to_gid,gid)
+  _find_part_from_gid(a.ngids,a.part_to_gid,gid)
+end
+
+function _find_part_from_gid(ngids::Int,part_to_gid::Vector{Int},gid::Integer)
+  searchsortedlast(part_to_gid,gid)
+end
+
+function _find_part_from_gid(
+  ngids::NTuple{N,Int},part_to_gid::NTuple{N,Vector{Int}},gid::Integer) where N
+  cgid = Tuple(CartesianIndices(ngids)[gid])
+  cpart = map(searchsortedlast,part_to_gid,cgid)
+  nparts = map(length,part_to_gid)
+  part = LinearIndices(nparts)[CartesianIndex(cpart)]
+  part
 end
 
 function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:Integer}})
