@@ -17,9 +17,13 @@ function distributed_run(driver::Function,b::Backend,nparts)
 end
 
 # Data distributed in parts of type T
-abstract type DistributedData{T} end
+abstract type DistributedData{T,N} end
 
-num_parts(a::DistributedData) = @abstractmethod
+Base.size(a::DistributedData) = @abstractmethod
+
+Base.length(a::DistributedData) = prod(size(a))
+
+num_parts(a::DistributedData) = length(a)
 
 get_backend(a::DistributedData) = @abstractmethod
 
@@ -27,7 +31,7 @@ Base.iterate(a::DistributedData)  = @abstractmethod
 
 Base.iterate(a::DistributedData,state)  = @abstractmethod
 
-get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),num_parts(a))
+get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),size(a))
 
 map_parts(task::Function,a::DistributedData...) = @abstractmethod
 
@@ -35,6 +39,9 @@ i_am_master(::DistributedData) = @abstractmethod
 
 Base.eltype(a::DistributedData{T}) where T = T
 Base.eltype(::Type{<:DistributedData{T}}) where T = T
+
+Base.ndims(a::DistributedData{T,N}) where {T,N} = N
+Base.ndims(::Type{<:DistributedData{T,N}}) where {T,N} = N
 
 #function map_parts(task::Function,a...)
 #  map_parts(task,map(DistributedData,a)...)

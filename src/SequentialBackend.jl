@@ -8,11 +8,16 @@ function get_part_ids(b::SequentialBackend,nparts::Integer)
   SequentialDistributedData(parts)
 end
 
-struct SequentialDistributedData{T} <: DistributedData{T}
-  parts::Vector{T}
+function get_part_ids(b::SequentialBackend,nparts::Tuple)
+  parts = collect(LinearIndices(nparts))
+  SequentialDistributedData(parts)
 end
 
-num_parts(a::SequentialDistributedData) = length(a.parts)
+struct SequentialDistributedData{T,N} <: DistributedData{T,N}
+  parts::Array{T,N}
+end
+
+Base.size(a::SequentialDistributedData) = size(a.parts)
 
 i_am_master(a::SequentialDistributedData) = true
 
@@ -83,7 +88,9 @@ end
 
 function scatter(snd::SequentialDistributedData)
   @assert length(snd.parts[MASTER]) == num_parts(snd)
-  SequentialDistributedData(snd.parts[MASTER])
+  parts = similar(snd.parts,eltype(snd.parts[MASTER]),size(snd.parts))
+  copyto!(parts,snd.parts[MASTER])
+  SequentialDistributedData(parts)
 end
 
 function async_exchange!(

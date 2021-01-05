@@ -23,12 +23,12 @@ function distributed_run(driver::Function,b::MPIBackend,nparts)
   #end
 end
 
-struct MPIDistributedData{T} <: DistributedData{T}
+struct MPIDistributedData{T} <: DistributedData{T,1}
   part::T
   comm::MPI.Comm
 end
 
-num_parts(a::MPIDistributedData) = num_parts(a.comm)
+Base.size(a::MPIDistributedData) = (num_parts(a.comm),)
 get_part_id(a::MPIDistributedData) = get_part_id(a.comm)
 get_backend(a::MPIDistributedData) = mpi
 i_am_master(a::MPIDistributedData) = get_part_id(a.comm) == MASTER
