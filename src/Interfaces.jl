@@ -778,19 +778,19 @@ end
 
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A
-  ids::B
+  rows::B
   function DistributedVector(
     values::DistributedData{<:AbstractVector{T}},
-    ids::DistributedRange) where T
+    rows::DistributedRange) where T
 
     A = typeof(values)
-    B = typeof(ids)
-    new{T,A,B}(values,ids)
+    B = typeof(rows)
+    new{T,A,B}(values,rows)
   end
 end
 
-Base.size(a::DistributedVector) = (length(a.ids),)
-Base.axes(a::DistributedVector) = (a.ids,)
+Base.size(a::DistributedVector) = (length(a.rows),)
+Base.axes(a::DistributedVector) = (a.rows,)
 Base.IndexStyle(::Type{<:DistributedVector}) = IndexLinear()
 function Base.getindex(a::DistributedVector,gid::Integer)
   # In practice this function should not be used
@@ -849,16 +849,16 @@ end
 
 struct DistributedBroadcasted{A,B}
   values::A
-  ids::B
+  rows::B
 end
 
 @inline function Base.materialize(bc::DistributedBroadcasted)
   values = map_parts(Base.materialize,bc.values)
-  DistributedVector(values,bc.ids)
+  DistributedVector(values,bc.rows)
 end
 
 @inline function Base.materialize!(a::DistributedVector,b::DistributedBroadcasted)
-  @assert a.ids === b.ids
+  @assert a.rows === b.rows
   map_parts(a.values,b.values) do dest, x
     Base.materialize!(dest,x)
   end
@@ -872,8 +872,8 @@ function Base.broadcasted(
   values = map(i->i.values,args)
   values = map_parts((largs...)->Base.broadcasted(f,largs...),values...)
   a1 = first(args)
-  @notimplementedif any(ai->ai.ids!==a1.ids,args)
-  DistributedBroadcasted(values,a1.ids)
+  @notimplementedif any(ai->ai.rows!==a1.rows,args)
+  DistributedBroadcasted(values,a1.rows)
 end
 
 function Base.broadcasted(
@@ -882,7 +882,7 @@ function Base.broadcasted(
   b::Union{DistributedVector,DistributedBroadcasted})
 
   values = map_parts(b->Base.broadcasted(f,a,b),b.values)
-  DistributedBroadcasted(values,b.ids)
+  DistributedBroadcasted(values,b.rows)
 end
 
 function Base.broadcasted(
@@ -891,11 +891,11 @@ function Base.broadcasted(
   b::Number)
 
   values = map_parts(a->Base.broadcasted(f,a,b),a.values)
-  DistributedBroadcasted(values,a.ids)
+  DistributedBroadcasted(values,a.rows)
 end
 
 function LinearAlgebra.norm(a::DistributedVector,p::Real=2)
-  contibs = map_parts(a.values,a.ids.lids) do lid_to_value, lids
+  contibs = map_parts(a.values,a.rows.lids) do lid_to_value, lids
     oid_to_value = view(lid_to_value,lids.oid_to_lid)
     norm(oid_to_value,p)^p
   end
@@ -904,17 +904,17 @@ end
 
 function DistributedVector{T}(
   ::UndefInitializer,
-  ids::DistributedRange) where T
+  rows::DistributedRange) where T
 
-  values = map_parts(ids.lids) do lids
+  values = map_parts(rows.lids) do lids
     nlids = num_lids(lids)
     Vector{T}(undef,nlids)
   end
-  DistributedVector(values,ids)
+  DistributedVector(values,rows)
 end
 
-function DistributedVector(v::Number, ids::DistributedRange)
-  a = DistributedVector{typeof(v)}(undef,ids)
+function DistributedVector(v::Number, rows::DistributedRange)
+  a = DistributedVector{typeof(v)}(undef,rows)
   fill!(a,v)
   a
 end
@@ -970,7 +970,7 @@ function Base.:*(a::Number,b::DistributedVector)
   values = map_parts(b.values) do values
     a*values
   end
-  DistributedVector(values,b.ids)
+  DistributedVector(values,b.rows)
 end
 
 function Base.:*(b::DistributedVector,a::Number)
@@ -984,15 +984,15 @@ for op in (:+,:-)
       values = map_parts(a.values) do a
         $op(a)
       end
-      DistributedVector(values,a.ids)
+      DistributedVector(values,a.rows)
     end
 
     function Base.$op(a::DistributedVector,b::DistributedVector)
-      @assert a.ids === b.ids
+      @assert a.rows === b.rows
       values = map_parts(a.values,b.values) do a,b
         $op(a,b)
       end
-      DistributedVector(values,a.ids)
+      DistributedVector(values,a.rows)
     end
 
   end
@@ -1006,7 +1006,7 @@ function Base.fill!(a::DistributedVector,v)
 end
 
 function Base.reduce(op,a::DistributedVector;init)
-  b = map_parts(a.values,a.ids.lids) do values,lids
+  b = map_parts(a.values,a.rows.lids) do values,lids
     owned_values = view(values,lids.oid_to_lid)
     reduce(op,owned_values,init=init)
   end
@@ -1018,7 +1018,7 @@ function Base.sum(a::DistributedVector)
 end
 
 function LinearAlgebra.dot(a::DistributedVector,b::DistributedVector)
-  c = map_parts(a.values,b.values,a.ids.lids,b.ids.lids) do a,b,alids,blids
+  c = map_parts(a.values,b.values,a.rows.lids,b.rows.lids) do a,b,alids,blids
     a_owned = view(a,alids.oid_to_lid)
     b_owned = view(b,blids.oid_to_lid)
     dot(a_owned,b_owned)
@@ -1031,7 +1031,7 @@ function local_view(a::DistributedVector)
 end
 
 function global_view(a::DistributedVector)
-  map_parts(a.values,a.ids.lids) do values, lids
+  map_parts(a.values,a.rows.lids) do values, lids
     GlobalView(values,(lids.gid_to_lid,),(lids.ngids,))
   end
 end
@@ -1064,20 +1064,20 @@ end
 
 function async_exchange!(
   a::DistributedVector,
-  t0::DistributedData=_empty_tasks(a.ids.exchanger.parts_rcv))
-  async_exchange!(a.values,a.ids.exchanger,t0)
+  t0::DistributedData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  async_exchange!(a.values,a.rows.exchanger,t0)
 end
 
 # Non-blocking assembly
 function async_assemble!(
   a::DistributedVector,
-  t0::DistributedData=_empty_tasks(a.ids.exchanger.parts_rcv);
+  t0::DistributedData=_empty_tasks(a.rows.exchanger.parts_rcv);
   reduce_op=+)
 
-  exchanger_rcv = a.ids.exchanger # receives data at ghost ids from remote parts
+  exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
   t1 = async_exchange!(a.values,exchanger_snd,t0;reduce_op=reduce_op)
-  map_parts(t1,a.values,a.ids.lids) do t1,values,lids
+  map_parts(t1,a.values,a.rows.lids) do t1,values,lids
     @task begin
       wait(schedule(t1))
       values[lids.hid_to_lid] .= zero(eltype(values))
@@ -1095,25 +1095,25 @@ end
 
 struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   values::A
-  row_ids::B
-  col_ids::C
+  rows::B
+  cols::C
   exchanger::D
   function DistributedSparseMatrix(
     values::DistributedData{<:AbstractSparseMatrix{T}},
-    row_ids::DistributedRange,
-    col_ids::DistributedRange,
-    exchanger=_matrix_exchanger(values,row_ids.exchanger,row_ids.lids,col_ids.lids)) where T
+    rows::DistributedRange,
+    cols::DistributedRange,
+    exchanger=_matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)) where T
 
     A = typeof(values)
-    B = typeof(row_ids)
-    C = typeof(col_ids)
+    B = typeof(rows)
+    C = typeof(cols)
     D = typeof(exchanger)
-    new{T,A,B,C,D}(values,row_ids,col_ids,exchanger)
+    new{T,A,B,C,D}(values,rows,cols,exchanger)
   end
 end
 
-Base.size(a::DistributedSparseMatrix) = (num_gids(a.row_ids),num_gids(a.col_ids))
-Base.axes(a::DistributedSparseMatrix) = (a.row_ids,a.col_ids)
+Base.size(a::DistributedSparseMatrix) = (num_gids(a.rows),num_gids(a.cols))
+Base.axes(a::DistributedSparseMatrix) = (a.rows,a.cols)
 Base.IndexStyle(::Type{<:DistributedSparseMatrix}) = IndexCartesian()
 function Base.getindex(a::DistributedSparseMatrix,gi::Integer,gj::Integer)
   #This should not be used in practice
@@ -1182,8 +1182,8 @@ function LinearAlgebra.mul!(
   α::Number,
   β::Number)
 
-  @assert c.ids === a.row_ids
-  @assert b.ids === a.col_ids
+  @assert c.rows === a.rows
+  @assert b.rows === a.cols
   t = async_exchange!(b)
   map_parts(t,c.values,a.values,b.values) do t,c,a,b
     # TODO start multiplying the diagonal block
@@ -1199,7 +1199,7 @@ function local_view(a::DistributedSparseMatrix)
 end
 
 function global_view(a::DistributedSparseMatrix)
-  map_parts(a.values,a.row_ids.lids,a.col_ids.lids) do values,rlids,clids
+  map_parts(a.values,a.rows.lids,a.cols.lids) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
   end
 end
@@ -1305,7 +1305,7 @@ function Base.:*(a::Number,b::DistributedSparseMatrix)
   values = map_parts(b.values) do values
     a*values
   end
-  DistributedSparseMatrix(values,b.row_ids,b.col_ids,b.exchanger)
+  DistributedSparseMatrix(values,b.rows,b.cols,b.exchanger)
 end
 
 function Base.:*(b::DistributedSparseMatrix,a::Number)
@@ -1314,7 +1314,7 @@ end
 
 function Base.:*(a::DistributedSparseMatrix{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
-  c = DistributedVector{T}(undef,a.row_ids)
+  c = DistributedVector{T}(undef,a.rows)
   mul!(c,a,b)
   c
 end
@@ -1326,7 +1326,7 @@ for op in (:+,:-)
       values = map_parts(a.values) do a
         $op(a)
       end
-      DistributedSparseMatrix(values,a.row_ids,a.col_ids,a.exchanger)
+      DistributedSparseMatrix(values,a.rows,a.cols,a.exchanger)
     end
 
   end
@@ -1337,29 +1337,29 @@ end
 # TODO swap row and cols
 struct Jacobi{T,A,B,C}
   diaginv::A
-  row_ids::B
-  col_ids::C
+  rows::B
+  cols::C
   function Jacobi(
     diaginv::DistributedData{<:AbstractVector{T}},
-    row_ids::DistributedRange,
-    col_ids::DistributedRange) where T
+    rows::DistributedRange,
+    cols::DistributedRange) where T
 
     A = typeof(diaginv)
-    B = typeof(row_ids)
-    C = typeof(col_ids)
-    new{T,A,B,C}(diaginv,row_ids,col_ids)
+    B = typeof(rows)
+    C = typeof(cols)
+    new{T,A,B,C}(diaginv,rows,cols)
   end
 end
 
 function Jacobi(a::DistributedSparseMatrix)
-  diaginv = map_parts(a.values,a.row_ids.lids,a.col_ids.lids) do values, rlids, clids
+  diaginv = map_parts(a.values,a.rows.lids,a.cols.lids) do values, rlids, clids
     @assert num_oids(rlids) == num_oids(clids)
     @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
     ldiag = collect(diag(values))
     odiag = ldiag[rlids.oid_to_lid]
     diaginv = inv.(odiag)
   end
-  Jacobi(diaginv,a.row_ids,a.col_ids)
+  Jacobi(diaginv,a.rows,a.cols)
 end
 
 function LinearAlgebra.ldiv!(
@@ -1367,9 +1367,9 @@ function LinearAlgebra.ldiv!(
   a::Jacobi,
   b::DistributedVector)
 
-  @assert c.ids === a.col_ids
-  @assert b.ids === a.row_ids
-  map_parts(c.values,a.diaginv,b.values,a.row_ids.lids,a.col_ids.lids) do c,diaginv,b,rlids,clids
+  @assert c.rows === a.cols
+  @assert b.rows === a.rows
+  map_parts(c.values,a.diaginv,b.values,a.rows.lids,a.cols.lids) do c,diaginv,b,rlids,clids
     @assert num_oids(rlids) == num_oids(clids)
     for oid in 1:num_oids(rlids)
       li = rlids.oid_to_lid[oid]
@@ -1388,7 +1388,7 @@ end
 
 function Base.:\(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = DistributedVector{T}(undef,a.col_ids)
+  c = DistributedVector{T}(undef,a.cols)
   ldiv!(c,a,b)
   c
 end

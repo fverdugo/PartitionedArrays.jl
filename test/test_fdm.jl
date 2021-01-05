@@ -7,27 +7,29 @@ using IterativeSolvers
 
 function test_fdm(parts)
 
+  u(x) = x[1]+x[2]
+  f(x) = zero(x[1])
+
   lx = 2.0
   ls = (lx,lx,lx)
   nx = 10
   ns = (nx,nx,nx)
   n = prod(ns)
-  h = lx/nx
+  h = lx/(nx-1)
   points = [(0,0,0),(-1,0,0),(1,0,0),(0,-1,0),(0,1,0),(0,0,-1),(0,0,1)]
   coeffs = [-6,1,1,1,1,1,1]/(h^2)
   stencil = [ (coeff,CartesianIndex(point)) for (coeff,point) in zip(coeffs,points) ]
 
   #lx = 2.0
   #ls = (lx,lx)
-  #nx = 4
+  #nx = 10
   #ns = (nx,nx)
   #n = prod(ns)
-  #h = lx/nx
+  #h = lx/(nx-1)
   #points = [(0,0),(-1,0),(1,0),(0,-1),(0,1)]
   #coeffs = [-4,1,1,1,1]/(h^2)
   #stencil = [ (coeff,CartesianIndex(point)) for (coeff,point) in zip(coeffs,points) ]
 
-  # TODO create an empty Exchanger
   if ndims(parts) == length(ns)
     rows = DistributedRange(parts,ns)
   else
@@ -43,9 +45,14 @@ function test_fdm(parts)
     for lid in rows.oid_to_lid
       i = rows.lid_to_gid[lid]
       ci = cis[i]
-      for (v,dcj) in stencil
-        cj = ci + dcj
-        if all(s->(1<=s&&s<=nx),Tuple(cj))
+      boundary = any(s->(1==s||s==nx),Tuple(ci))
+      if boundary
+        push!(I,i)
+        push!(J,i)
+        push!(V,one(eltype(V)))
+      else
+        for (v,dcj) in stencil
+          cj = ci + dcj
           j = lis[cj]
           push!(I,i)
           push!(J,j)
@@ -61,33 +68,40 @@ function test_fdm(parts)
   # TODO do not create an Exchanger if not needed
   A = DistributedSparseMatrix(I,J,V,rows,rows;ids=:global)
 
-  #display(rows.lids)
-
-  #display(A.values)
-
+  # TODO a way of building the vector along the matrix
   b = DistributedVector{eltype(A)}(undef,rows)
-
-  f(x) = x[1]+x[2]
 
   map_parts(b.values,rows.lids) do b,rows
     cis = CartesianIndices(ns)
-    #b .= 0
     for lid in rows.oid_to_lid
       i = rows.lid_to_gid[lid]
       ci = cis[i]
       xi = (Tuple(ci) .- 1) .* h
-      b[lid] = f(xi)
+      boundary = any(s->(1==s||s==nx),Tuple(ci))
+      if boundary
+        b[lid] = u(xi)
+      else
+        b[lid] = f(xi)
+      end
     end
-    b
+  end
+  #exchange!(b)
+
+  x̂ = similar(b)
+  map_parts(x̂.values,rows.lids) do x̂,rows
+    cis = CartesianIndices(ns)
+    for lid in rows.oid_to_lid
+      i = rows.lid_to_gid[lid]
+      ci = cis[i]
+      xi = (Tuple(ci) .- 1) .* h
+      x̂[lid] = u(xi)
+    end
   end
 
-  P = Jacobi(A)
+  x = copy(b)
+  IterativeSolvers.cg!(x,A,b,verbose=i_am_master(parts))
 
-  x = IterativeSolvers.cg(A,b,verbose=i_am_master(parts))
-  x = IterativeSolvers.cg(A,b,verbose=i_am_master(parts),Pl=P)
-  exchange!(x)
-
-  #display(P.diaginv)
+  @test norm(x-x̂) < 1.0e-5
 
   #display(b.values)
   #display(x.values)

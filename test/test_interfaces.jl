@@ -286,7 +286,7 @@ function test_interfaces(parts)
   fill!(v,1.0)
 
   v = DistributedVector{Float64}(undef,ids)
-  map_parts(parts,v.values,v.ids.lids) do part, values, lids
+  map_parts(parts,v.values,v.rows.lids) do part, values, lids
     for lid in 1:length(lids.lid_to_part)
       owner = lids.lid_to_part[lid]
       if owner == part
@@ -295,7 +295,7 @@ function test_interfaces(parts)
     end
   end
   exchange!(v)
-  map_parts(parts,v.values,v.ids.lids) do part, values, lids
+  map_parts(parts,v.values,v.rows.lids) do part, values, lids
     for lid in 1:length(lids.lid_to_part)
       owner = lids.lid_to_part[lid]
       @test values[lid] == 10*owner
@@ -304,22 +304,22 @@ function test_interfaces(parts)
 
   assemble!(v)
 
-  col_ids = ids
-  row_ids = col_ids
+  cols = ids
+  rows = cols
 
-  values = map_parts(row_ids.lids,col_ids.lids) do row_ids, col_ids
-    i = collect(1:num_lids(row_ids))
+  values = map_parts(rows.lids,cols.lids) do rows, cols
+    i = collect(1:num_lids(rows))
     j = i
     v = fill(2.0,length(i))
-    sparse(i,j,v,num_lids(row_ids),num_lids(col_ids))
+    sparse(i,j,v,num_lids(rows),num_lids(cols))
   end
 
-  x = DistributedVector{Float64}(undef,col_ids)
+  x = DistributedVector{Float64}(undef,cols)
   fill!(x,3)
-  b = DistributedVector{Float64}(undef,row_ids)
+  b = DistributedVector{Float64}(undef,rows)
 
 
-  A = DistributedSparseMatrix(values,row_ids,col_ids)
+  A = DistributedSparseMatrix(values,rows,cols)
   mul!(b,A,x)
 
   map_parts(b.values) do values
@@ -344,7 +344,7 @@ function test_interfaces(parts)
   local_view(A)
   global_view(A)
 
-  x = DistributedVector{Float64}(undef,A.col_ids)
+  x = DistributedVector{Float64}(undef,A.cols)
   fill!(x,1.0)
   y = A*x
   dy = y - y
@@ -352,11 +352,11 @@ function test_interfaces(parts)
   P = Jacobi(A)
   x = P\y
 
-  y = DistributedVector(1.0,A.row_ids)
+  y = DistributedVector(1.0,A.rows)
   x = IterativeSolvers.cg(A,y)
   x = IterativeSolvers.cg(A,y,Pl=P)
 
-  x = DistributedVector(0.0,A.col_ids)
+  x = DistributedVector(0.0,A.cols)
   IterativeSolvers.cg!(x,A,y)
   fill!(x,0.0)
   IterativeSolvers.cg!(x,A,y,Pl=P)
