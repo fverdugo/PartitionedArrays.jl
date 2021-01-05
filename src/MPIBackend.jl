@@ -1,5 +1,4 @@
 
-
 get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
 
@@ -10,7 +9,13 @@ const mpi = MPIBackend()
 function get_part_ids(b::MPIBackend,nparts::Integer)
   comm = MPI.COMM_WORLD
   @notimplementedif num_parts(comm) != nparts
-  MPIDistributedData(get_part_id(comm),comm)
+  MPIDistributedData(get_part_id(comm),comm,(nparts,))
+end
+
+function get_part_ids(b::MPIBackend,nparts::Tuple)
+  comm = MPI.COMM_WORLD
+  @notimplementedif num_parts(comm) != prod(nparts)
+  MPIDistributedData(get_part_id(comm),comm,nparts)
 end
 
 function distributed_run(driver::Function,b::MPIBackend,nparts)
@@ -23,14 +28,23 @@ function distributed_run(driver::Function,b::MPIBackend,nparts)
   #end
 end
 
-struct MPIDistributedData{T} <: DistributedData{T}
+struct MPIDistributedData{T,N} <: DistributedData{T,N}
   part::T
   comm::MPI.Comm
+  size::NTuple{N,Int}
+  function MPIDistributedData(
+    part::T,
+    comm::MPI.Comm,
+    size::NTuple{N,<:Integer}) where {T,N}
+    @assert num_parts(comm) == prod(size)
+    new{T,N}(part,comm,size)
+  end
 end
 
-num_parts(a::MPIDistributedData) = num_parts(a.comm)
+Base.size(a::MPIDistributedData) = a.size
 get_part_id(a::MPIDistributedData) = get_part_id(a.comm)
 get_backend(a::MPIDistributedData) = mpi
+i_am_master(a::MPIDistributedData) = get_part_id(a.comm) == MASTER
 
 function Base.iterate(a::MPIDistributedData)
   next = iterate(a.part)
@@ -38,7 +52,7 @@ function Base.iterate(a::MPIDistributedData)
     return next
   end
   item, state = next
-  MPIDistributedData(item,a.comm), state
+  MPIDistributedData(item,a.comm,a.size), state
 end
 
 function Base.iterate(a::MPIDistributedData,state)
@@ -47,7 +61,7 @@ function Base.iterate(a::MPIDistributedData,state)
     return next
   end
   item, state = next
-  MPIDistributedData(item,a.comm), state
+  MPIDistributedData(item,a.comm,a.size), state
 end
 
 function map_parts(task::Function,args::MPIDistributedData...)
@@ -55,7 +69,7 @@ function map_parts(task::Function,args::MPIDistributedData...)
   @assert all(a->a.comm===first(args).comm,args)
   parts_in = map(a->a.part,args)
   part_out = task(parts_in...)
-  MPIDistributedData(part_out,first(args).comm)
+  MPIDistributedData(part_out,first(args).comm,first(args).size)
 end
 
 function Base.show(io::IO,k::MIME"text/plain",data::MPIDistributedData)
@@ -103,11 +117,11 @@ function scatter(snd::MPIDistributedData)
     MPI.Scatter!(nothing,rcv,MASTER-1,snd.comm)        
     part = rcv[1]
   end
-  MPIDistributedData(part,snd.comm)
+  MPIDistributedData(part,snd.comm,snd.size)
 end
 
 function bcast(snd::MPIDistributedData)
-  MPIDistributedData(get_master_part(snd),snd.comm)
+  MPIDistributedData(get_master_part(snd),snd.comm,snd.size)
 end
 
 function async_exchange!(
@@ -121,6 +135,7 @@ function async_exchange!(
   @check parts_rcv.comm === data_snd.comm
   @check parts_rcv.comm === t_in.comm
   comm = parts_rcv.comm
+  s = parts_rcv.size
 
   t0 = t_in.part
 
@@ -153,7 +168,7 @@ function async_exchange!(
     MPI.Waitall!(req_all)
   end
 
-  t_out = MPIDistributedData(t2,comm)
+  t_out = MPIDistributedData(t2,comm,s)
   t_out
 end
 
@@ -168,6 +183,7 @@ function async_exchange!(
   @check parts_rcv.comm === data_snd.comm
   @check parts_rcv.comm === t_in.comm
   comm = parts_rcv.comm
+  s = parts_rcv.size
 
   t0 = t_in.part
 
@@ -202,7 +218,7 @@ function async_exchange!(
     MPI.Waitall!(req_all)
   end
 
-  t_out = MPIDistributedData(t2,comm)
+  t_out = MPIDistributedData(t2,comm,s)
   t_out
 end
 

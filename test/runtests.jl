@@ -1,13 +1,10 @@
 module RunTests
 
-using DistributedDataDraft
 using Test
 
-@testset "Interfaces" begin include("InterfacesTests.jl") end
+@testset "Sequential" begin include("sequential/runtests.jl") end
 
-@testset "SequentialBackend" begin include("SequentialBackendTests.jl") end
-
-@testset "MPIBackend" begin include("MPIBackendTests.jl") end
+@testset "MPI" begin include("mpi/runtests.jl") end
 
 end # module
 

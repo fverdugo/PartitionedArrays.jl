@@ -9,6 +9,7 @@ export Backend
 export distributed_run
 export DistributedData
 export num_parts
+export i_am_master
 export map_parts
 export get_part_ids
 export get_backend

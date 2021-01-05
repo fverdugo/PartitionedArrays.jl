@@ -17,9 +17,13 @@ function distributed_run(driver::Function,b::Backend,nparts)
 end
 
 # Data distributed in parts of type T
-abstract type DistributedData{T} end
+abstract type DistributedData{T,N} end
 
-num_parts(a::DistributedData) = @abstractmethod
+Base.size(a::DistributedData) = @abstractmethod
+
+Base.length(a::DistributedData) = prod(size(a))
+
+num_parts(a::DistributedData) = length(a)
 
 get_backend(a::DistributedData) = @abstractmethod
 
@@ -27,12 +31,17 @@ Base.iterate(a::DistributedData)  = @abstractmethod
 
 Base.iterate(a::DistributedData,state)  = @abstractmethod
 
-get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),num_parts(a))
+get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),size(a))
 
 map_parts(task::Function,a::DistributedData...) = @abstractmethod
 
+i_am_master(::DistributedData) = @abstractmethod
+
 Base.eltype(a::DistributedData{T}) where T = T
 Base.eltype(::Type{<:DistributedData{T}}) where T = T
+
+Base.ndims(a::DistributedData{T,N}) where {T,N} = N
+Base.ndims(::Type{<:DistributedData{T,N}}) where {T,N} = N
 
 #function map_parts(task::Function,a...)
 #  map_parts(task,map(DistributedData,a)...)
@@ -586,7 +595,8 @@ end
 
 _replace(x,y) = y
 
-struct DistributedRange{A,B} <: AbstractUnitRange{Int}
+# TODO mutable is needed to correctly implement add_gid!
+mutable struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
   exchanger::B
@@ -632,7 +642,32 @@ function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
   DistributedRange(ngids,lids)
 end
 
-function _oid_to_gid(ngids,np,p)
+function DistributedRange(
+  parts::DistributedData{<:Integer},
+  ngids::NTuple{N,<:Integer}) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    gids = _oid_to_gid(ngids,np,part)
+    lid_to_gid = gids
+    lid_to_part = fill(part,length(gids))
+    part_to_gid = _part_to_gid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_gid)
+    oid_to_lid = Int32(1):Int32(length(gids))
+    hid_to_lid = collect(Int32(1):Int32(0))
+    IndexSet(
+      part,
+      prod(ngids),
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  DistributedRange(prod(ngids),lids)
+end
+
+function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
   _olength = ngids ÷ np
   _offset = _olength * (p-1)
   _rem = ngids % np
@@ -646,23 +681,74 @@ function _oid_to_gid(ngids,np,p)
   Int(1+offset):Int(olength+offset)
 end
 
-function _part_to_gid(ngids,np)
+function _oid_to_gid(ngids::Tuple,np::Tuple,p::Integer)
+  cp = Tuple(CartesianIndices(np)[p])
+  _oid_to_gid(ngids,np,cp)
+end
+
+function _oid_to_gid(ngids::Tuple,np::Tuple,p::Tuple)
+  D = length(np)
+  @assert length(ngids) == D
+  d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
+  _id_tensor_product(d_to_odid_to_gdid,ngids)
+end
+
+function _id_tensor_product(d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tuple)
+  d_to_nldids = map(length,d_to_dlid_to_gdid)
+  lcis = CartesianIndices(d_to_nldids)
+  llis = LinearIndices(d_to_nldids)
+  glis = LinearIndices(d_to_ngdids)
+  D = length(d_to_ngdids)
+  gci = zeros(Int,D)
+  lid_to_gid = zeros(Int,length(lcis))
+  for lci in lcis
+    for d in 1:D
+      ldid = lci[d]
+      gdid = d_to_dlid_to_gdid[d][ldid]
+      gci[d] = gdid
+    end
+    lid = llis[lci]
+    lid_to_gid[lid] = glis[CartesianIndex(Tuple(gci))]
+  end
+  lid_to_gid
+end
+
+function _part_to_gid(ngids::Integer,np::Integer)
   [first(_oid_to_gid(ngids,np,p)) for p in 1:np]
 end
 
-struct GidToPart <: AbstractVector{Int}
-  ngids::Int
-  part_to_gid::Vector{Int}
+function _part_to_gid(ngids::Tuple,np::Tuple)
+  map(_part_to_gid,ngids,np)
 end
-Base.size(a::GidToPart) = (a.ngids,)
+
+struct GidToPart{A,B} <: AbstractVector{Int}
+  ngids::A
+  part_to_gid::B
+end
+
+Base.size(a::GidToPart) = (prod(a.ngids),)
 Base.IndexStyle(::Type{<:GidToPart}) = IndexLinear()
+
 function Base.getindex(a::GidToPart,gid::Integer)
   @boundscheck begin
     if !( 1<=gid && gid<=length(a) )
       throw(BoundsError(a,gid))
     end
   end
-  searchsortedlast(a.part_to_gid,gid)
+  _find_part_from_gid(a.ngids,a.part_to_gid,gid)
+end
+
+function _find_part_from_gid(ngids::Int,part_to_gid::Vector{Int},gid::Integer)
+  searchsortedlast(part_to_gid,gid)
+end
+
+function _find_part_from_gid(
+  ngids::NTuple{N,Int},part_to_gid::NTuple{N,Vector{Int}},gid::Integer) where N
+  cgid = Tuple(CartesianIndices(ngids)[gid])
+  cpart = map(searchsortedlast,part_to_gid,cgid)
+  nparts = map(length,part_to_gid)
+  part = LinearIndices(nparts)[CartesianIndex(cpart)]
+  part
 end
 
 function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:Integer}})
@@ -671,6 +757,7 @@ function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:In
       add_gid!(lids,gid)
     end
   end
+  a.exchanger = Exchanger(a.lids)
   a
 end
 
@@ -919,7 +1006,10 @@ function Base.fill!(a::DistributedVector,v)
 end
 
 function Base.reduce(op,a::DistributedVector;init)
-  b = map_parts(values->reduce(op,values,init=init),a.values)
+  b = map_parts(a.values,a.ids.lids) do values,lids
+    owned_values = view(values,lids.oid_to_lid)
+    reduce(op,owned_values,init=init)
+  end
   reduce(op,b,init=init)
 end
 
@@ -928,7 +1018,11 @@ function Base.sum(a::DistributedVector)
 end
 
 function LinearAlgebra.dot(a::DistributedVector,b::DistributedVector)
-  c = map_parts(dot,a.values,b.values)
+  c = map_parts(a.values,b.values,a.ids.lids,b.ids.lids) do a,b,alids,blids
+    a_owned = view(a,alids.oid_to_lid)
+    b_owned = view(b,blids.oid_to_lid)
+    dot(a_owned,b_owned)
+  end
   sum(c)
 end
 
@@ -1240,6 +1334,7 @@ end
 
 # This structs implements the same methods as the Identity preconditioner
 # in the IterativeSolvers package.
+# TODO swap row and cols
 struct Jacobi{T,A,B,C}
   diaginv::A
   row_ids::B
@@ -1264,7 +1359,7 @@ function Jacobi(a::DistributedSparseMatrix)
     odiag = ldiag[rlids.oid_to_lid]
     diaginv = inv.(odiag)
   end
-  Jacobi(diaginv,a.col_ids,a.row_ids)
+  Jacobi(diaginv,a.row_ids,a.col_ids)
 end
 
 function LinearAlgebra.ldiv!(
@@ -1272,14 +1367,14 @@ function LinearAlgebra.ldiv!(
   a::Jacobi,
   b::DistributedVector)
 
-  @assert c.ids === a.row_ids
-  @assert b.ids === a.col_ids
+  @assert c.ids === a.col_ids
+  @assert b.ids === a.row_ids
   map_parts(c.values,a.diaginv,b.values,a.row_ids.lids,a.col_ids.lids) do c,diaginv,b,rlids,clids
     @assert num_oids(rlids) == num_oids(clids)
     for oid in 1:num_oids(rlids)
       li = rlids.oid_to_lid[oid]
       lj = clids.oid_to_lid[oid]
-      c[li] = diaginv[oid]*b[lj]
+      c[lj] = diaginv[oid]*b[li]
     end
   end
   c
@@ -1293,7 +1388,7 @@ end
 
 function Base.:\(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = DistributedVector{T}(undef,a.row_ids)
+  c = DistributedVector{T}(undef,a.col_ids)
   ldiv!(c,a,b)
   c
 end
