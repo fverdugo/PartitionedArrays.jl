@@ -204,9 +204,26 @@ function test_interfaces(parts)
   end
 
   ids3 = add_gid(ids2,gids)
-
   to_lid!(gids,ids3)
   to_gid!(gids,ids3)
+
+  if ndims(parts) > 1
+    ids4 = DistributedRange(parts,(5,4))
+    @test num_gids(ids4) == 4*5
+    map_parts(parts,ids4.lids) do part, ids4
+      if part == 1
+        @test ids4.lid_to_gid == [1, 2, 6, 7]
+      elseif part == 2
+        @test ids4.lid_to_gid == [3, 4, 5, 8, 9, 10]
+      elseif part == 3
+        @test ids4.lid_to_gid == [11, 12, 16, 17]
+      else
+        @test ids4.lid_to_gid == [13, 14, 15, 18, 19, 20]
+      end
+      @test ids4.gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
+    end
+  end
+
   v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:global)
   v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:local)
   v = DistributedVector(gids,map_parts(copy,gids),n;ids=:global)
