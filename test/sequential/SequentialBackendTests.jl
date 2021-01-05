@@ -139,7 +139,7 @@ function main(parts)
 end
 
 nparts = 4
-#main(get_part_ids(sequential,nparts))
+main(get_part_ids(sequential,nparts))
 
 nparts = (2,2)
 main(get_part_ids(sequential,nparts))

@@ -1,16 +1,23 @@
 using DistributedDataDraft
 using Test
 
-nparts = 4
-distributed_run(mpi,nparts) do parts
+function main(parts)
 
   display(parts)
+
+  nparts = num_parts(parts)
+  @assert nparts == 4
+
+  #s = size(parts)
+  #display(map_parts(part->s,parts))
 
   i_am_master(parts)
 
   values = map_parts(parts) do part
     10*part
   end
+
+  @test size(values) == size(parts)
   
   map_parts(parts,values) do part, value
     @test 10*part == value
@@ -69,6 +76,8 @@ distributed_run(mpi,nparts) do parts
   data_snd = map_parts(parts,parts_snd) do part, parts_snd
     Table([ Int[i,part] for i in parts_snd])
   end
+
+  @test size(data_snd) == size(parts)
   
   data_rcv = exchange(data_snd,parts_rcv,parts_snd)
 
@@ -96,38 +105,51 @@ distributed_run(mpi,nparts) do parts
     @test b == b1
   end
 
-rcv = gather(parts) 
-
-map_parts(parts,rcv) do part, rcv
-  if part == MASTER
-    @test rcv == collect(1:nparts)
-  else
-    @test length(rcv) == 0
+  rcv = gather(parts) 
+  @test size(rcv) == size(parts)
+  
+  map_parts(parts,rcv) do part, rcv
+    if part == MASTER
+      @test rcv == collect(1:nparts)
+    else
+      @test length(rcv) == 0
+    end
   end
+  
+  rcv = scatter(rcv)
+  map_parts(parts,rcv) do part, rcv
+    @test part == rcv
+  end
+  
+  rcv = gather_all(parts) 
+  
+  map_parts(rcv) do rcv
+    @test rcv == collect(1:nparts)
+  end
+  
+  @test get_part(rcv) == collect(1:nparts)
+  
+  rcv = bcast(parts)
+
+  @test size(rcv) == size(parts)
+  
+  map_parts(rcv) do rcv
+    @test rcv == 1
+  end
+  
+  @test get_master_part(rcv) == MASTER
+  
+  @test get_part(parts,3) == 3
+
 end
 
-rcv = scatter(rcv)
-map_parts(parts,rcv) do part, rcv
-  @test part == rcv
-end
+using MPI
 
-rcv = gather_all(parts) 
+MPI.Init()
 
-map_parts(rcv) do rcv
-  @test rcv == collect(1:nparts)
-end
+nparts = 4
+main(get_part_ids(mpi,nparts))
 
-@test get_part(rcv) == collect(1:nparts)
-
-rcv = bcast(parts)
-
-map_parts(rcv) do rcv
-  @test rcv == 1
-end
-
-@test get_master_part(rcv) == MASTER
-
-@test get_part(parts,3) == 3
-
-end
+nparts = (2,2)
+main(get_part_ids(mpi,nparts))
 
