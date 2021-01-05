@@ -8,4 +8,6 @@ using Test
 
 @testset "Interfaces" begin include("InterfacesTests.jl") end
 
+@testset "FDM" begin include("FDMTests.jl") end
+
 end

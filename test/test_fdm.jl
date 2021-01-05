@@ -55,6 +55,7 @@ function test_fdm(parts)
 
   add_gid!(rows,I)
   add_gid!(rows,J)
+  # TODO do not create an Exchanger if not needed
   A = DistributedSparseMatrix(I,J,V,rows,rows;ids=:global)
 
   #display(rows.lids)
@@ -79,8 +80,8 @@ function test_fdm(parts)
 
   P = Jacobi(A)
 
-  x = IterativeSolvers.cg(A,b,verbose=false)
-  x = IterativeSolvers.cg(A,b,verbose=false,Pl=P)
+  x = IterativeSolvers.cg(A,b,verbose=i_am_master(parts))
+  x = IterativeSolvers.cg(A,b,verbose=i_am_master(parts),Pl=P)
   exchange!(x)
 
   #display(P.diaginv)

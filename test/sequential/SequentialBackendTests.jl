@@ -7,6 +7,8 @@ nparts = 4
 
 parts = get_part_ids(sequential,nparts)
 
+@test i_am_master(parts) == true
+
 values = map_parts(parts) do part
   10*part
 end

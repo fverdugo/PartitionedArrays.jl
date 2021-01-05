@@ -31,6 +31,8 @@ get_part_ids(a::DistributedData) = get_part_ids(get_backend(a),num_parts(a))
 
 map_parts(task::Function,a::DistributedData...) = @abstractmethod
 
+i_am_master(::DistributedData) = @abstractmethod
+
 Base.eltype(a::DistributedData{T}) where T = T
 Base.eltype(::Type{<:DistributedData{T}}) where T = T
 

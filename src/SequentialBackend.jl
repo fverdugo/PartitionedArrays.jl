@@ -14,6 +14,8 @@ end
 
 num_parts(a::SequentialDistributedData) = length(a.parts)
 
+i_am_master(a::SequentialDistributedData) = true
+
 get_backend(a::SequentialDistributedData) = sequential
 
 function Base.iterate(a::SequentialDistributedData)

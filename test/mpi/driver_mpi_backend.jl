@@ -6,6 +6,8 @@ distributed_run(mpi,nparts) do parts
 
   display(parts)
 
+  i_am_master(parts)
+
   values = map_parts(parts) do part
     10*part
   end

@@ -31,6 +31,7 @@ end
 num_parts(a::MPIDistributedData) = num_parts(a.comm)
 get_part_id(a::MPIDistributedData) = get_part_id(a.comm)
 get_backend(a::MPIDistributedData) = mpi
+i_am_master(a::MPIDistributedData) = get_part_id(a.comm) == MASTER
 
 function Base.iterate(a::MPIDistributedData)
   next = iterate(a.part)
