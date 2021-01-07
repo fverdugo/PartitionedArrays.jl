@@ -1281,11 +1281,6 @@ function DistributedSparseMatrix(
   @assert ids == :global
   parts = get_part_ids(I)
   rows = DistributedRange(parts,nrows)
-  #if nrows == ncols
-  #  cols = rows
-  #else
-  #  cols = DistributedRange(parts,ncols)
-  #end
   cols = DistributedRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
