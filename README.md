@@ -11,7 +11,7 @@ This package provides a data-oriented parallel implementation of the basic linea
 
 At this moment, a simple FD system can be assembled and solved in parallel with this package together with a Conjugate Gradient method from `IterativeSolvers.jl` . See the file [test_fdm.jl]( https://github.com/fverdugo/DistributedDataDraft.jl/blob/master/test/test_fdm.jl).
 
-Three basic types are currently implemented:
+These basic types are currently implemented:
 - `DistributedData`: The low level type representing some data distributed over several parts. This is the core component of the data-oriented parallel implementation.
 - `DistributedRange`: A specialization of `AbstractUnitRange` that has information about how the ids in the range are distributed in different chunks. This type is used to describe the parallel data layout of rows and cols in `DistrubutedVector` and `DistributedSparseMatrix` objects.
 - `DistributedVector`: A vector distributed in (overlapping or non-overlapping) chunks.
