@@ -539,6 +539,14 @@ function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
+function empty_exchanger(a::DistributedData)
+  parts_rcv = map_parts(i->Int[],a)
+  parts_snd = map_parts(i->Int[],a)
+  lids_rcv = map_parts(i->Table(Vector{Int32}[]),a)
+  lids_snd = map_parts(i->Table(Vector{Int32}[]),a)
+  Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
+end
+
 function Base.reverse(a::Exchanger)
   Exchanger(a.parts_snd,a.parts_rcv,a.lids_snd,a.lids_rcv)
 end
@@ -611,19 +619,31 @@ _replace(x,y) = y
 mutable struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
+  ghost::Bool
   exchanger::B
   function DistributedRange(
     ngids::Integer,
     lids::DistributedData{<:IndexSet},
-    exchanger::Exchanger=Exchanger(lids))
+    ghost::Bool,
+    exchanger::Exchanger)
   
     A = typeof(lids)
     B = typeof(exchanger)
     new{A,B}(
       ngids,
       lids,
+      ghost,
       exchanger)
   end
+end
+
+function DistributedRange(
+  ngids::Integer,
+  lids::DistributedData{<:IndexSet},
+  ghost::Bool=true)
+
+  exchanger =  ghost ? Exchanger(lids) : empty_exchanger(lids)
+  DistributedRange(ngids,lids,ghost,exchanger)
 end
 
 Base.first(a::DistributedRange) = 1
@@ -651,7 +671,8 @@ function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
       oid_to_lid,
       hid_to_lid)
   end
-  DistributedRange(ngids,lids)
+  ghost = false
+  DistributedRange(ngids,lids,ghost)
 end
 
 function DistributedRange(
@@ -676,7 +697,8 @@ function DistributedRange(
       oid_to_lid,
       hid_to_lid)
   end
-  DistributedRange(prod(ngids),lids)
+  ghost = false
+  DistributedRange(prod(ngids),lids,ghost)
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
@@ -770,6 +792,7 @@ function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:In
     end
   end
   a.exchanger = Exchanger(a.lids)
+  a.ghost = true
   a
 end
 
@@ -1007,6 +1030,7 @@ function DistributedVector(v::Number, rows::DistributedRange)
   a
 end
 
+# If one chooses ids=:global the ids are translated in-place in I.
 function DistributedVector(
   init,
   I::DistributedData{<:AbstractArray{<:Integer}},
@@ -1186,7 +1210,7 @@ struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     values::DistributedData{<:AbstractSparseMatrix{T}},
     rows::DistributedRange,
     cols::DistributedRange,
-    exchanger=_matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)) where T
+    exchanger::Exchanger) where T
 
     A = typeof(values)
     B = typeof(rows)
@@ -1194,6 +1218,19 @@ struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     D = typeof(exchanger)
     new{T,A,B,C,D}(values,rows,cols,exchanger)
   end
+end
+
+function DistributedSparseMatrix(
+  values::DistributedData{<:AbstractSparseMatrix{T}},
+  rows::DistributedRange,
+  cols::DistributedRange) where T
+
+  if rows.ghost
+    exchanger = matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)
+  else
+    exchanger = empty_exchanger(rows.lids)
+  end
+  DistributedSparseMatrix(values,rows,cols,exchanger)
 end
 
 function Base.getproperty(x::DistributedSparseMatrix, sym::Symbol)
@@ -1247,6 +1284,7 @@ function Base.getindex(a::DistributedSparseMatrix,gi::Integer,gj::Integer)
   @notimplemented
 end
 
+# If one chooses ids=:global the ids are translated in-place in I and J
 function DistributedSparseMatrix(
   init,
   I::DistributedData{<:AbstractArray{<:Integer}},
@@ -1408,7 +1446,7 @@ function global_view(a::DistributedSparseMatrix)
   end
 end
 
-function _matrix_exchanger(values,row_exchanger,row_lids,col_lids)
+function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
 
   part = get_part_ids(row_lids)
   parts_rcv = row_exchanger.parts_rcv

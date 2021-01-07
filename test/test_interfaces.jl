@@ -190,6 +190,7 @@ function test_interfaces(parts)
   @test num_gids(ids) == n
 
   ids2 = DistributedRange(parts,n)
+  @test ids2.ghost == false
 
   gids = map_parts(parts) do part
     if part == 1
@@ -204,11 +205,13 @@ function test_interfaces(parts)
   end
 
   ids3 = add_gid(ids2,gids)
+  @test ids3.ghost == true
   to_lid!(gids,ids3)
   to_gid!(gids,ids3)
 
   if ndims(parts) > 1
     ids4 = DistributedRange(parts,(5,4))
+    @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
     map_parts(parts,ids4.lids) do part, ids4
       if part == 1
