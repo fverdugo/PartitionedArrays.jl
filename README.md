@@ -27,7 +27,13 @@ On these types, several communication operations are defined:
 
 ## Why
 
-The basic design novelty of this library is that it implements (and allows to implement) parallel algorithms in a generic way independently of the underlying hardware / message passing software that is eventually used. At this moment, this library provides two back ends for running the generic parallel algorithms:
+One can use PETSc bindings like [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) for parallel computations in Julia, but this approach has some limitations:
+
+- PETSc is had-codded for vectors/matrices of some particular element types (e.g. Float64 and Complex64).
+
+- PETSc forces one to use MPI as the parallel execution model. Drivers are executed as `mpirun -np 4 julia --project=. input.jl`, which means no interactive Julia sessions, no `Revise`, no `Debugger`. This is a major limitation to develop parallel algorithms.
+
+This package aims to overcome these limitations. It implements (and allows to implement) parallel algorithms in a generic way independently of the underlying hardware / message passing software that is eventually used. At this moment, this library provides two back ends for running the generic parallel algorithms:
 - `SequentialBackend`: The parallel data is split in chunks, which are stored in a conventional (sequential) Julia session (typically in an `Array`). The tasks in the parallel algorithms are executed one after the other. Note that the sequential back end does not mean to distribute the data in a single part. The data can be split in an arbitrary number of parts. 
 - `MPIBackend`: Chunks of parallel data and parallel tasks are mapped to different MPI processes. The drivers are to be executed in MPI mode, e.g., `mpirun -n 4 julia --project=. input.jl`.
 
