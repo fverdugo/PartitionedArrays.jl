@@ -15,7 +15,7 @@ Three basic types are currently implemented:
 - `DistributedData`: The low level type representing some data distributed over several parts. This is the core component of the data-oriented parallel implementation.
 - `DistributedRange`: A specialization of `AbstractUnitRange` that has information about how the ids in the range are distributed in different chunks. This type is used to describe the parallel data layout of rows and cols in `DistrubutedVector` and `DistributedSparseMatrix` objects.
 - `DistributedVector`: A vector distributed in (overlapping or non-overlapping) chunks.
-- `DistributedSparseMatrix`: A sparse matrix distributed in (overlapping or non-overlapping)) chunks.
+- `DistributedSparseMatrix`: A sparse matrix distributed in (overlapping or non-overlapping)) chunks of rows.
 
 On these types, several communication operations are defined:
 
