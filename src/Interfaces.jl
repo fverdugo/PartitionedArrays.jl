@@ -904,9 +904,10 @@ function Base.copy(b::DistributedVector)
   a
 end
 
-struct DistributedBroadcasted{A,B}
+struct DistributedBroadcasted{A,B,C}
   owned_values::A
-  rows::B
+  ghost_values::B
+  rows::C
 end
 
 @inline function Base.materialize(b::DistributedBroadcasted)
@@ -916,12 +917,23 @@ end
   map_parts(a.owned_values,owned_values) do dest, src
     dest .= src
   end
+  if b.ghost_values !== nothing
+    ghost_values = map_parts(Base.materialize,b.ghost_values)
+    map_parts(a.ghost_values,ghost_values) do dest, src
+      dest .= src
+    end
+  end
   a
 end
 
 @inline function Base.materialize!(a::DistributedVector,b::DistributedBroadcasted)
   map_parts(a.owned_values,b.owned_values) do dest, x
     Base.materialize!(dest,x)
+  end
+  if b.ghost_values !== nothing
+    map_parts(a.ghost_values,b.ghost_values) do dest, x
+      Base.materialize!(dest,x)
+    end
   end
   a
 end
@@ -934,7 +946,13 @@ function Base.broadcasted(
   @check all(ai->oids_are_equal(ai.rows,a1.rows),args)
   owned_values_in = map(arg->arg.owned_values,args)
   owned_values = map_parts((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
-  DistributedBroadcasted(owned_values,a1.rows)
+  if all(ai->ai.rows===a1.rows,args) && !any(ai->ai.ghost_values===nothing,args)
+    ghost_values_in = map(arg->arg.ghost_values,args)
+    ghost_values = map_parts((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
+  else
+    ghost_values = nothing
+  end
+  DistributedBroadcasted(owned_values,ghost_values,a1.rows)
 end
 
 function Base.broadcasted(
@@ -943,7 +961,12 @@ function Base.broadcasted(
   b::Union{DistributedVector,DistributedBroadcasted})
 
   owned_values = map_parts(b->Base.broadcasted(f,a,b),b.owned_values)
-  DistributedBroadcasted(owned_values,b.rows)
+  if b.ghost_values !== nothing
+    ghost_values = map_parts(b->Base.broadcasted(f,a,b),b.ghost_values)
+  else
+    ghost_values = nothing
+  end
+  DistributedBroadcasted(owned_values,ghost_values,b.rows)
 end
 
 function Base.broadcasted(
@@ -952,7 +975,12 @@ function Base.broadcasted(
   b::Number)
 
   owned_values = map_parts(a->Base.broadcasted(f,a,b),a.owned_values)
-  DistributedBroadcasted(owned_values,a.rows)
+  if a.ghost_values !== nothing
+    ghost_values = map_parts(a->Base.broadcasted(f,a,b),a.ghost_values)
+  else
+    ghost_values = nothing
+  end
+  DistributedBroadcasted(owned_values,ghost_values,a.rows)
 end
 
 function LinearAlgebra.norm(a::DistributedVector,p::Real=2)

@@ -228,11 +228,11 @@ function test_interfaces(parts)
   v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:local)
   v = DistributedVector(gids,map_parts(copy,gids),n;ids=:global)
   u = 2*v
-  map_parts(u.owned_values,v.owned_values) do u,v
+  map_parts(u.values,v.values) do u,v
     @test u == 2*v
   end
   u = v + u
-  map_parts(u.owned_values,v.owned_values) do u,v
+  map_parts(u.values,v.values) do u,v
     @test u == 3*v
   end
 
