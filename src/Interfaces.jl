@@ -279,6 +279,7 @@ function discover_parts_snd(parts_rcv::DistributedData, neighbors::DistributedDa
   parts_snd
 end
 
+# TODO
 # If neighbors not provided, all procs are considered neighbors (to be improved)
 function discover_parts_snd(parts_rcv::DistributedData)
   parts = get_part_ids(parts_rcv)
@@ -1451,14 +1452,11 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
   part = get_part_ids(row_lids)
   parts_rcv = row_exchanger.parts_rcv
   parts_snd = row_exchanger.parts_snd
-  findnz_values = map_parts(findnz,values)
 
-  function setup_rcv(part,parts_rcv,row_lids,col_lids,findnz_values)
-    k_li, k_lj, = findnz_values
+  function setup_rcv(part,parts_rcv,row_lids,col_lids,values)
     owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
     ptrs = zeros(Int32,length(parts_rcv)+1)
-    for k in 1:length(k_li)
-      li = k_li[k]
+    for (li,lj,v) in nziterator(values)
       owner = row_lids.lid_to_part[li]
       if owner != part
         ptrs[owner_to_i[owner]+1] +=1
@@ -1468,9 +1466,7 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
     k_rcv_data = zeros(Int,ptrs[end]-1)
     gi_rcv_data = zeros(Int,ptrs[end]-1)
     gj_rcv_data = zeros(Int,ptrs[end]-1)
-    for k in 1:length(k_li)
-      li = k_li[k]
-      lj = k_lj[k]
+    for (k,(li,lj,v)) in enumerate(nziterator(values))
       owner = row_lids.lid_to_part[li]
       if owner != part
         p = ptrs[owner_to_i[owner]]
@@ -1487,34 +1483,99 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
     k_rcv, gi_rcv, gj_rcv
   end
   
-  k_rcv, gi_rcv, gj_rcv = map_parts(setup_rcv,part,parts_rcv,row_lids,col_lids,findnz_values)
+  k_rcv, gi_rcv, gj_rcv = map_parts(setup_rcv,part,parts_rcv,row_lids,col_lids,values)
 
   gi_snd = exchange(gi_rcv,parts_snd,parts_rcv)
   gj_snd = exchange(gj_rcv,parts_snd,parts_rcv)
 
-  function setup_snd(part,row_lids,col_lids,gi_snd,gj_snd,findnz_values)
+  function setup_snd(part,row_lids,col_lids,gi_snd,gj_snd,values)
     ptrs = gi_snd.ptrs
     k_snd_data = zeros(Int,ptrs[end]-1)
-    k_li, k_lj, = findnz_values
-    k_v = collect(1:length(k_li))
-    # TODO this can be optimized:
-    li_lj_to_k = sparse(k_li,k_lj,k_v,num_lids(row_lids),num_lids(col_lids))
     for p in 1:length(gi_snd.data)
       gi = gi_snd.data[p]
       gj = gj_snd.data[p]
       li = row_lids.gid_to_lid[gi]
       lj = col_lids.gid_to_lid[gj]
-      k = li_lj_to_k[li,lj]
-      @assert k > 0 "The sparsity patern of the ghost layer is inconsistent"
+      k = nzindex(values,li,lj)
+      @check k > 0 "The sparsity patern of the ghost layer is inconsistent"
       k_snd_data[p] = k
     end
     k_snd = Table(k_snd_data,ptrs)
     k_snd
   end
 
-  k_snd = map_parts(setup_snd,part,row_lids,col_lids,gi_snd,gj_snd,findnz_values)
+  k_snd = map_parts(setup_snd,part,row_lids,col_lids,gi_snd,gj_snd,values)
 
   Exchanger(parts_rcv,parts_snd,k_rcv,k_snd)
+end
+
+function nzindex(A::AbstractSparseMatrix, i0::Integer, i1::Integer)
+  @notimplemented
+end
+
+function nzindex(A::SparseArrays.AbstractSparseMatrixCSC, i0::Integer, i1::Integer)
+    if !(1 <= i0 <= size(A, 1) && 1 <= i1 <= size(A, 2)); throw(BoundsError()); end
+    ptrs = SparseArrays.getcolptr(A)
+    r1 = Int(ptrs[i1])
+    r2 = Int(ptrs[i1+1]-1)
+    (r1 > r2) && return -1
+    r1 = searchsortedfirst(rowvals(A), i0, r1, r2, Base.Order.Forward)
+    ((r1 > r2) || (rowvals(A)[r1] != i0)) ? -1 : r1
+end
+
+nziterator(a::AbstractSparseMatrix) = @notimplemented
+
+nziterator(a::SparseArrays.AbstractSparseMatrixCSC) = NZIteratorCSC(a)
+
+struct NZIteratorCSC{A}
+  matrix::A
+end
+
+Base.length(a::NZIteratorCSC) = nnz(a.matrix)
+Base.eltype(::Type{<:NZIteratorCSC{A}}) where A = Tuple{Int,Int,eltype(A)}
+Base.eltype(::T) where T <: NZIteratorCSC = eltype(T)
+Base.IteratorSize(::Type{<:NZIteratorCSC}) = Base.HasLength()
+Base.IteratorEltype(::Type{<:NZIteratorCSC}) = Base.HasEltype()
+
+@inline function Base.iterate(a::NZIteratorCSC)
+  if nnz(a.matrix) == 0
+    return nothing
+  end
+  col = 0
+  ptrs = SparseArrays.getcolptr(a.matrix)
+  knext = nothing
+  while knext === nothing
+    col += 1
+    ks = ptrs[col]:(ptrs[col+1]-1)
+    knext = iterate(ks)
+  end
+  k, kstate = knext
+  i = Int(rowvals(a.matrix)[k])
+  j = col
+  v = nonzeros(a.matrix)[k]
+  (i,j,v), (col,kstate)
+end
+
+@inline function Base.iterate(a::NZIteratorCSC,state)
+  ptrs = SparseArrays.getcolptr(a.matrix)
+  col, kstate = state
+  ks = ptrs[col]:(ptrs[col+1]-1)
+  knext = iterate(ks,kstate)
+  if knext === nothing
+    while knext === nothing
+      if col == size(a.matrix,2)
+        return nothing
+      end
+      col += 1
+      ks = ptrs[col]:(ptrs[col+1]-1)
+      knext = iterate(ks)
+    end
+  end
+  k, kstate = knext
+  i = Int(rowvals(a.matrix)[k])
+  j = col
+  v = nonzeros(a.matrix)[k]
+  (i,j,v), (col,kstate)
 end
 
 # Non-blocking exchange
