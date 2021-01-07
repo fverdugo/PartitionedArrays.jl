@@ -35,6 +35,9 @@ export num_gids
 export num_lids
 export num_oids
 export num_hids
+export oids_are_equal
+export hids_are_equal
+export lids_are_equal
 export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer

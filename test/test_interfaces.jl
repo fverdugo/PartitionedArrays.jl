@@ -228,11 +228,11 @@ function test_interfaces(parts)
   v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:local)
   v = DistributedVector(gids,map_parts(copy,gids),n;ids=:global)
   u = 2*v
-  map_parts(u.values,v.values) do u,v
+  map_parts(u.owned_values,v.owned_values) do u,v
     @test u == 2*v
   end
   u = v + u
-  map_parts(u.values,v.values) do u,v
+  map_parts(u.owned_values,v.owned_values) do u,v
     @test u == 3*v
   end
 
@@ -249,6 +249,26 @@ function test_interfaces(parts)
   w =  1 .+ v
   @test isa(w,DistributedVector)
   w =  v .+ 1
+  @test isa(w,DistributedVector)
+  w =  v .+ w .- u
+  @test isa(w,DistributedVector)
+  w =  v .+ 1 .- u
+  @test isa(w,DistributedVector)
+
+  w .= v .- u
+  w .= v .- 1 .- u
+
+  u = DistributedVector(1.0,ids2)
+  w = DistributedVector(3.0,ids3)
+
+  @test oids_are_equal(u.rows,u.rows)
+  @test hids_are_equal(u.rows,u.rows)
+  @test lids_are_equal(u.rows,u.rows)
+  @test oids_are_equal(u.rows,w.rows)
+  @test !hids_are_equal(u.rows,w.rows)
+  @test !lids_are_equal(u.rows,w.rows)
+
+  w = v .- u
   @test isa(w,DistributedVector)
   w =  v .+ w .- u
   @test isa(w,DistributedVector)
@@ -322,6 +342,11 @@ function test_interfaces(parts)
   A = DistributedSparseMatrix(values,rows,cols)
   mul!(b,A,x)
 
+  map_parts(b.owned_values) do values
+    @test all( values .== 6 )
+  end
+
+  exchange!(b)
   map_parts(b.values) do values
     @test all( values .== 6 )
   end
