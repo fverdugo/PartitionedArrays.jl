@@ -52,6 +52,8 @@ export global_view
 export async_assemble!
 export assemble!
 export DistributedSparseMatrix
+export nzindex
+export nziterator
 export Jacobi
 
 export SequentialBackend
