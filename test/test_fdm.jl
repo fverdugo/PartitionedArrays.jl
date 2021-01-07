@@ -46,8 +46,8 @@ function test_fdm(parts)
   x̂ = similar(b)
   
   # Loop over (owned) rows, fill the coo-vectors, rhs, and the exact solution
-  # In this case, we always touch local rows, but arbitrary cols
-  # row ids can be readily stored in local numbering so that we do not need to convert
+  # In this case, we always touch local rows, but arbitrary cols.
+  # Thus, row ids can be readily stored in local numbering so that we do not need to convert
   # them later.
   I,J,V = map_parts(rows.lids,b.values,x̂.values) do rows,b,x̂
     cis = CartesianIndices(ns)
@@ -92,8 +92,8 @@ function test_fdm(parts)
   # and the data distribution described by rows and cols.
   A = DistributedSparseMatrix(I,J,V,rows,cols;ids=:local)
 
-  # The initial guess needs the ghost layer
-  # in other to perform the product A*x in the cg solver
+  # The initial guess needs the ghost layer (that why we take cols)
+  # in other to perform the product A*x in the cg solver.
   # We also need to set the boundary values
   x = DistributedVector(0.0,cols)
   map_parts(x.values,x.rows.lids) do x,rows
