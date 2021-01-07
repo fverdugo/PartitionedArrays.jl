@@ -190,6 +190,7 @@ function test_interfaces(parts)
   @test num_gids(ids) == n
 
   ids2 = DistributedRange(parts,n)
+  @test ids2.ghost == false
 
   gids = map_parts(parts) do part
     if part == 1
@@ -204,11 +205,13 @@ function test_interfaces(parts)
   end
 
   ids3 = add_gid(ids2,gids)
+  @test ids3.ghost == true
   to_lid!(gids,ids3)
   to_gid!(gids,ids3)
 
   if ndims(parts) > 1
     ids4 = DistributedRange(parts,(5,4))
+    @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
     map_parts(parts,ids4.lids) do part, ids4
       if part == 1
@@ -249,6 +252,26 @@ function test_interfaces(parts)
   w =  1 .+ v
   @test isa(w,DistributedVector)
   w =  v .+ 1
+  @test isa(w,DistributedVector)
+  w =  v .+ w .- u
+  @test isa(w,DistributedVector)
+  w =  v .+ 1 .- u
+  @test isa(w,DistributedVector)
+
+  w .= v .- u
+  w .= v .- 1 .- u
+
+  u = DistributedVector(1.0,ids2)
+  w = DistributedVector(3.0,ids3)
+
+  @test oids_are_equal(u.rows,u.rows)
+  @test hids_are_equal(u.rows,u.rows)
+  @test lids_are_equal(u.rows,u.rows)
+  @test oids_are_equal(u.rows,w.rows)
+  @test !hids_are_equal(u.rows,w.rows)
+  @test !lids_are_equal(u.rows,w.rows)
+
+  w = v .- u
   @test isa(w,DistributedVector)
   w =  v .+ w .- u
   @test isa(w,DistributedVector)
@@ -322,6 +345,11 @@ function test_interfaces(parts)
   A = DistributedSparseMatrix(values,rows,cols)
   mul!(b,A,x)
 
+  map_parts(b.owned_values) do values
+    @test all( values .== 6 )
+  end
+
+  exchange!(b)
   map_parts(b.values) do values
     @test all( values .== 6 )
   end

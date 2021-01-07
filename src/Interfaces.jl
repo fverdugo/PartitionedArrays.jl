@@ -453,6 +453,18 @@ function to_gid!(ids::AbstractArray{<:Integer},a::IndexSet)
   ids
 end
 
+function oids_are_equal(a::IndexSet,b::IndexSet)
+  view(a.lid_to_gid,a.oid_to_lid) == view(b.lid_to_gid,b.oid_to_lid)
+end
+
+function hids_are_equal(a::IndexSet,b::IndexSet)
+  view(a.lid_to_gid,a.hid_to_lid) == view(b.lid_to_gid,b.hid_to_lid)
+end
+
+function lids_are_equal(a::IndexSet,b::IndexSet)
+  a.lid_to_gid == b.lid_to_gid
+end
+
 struct Exchanger{B,C}
   parts_rcv::B
   parts_snd::B
@@ -524,6 +536,14 @@ function Exchanger(ids::DistributedData{<:IndexSet},neighbors=nothing)
     lids_snd
   end
 
+  Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
+end
+
+function empty_exchanger(a::DistributedData)
+  parts_rcv = map_parts(i->Int[],a)
+  parts_snd = map_parts(i->Int[],a)
+  lids_rcv = map_parts(i->Table(Vector{Int32}[]),a)
+  lids_snd = map_parts(i->Table(Vector{Int32}[]),a)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
@@ -599,19 +619,31 @@ _replace(x,y) = y
 mutable struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
+  ghost::Bool
   exchanger::B
   function DistributedRange(
     ngids::Integer,
     lids::DistributedData{<:IndexSet},
-    exchanger::Exchanger=Exchanger(lids))
+    ghost::Bool,
+    exchanger::Exchanger)
   
     A = typeof(lids)
     B = typeof(exchanger)
     new{A,B}(
       ngids,
       lids,
+      ghost,
       exchanger)
   end
+end
+
+function DistributedRange(
+  ngids::Integer,
+  lids::DistributedData{<:IndexSet},
+  ghost::Bool=true)
+
+  exchanger =  ghost ? Exchanger(lids) : empty_exchanger(lids)
+  DistributedRange(ngids,lids,ghost,exchanger)
 end
 
 Base.first(a::DistributedRange) = 1
@@ -639,7 +671,8 @@ function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
       oid_to_lid,
       hid_to_lid)
   end
-  DistributedRange(ngids,lids)
+  ghost = false
+  DistributedRange(ngids,lids,ghost)
 end
 
 function DistributedRange(
@@ -664,7 +697,8 @@ function DistributedRange(
       oid_to_lid,
       hid_to_lid)
   end
-  DistributedRange(prod(ngids),lids)
+  ghost = false
+  DistributedRange(prod(ngids),lids,ghost)
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
@@ -758,6 +792,7 @@ function add_gid!(a::DistributedRange,gids::DistributedData{<:AbstractArray{<:In
     end
   end
   a.exchanger = Exchanger(a.lids)
+  a.ghost = true
   a
 end
 
@@ -776,6 +811,33 @@ function to_gid!(ids::DistributedData{<:AbstractArray{<:Integer}},a::Distributed
   map_parts(to_gid!,ids,a.lids)
 end
 
+function oids_are_equal(a::DistributedRange,b::DistributedRange)
+  if a.lids === b.lids
+    true
+  else
+    c = map_parts(oids_are_equal,a.lids,b.lids)
+    reduce(&,c,init=true)
+  end
+end
+
+function hids_are_equal(a::DistributedRange,b::DistributedRange)
+  if a.lids === b.lids
+    true
+  else
+    c = map_parts(hids_are_equal,a.lids,b.lids)
+    reduce(&,c,init=true)
+  end
+end
+
+function lids_are_equal(a::DistributedRange,b::DistributedRange)
+  if a.lids === b.lids
+    true
+  else
+    c = map_parts(lids_are_equal,a.lids,b.lids)
+    reduce(&,c,init=true)
+  end
+end
+
 struct DistributedVector{T,A,B} <: AbstractVector{T}
   values::A
   rows::B
@@ -787,6 +849,24 @@ struct DistributedVector{T,A,B} <: AbstractVector{T}
     B = typeof(rows)
     new{T,A,B}(values,rows)
   end
+end
+
+function Base.getproperty(x::DistributedVector, sym::Symbol)
+  if sym == :owned_values
+    map_parts(x.values,x.rows.lids) do v,r
+      view(v,r.oid_to_lid)
+    end
+  elseif sym == :ghost_values
+    map_parts(x.values,x.rows.lids) do v,r
+      view(v,r.hid_to_lid)
+    end
+  else
+    getfield(x, sym)
+  end
+end
+
+function Base.propertynames(x::DistributedVector, private=false)
+  (fieldnames(typeof(x))...,:owned_values,:ghost_values)
 end
 
 Base.size(a::DistributedVector) = (length(a.rows),)
@@ -847,20 +927,36 @@ function Base.copy(b::DistributedVector)
   a
 end
 
-struct DistributedBroadcasted{A,B}
-  values::A
-  rows::B
+struct DistributedBroadcasted{A,B,C}
+  owned_values::A
+  ghost_values::B
+  rows::C
 end
 
-@inline function Base.materialize(bc::DistributedBroadcasted)
-  values = map_parts(Base.materialize,bc.values)
-  DistributedVector(values,bc.rows)
+@inline function Base.materialize(b::DistributedBroadcasted)
+  owned_values = map_parts(Base.materialize,b.owned_values)
+  T = eltype(eltype(owned_values))
+  a = DistributedVector{T}(undef,b.rows)
+  map_parts(a.owned_values,owned_values) do dest, src
+    dest .= src
+  end
+  if b.ghost_values !== nothing
+    ghost_values = map_parts(Base.materialize,b.ghost_values)
+    map_parts(a.ghost_values,ghost_values) do dest, src
+      dest .= src
+    end
+  end
+  a
 end
 
 @inline function Base.materialize!(a::DistributedVector,b::DistributedBroadcasted)
-  @assert a.rows === b.rows
-  map_parts(a.values,b.values) do dest, x
+  map_parts(a.owned_values,b.owned_values) do dest, x
     Base.materialize!(dest,x)
+  end
+  if b.ghost_values !== nothing
+    map_parts(a.ghost_values,b.ghost_values) do dest, x
+      Base.materialize!(dest,x)
+    end
   end
   a
 end
@@ -869,11 +965,17 @@ function Base.broadcasted(
   f,
   args::Union{DistributedVector,DistributedBroadcasted}...)
 
-  values = map(i->i.values,args)
-  values = map_parts((largs...)->Base.broadcasted(f,largs...),values...)
   a1 = first(args)
-  @notimplementedif any(ai->ai.rows!==a1.rows,args)
-  DistributedBroadcasted(values,a1.rows)
+  @check all(ai->oids_are_equal(ai.rows,a1.rows),args)
+  owned_values_in = map(arg->arg.owned_values,args)
+  owned_values = map_parts((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
+  if all(ai->ai.rows===a1.rows,args) && !any(ai->ai.ghost_values===nothing,args)
+    ghost_values_in = map(arg->arg.ghost_values,args)
+    ghost_values = map_parts((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
+  else
+    ghost_values = nothing
+  end
+  DistributedBroadcasted(owned_values,ghost_values,a1.rows)
 end
 
 function Base.broadcasted(
@@ -881,8 +983,13 @@ function Base.broadcasted(
   a::Number,
   b::Union{DistributedVector,DistributedBroadcasted})
 
-  values = map_parts(b->Base.broadcasted(f,a,b),b.values)
-  DistributedBroadcasted(values,b.rows)
+  owned_values = map_parts(b->Base.broadcasted(f,a,b),b.owned_values)
+  if b.ghost_values !== nothing
+    ghost_values = map_parts(b->Base.broadcasted(f,a,b),b.ghost_values)
+  else
+    ghost_values = nothing
+  end
+  DistributedBroadcasted(owned_values,ghost_values,b.rows)
 end
 
 function Base.broadcasted(
@@ -890,13 +997,17 @@ function Base.broadcasted(
   a::Union{DistributedVector,DistributedBroadcasted},
   b::Number)
 
-  values = map_parts(a->Base.broadcasted(f,a,b),a.values)
-  DistributedBroadcasted(values,a.rows)
+  owned_values = map_parts(a->Base.broadcasted(f,a,b),a.owned_values)
+  if a.ghost_values !== nothing
+    ghost_values = map_parts(a->Base.broadcasted(f,a,b),a.ghost_values)
+  else
+    ghost_values = nothing
+  end
+  DistributedBroadcasted(owned_values,ghost_values,a.rows)
 end
 
 function LinearAlgebra.norm(a::DistributedVector,p::Real=2)
-  contibs = map_parts(a.values,a.rows.lids) do lid_to_value, lids
-    oid_to_value = view(lid_to_value,lids.oid_to_lid)
+  contibs = map_parts(a.owned_values) do oid_to_value
     norm(oid_to_value,p)^p
   end
   reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
@@ -919,6 +1030,7 @@ function DistributedVector(v::Number, rows::DistributedRange)
   a
 end
 
+# If one chooses ids=:global the ids are translated in-place in I.
 function DistributedVector(
   init,
   I::DistributedData{<:AbstractArray{<:Integer}},
@@ -988,11 +1100,7 @@ for op in (:+,:-)
     end
 
     function Base.$op(a::DistributedVector,b::DistributedVector)
-      @assert a.rows === b.rows
-      values = map_parts(a.values,b.values) do a,b
-        $op(a,b)
-      end
-      DistributedVector(values,a.rows)
+      $op.(a,b)
     end
 
   end
@@ -1102,7 +1210,7 @@ struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     values::DistributedData{<:AbstractSparseMatrix{T}},
     rows::DistributedRange,
     cols::DistributedRange,
-    exchanger=_matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)) where T
+    exchanger::Exchanger) where T
 
     A = typeof(values)
     B = typeof(rows)
@@ -1110,6 +1218,62 @@ struct DistributedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     D = typeof(exchanger)
     new{T,A,B,C,D}(values,rows,cols,exchanger)
   end
+end
+
+function DistributedSparseMatrix(
+  values::DistributedData{<:AbstractSparseMatrix{T}},
+  rows::DistributedRange,
+  cols::DistributedRange) where T
+
+  if rows.ghost
+    exchanger = matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)
+  else
+    exchanger = empty_exchanger(rows.lids)
+  end
+  DistributedSparseMatrix(values,rows,cols,exchanger)
+end
+
+function Base.getproperty(x::DistributedSparseMatrix, sym::Symbol)
+  if sym == :owned_owned_values
+    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+      indices = (r.oid_to_lid,c.oid_to_lid)
+      inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
+      flag = (1,1)
+      SubSparseMatrix(v,indices,inv_indices,flag)
+    end
+  elseif sym == :owned_ghost_values
+    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+      indices = (r.oid_to_lid,c.hid_to_lid)
+      inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
+      flag = (1,-1)
+      SubSparseMatrix(v,indices,inv_indices,flag)
+    end
+  elseif sym == :ghost_owned_values
+    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+      indices = (r.hid_to_lid,c.oid_to_lid)
+      inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
+      flag = (-1,1)
+      SubSparseMatrix(v,indices,inv_indices,flag)
+    end
+  elseif sym == :ghost_ghost_values
+    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+      indices = (r.hid_to_lid,c.hid_to_lid)
+      inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
+      flag = (-1,-1)
+      SubSparseMatrix(v,indices,inv_indices,flag)
+    end
+  else
+    getfield(x, sym)
+  end
+end
+
+function Base.propertynames(x::DistributedSparseMatrix, private=false)
+  (
+    fieldnames(typeof(x))...,
+    :owned_owned_values,
+    :owned_ghost_values,
+    :ghost_owned_values,
+    :ghost_ghost_values)
 end
 
 Base.size(a::DistributedSparseMatrix) = (num_gids(a.rows),num_gids(a.cols))
@@ -1120,6 +1284,7 @@ function Base.getindex(a::DistributedSparseMatrix,gi::Integer,gj::Integer)
   @notimplemented
 end
 
+# If one chooses ids=:global the ids are translated in-place in I and J
 function DistributedSparseMatrix(
   init,
   I::DistributedData{<:AbstractArray{<:Integer}},
@@ -1154,11 +1319,7 @@ function DistributedSparseMatrix(
   @assert ids == :global
   parts = get_part_ids(I)
   rows = DistributedRange(parts,nrows)
-  if nrows == ncols
-    cols = rows
-  else
-    cols = DistributedRange(parts,ncols)
-  end
+  cols = DistributedRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
   DistributedSparseMatrix(init,I,J,V,rows,cols;ids=ids)
@@ -1182,16 +1343,97 @@ function LinearAlgebra.mul!(
   α::Number,
   β::Number)
 
-  @assert c.rows === a.rows
-  @assert b.rows === a.cols
+  @check oids_are_equal(c.rows,a.rows)
+  @check oids_are_equal(a.cols,b.rows)
+  @check hids_are_equal(a.cols,b.rows)
+
+  # Start the exchange
   t = async_exchange!(b)
-  map_parts(t,c.values,a.values,b.values) do t,c,a,b
-    # TODO start multiplying the diagonal block
-    # before waiting for the ghost values of b
-    wait(schedule(t))
-    mul!(c,a,b,α,β)
+
+  # Meanwhile, process the owned blocks
+  map_parts(c.owned_values,a.owned_owned_values,b.owned_values) do co,aoo,bo
+    if β != 1
+        β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
+    end
+    mul!(co,aoo,bo,α,1)
   end
+
+  # Wait for the exchange to finish and process the ghost block
+  map_parts(t,c.owned_values,a.owned_ghost_values,b.ghost_values) do t,co,aoh,bh
+    wait(schedule(t))
+    mul!(co,aoh,bh,α,1)
+  end
+
   c
+end
+
+struct SubSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
+  parent::A
+  indices::B
+  inv_indices::C
+  flag::Tuple{Int,Int}
+  function SubSparseMatrix(
+    parent::AbstractSparseMatrix{T},
+    indices::Tuple,
+    inv_indices::Tuple,
+    flag::Tuple{Int,Int}) where T
+
+    A = typeof(parent)
+    B = typeof(indices)
+    C = typeof(inv_indices)
+    new{T,A,B,C}(parent,indices,inv_indices,flag)
+  end
+end
+
+Base.size(a::SubSparseMatrix) = map(length,a.indices)
+Base.IndexStyle(::Type{<:SubSparseMatrix}) = IndexCartesian()
+function Base.getindex(a::SubSparseMatrix,i::Integer,j::Integer)
+  I = a.indices[1][i]
+  J = a.indices[2][j]
+  a.parent[I,J]
+end
+
+function LinearAlgebra.mul!(
+  C::AbstractVector,
+  A::SubSparseMatrix,
+  B::AbstractVector,
+  α::Number,
+  β::Number)
+
+  @notimplemented
+end
+
+function LinearAlgebra.mul!(
+  C::AbstractVector,
+  A::SubSparseMatrix{T,<:SparseArrays.AbstractSparseMatrixCSC} where T,
+  B::AbstractVector,
+  α::Number,
+  β::Number)
+
+  size(A, 2) == size(B, 1) || throw(DimensionMismatch())
+  size(A, 1) == size(C, 1) || throw(DimensionMismatch())
+  size(B, 2) == size(C, 2) || throw(DimensionMismatch())
+  if β != 1
+      β != 0 ? rmul!(C, β) : fill!(C, zero(eltype(C)))
+  end
+  rows, cols = A.indices
+  invrows, invcols = A.inv_indices
+  rflag, cflag = A.flag
+  Ap = A.parent
+  nzv = nonzeros(Ap)
+  rv = rowvals(Ap)
+  colptrs = SparseArrays.getcolptr(Ap)
+  for (j,J) in enumerate(cols)
+      αxj = B[j] * α
+      for p = colptrs[J]:(colptrs[J+1]-1)
+        I = rv[p]
+        i = invrows[I]*rflag
+        if i>0
+          C[i] += nzv[p]*αxj
+        end
+      end
+  end
+  C
 end
 
 function local_view(a::DistributedSparseMatrix)
@@ -1204,7 +1446,7 @@ function global_view(a::DistributedSparseMatrix)
   end
 end
 
-function _matrix_exchanger(values,row_exchanger,row_lids,col_lids)
+function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
 
   part = get_part_ids(row_lids)
   parts_rcv = row_exchanger.parts_rcv
@@ -1334,7 +1576,6 @@ end
 
 # This structs implements the same methods as the Identity preconditioner
 # in the IterativeSolvers package.
-# TODO swap row and cols
 struct Jacobi{T,A,B,C}
   diaginv::A
   rows::B
@@ -1367,14 +1608,11 @@ function LinearAlgebra.ldiv!(
   a::Jacobi,
   b::DistributedVector)
 
-  @assert c.rows === a.cols
-  @assert b.rows === a.rows
-  map_parts(c.values,a.diaginv,b.values,a.rows.lids,a.cols.lids) do c,diaginv,b,rlids,clids
-    @assert num_oids(rlids) == num_oids(clids)
-    for oid in 1:num_oids(rlids)
-      li = rlids.oid_to_lid[oid]
-      lj = clids.oid_to_lid[oid]
-      c[lj] = diaginv[oid]*b[li]
+  @check oids_are_equal(c.rows,a.cols)
+  @check oids_are_equal(b.rows,a.rows)
+  map_parts(c.owned_values,a.diaginv,b.owned_values) do c,diaginv,b
+    for oid in 1:length(b)
+      c[oid] = diaginv[oid]*b[oid]
     end
   end
   c
@@ -1393,7 +1631,7 @@ function Base.:\(a::Jacobi{Ta},b::DistributedVector{Tb}) where {Ta,Tb}
   c
 end
 
-# Misc functions that could be removed if IterativeSolvers would be implemented in terms
+# Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::DistributedSparseMatrix,b::DistributedVector)
   T = IterativeSolvers.Adivtype(A, b)

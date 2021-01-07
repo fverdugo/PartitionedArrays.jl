@@ -30,13 +30,26 @@ function test_fdm(parts)
   #coeffs = [-4,1,1,1,1]/(h^2)
   #stencil = [ (coeff,CartesianIndex(point)) for (coeff,point) in zip(coeffs,points) ]
 
+  # Use a Cartesian partition if possible
   if ndims(parts) == length(ns)
     rows = DistributedRange(parts,ns)
   else
     rows = DistributedRange(parts,n)
   end
+
+  # We don't need the ghost layer for the rhs
+  # So, it can be allocated right now.
+  b = DistributedVector{Float64}(undef,rows)
+
+  # We don't need the ghost layer for the exact solution
+  # So, it can be allocated right now.
+  x̂ = similar(b)
   
-  I,J,V = map_parts(rows.lids) do rows
+  # Loop over (owned) rows, fill the coo-vectors, rhs, and the exact solution
+  # In this case, we always touch local rows, but arbitrary cols.
+  # Thus, row ids can be readily stored in local numbering so that we do not need to convert
+  # them later.
+  I,J,V = map_parts(rows.lids,b.values,x̂.values) do rows,b,x̂
     cis = CartesianIndices(ns)
     lis = LinearIndices(cis)
     I = Int[]
@@ -45,65 +58,66 @@ function test_fdm(parts)
     for lid in rows.oid_to_lid
       i = rows.lid_to_gid[lid]
       ci = cis[i]
+      xi = (Tuple(ci) .- 1) .* h
+      x̂[lid] = u(xi)
       boundary = any(s->(1==s||s==nx),Tuple(ci))
       if boundary
-        push!(I,i)
+        push!(I,lid)
         push!(J,i)
         push!(V,one(eltype(V)))
+        b[lid] = u(xi)
       else
         for (v,dcj) in stencil
           cj = ci + dcj
           j = lis[cj]
-          push!(I,i)
+          push!(I,lid)
           push!(J,j)
           push!(V,-v)
         end
+        b[lid] = f(xi)
       end
     end
     I,J,V
   end
 
-  add_gid!(rows,I)
-  add_gid!(rows,J)
-  # TODO do not create an Exchanger if not needed
-  A = DistributedSparseMatrix(I,J,V,rows,rows;ids=:global)
+  # TODO fill b and x̂ while add_gid is communicating values.
 
-  # TODO a way of building the vector along the matrix
-  b = DistributedVector{eltype(A)}(undef,rows)
+  # Build a DistributedRange taking the owned ids in rows plus ghost ids from the touched cols
+  cols = add_gid(rows,J)
 
-  map_parts(b.values,rows.lids) do b,rows
-    cis = CartesianIndices(ns)
+  # Now we can convert J to local numbering, I is already in local numbering.
+  to_lid!(J,cols)
+
+  # Build the DistributedSparseMatrix from the coo-vectors (in local numbering)
+  # and the data distribution described by rows and cols.
+  A = DistributedSparseMatrix(I,J,V,rows,cols;ids=:local)
+
+  # The initial guess needs the ghost layer (that why we take cols)
+  # in other to perform the product A*x in the cg solver.
+  # We also need to set the boundary values
+  x = DistributedVector(0.0,cols)
+  map_parts(x.values,x.rows.lids) do x,rows
     for lid in rows.oid_to_lid
+      cis = CartesianIndices(ns)
       i = rows.lid_to_gid[lid]
       ci = cis[i]
       xi = (Tuple(ci) .- 1) .* h
       boundary = any(s->(1==s||s==nx),Tuple(ci))
       if boundary
-        b[lid] = u(xi)
-      else
-        b[lid] = f(xi)
+        x[lid] = u(xi)
       end
     end
   end
-  #exchange!(b)
 
-  x̂ = similar(b)
-  map_parts(x̂.values,rows.lids) do x̂,rows
-    cis = CartesianIndices(ns)
-    for lid in rows.oid_to_lid
-      i = rows.lid_to_gid[lid]
-      ci = cis[i]
-      xi = (Tuple(ci) .- 1) .* h
-      x̂[lid] = u(xi)
-    end
-  end
-
-  x = copy(b)
+  # When this call returns, x has the correct answer only in the owned values.
+  # The values at ghost ids can be recovered with exchange!(x)
   IterativeSolvers.cg!(x,A,b,verbose=i_am_master(parts))
 
+  # This compares owned values, so we don't need to exchange!
   @test norm(x-x̂) < 1.0e-5
 
   #display(b.values)
+  #exchange!(x)
   #display(x.values)
 
 end
