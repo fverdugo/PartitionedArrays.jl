@@ -638,6 +638,14 @@ mutable struct DistributedRange{A,B} <: AbstractUnitRange{Int}
   end
 end
 
+function Base.copy(a::DistributedRange)
+  ngids = copy(a.ngids)
+  lids = deepcopy(a.lids)
+  ghost = copy(a.ghost)
+  exchanger = deepcopy(a.exchanger)
+  DistributedRange(ngids,lids,ghost,exchanger)
+end
+
 function DistributedRange(
   ngids::Integer,
   lids::DistributedData{<:IndexSet},
@@ -677,7 +685,13 @@ function DistributedRange(parts::DistributedData{<:Integer},ngids::Integer)
 end
 
 function DistributedRange(
-  parts::DistributedData{<:Integer},
+  parts::DistributedData{<:Integer,1},
+  ngids::NTuple{N,<:Integer}) where N
+  DistributedRange(parts,prod(ngids))
+end
+
+function DistributedRange(
+  parts::DistributedData{<:Integer,N},
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
@@ -1338,14 +1352,6 @@ function DistributedSparseMatrix(
   DistributedSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
 end
 
-function DistributedSparseMatrix(init,coo::DistributedCOO)
-  DistributedSparseMatrix(init,coo.I,coo.J,coo.V,coo.rows,coo.cols,ids=:local)
-end
-
-function DistributedSparseMatrix(coo::DistributedCOO)
-  DistributedSparseMatrix(sparse,coo)
-end
-
 function LinearAlgebra.mul!(
   c::DistributedVector,
   a::DistributedSparseMatrix,
@@ -1613,53 +1619,27 @@ function async_assemble!(
   end
 end
 
-struct DistributedCOO{A,B,C,D,E}
-  I::A
-  J::B
-  V::C
-  rows::D
-  cols::E
-  function DistributedCOO(
-    I::DistributedData{<:AbstractVector{<:Integer}},
-    J::DistributedData{<:AbstractVector{<:Integer}},
-    V::DistributedData{<:AbstractVector},
-    rows::DistributedRange,
-    cols::DistributedRange;
-    ids::Symbol)
-
-    @assert ids in (:global,:local)
-    if ids == :global
-      to_lid!(I,rows)
-      to_lid!(J,cols)
-    end
-    A = typeof(I)
-    B = typeof(J)
-    C = typeof(V)
-    D = typeof(rows)
-    E = typeof(cols)
-    new{A,B,C,D,E}(I,J,V,rows,cols)
-  end
-end
-
 function async_assemble!(
-  a::DistributedCOO,
-  t0::DistributedData=_empty_tasks(a.rows.exchanger.parts_rcv);
+  I::DistributedData{<:AbstractVector{<:Integer}},
+  J::DistributedData{<:AbstractVector{<:Integer}},
+  V::DistributedData{<:AbstractVector},
+  rows::DistributedRange,
+  t0::DistributedData=_empty_tasks(rows.exchanger.parts_rcv);
   reduce_op=+)
 
   map_parts(wait∘schedule,t0)
 
-  rows = a.rows
-  cols = a.cols
   part = get_part_ids(rows.lids)
   parts_rcv = rows.exchanger.parts_rcv
   parts_snd = rows.exchanger.parts_snd
 
-  coo_values = map_parts(tuple,a.I,a.J,a.V)
+  to_lid!(I,rows)
+  coo_values = map_parts(tuple,I,J,V)
 
-  function setup_rcv(part,parts_rcv,row_lids,col_lids,coo_values)
+  function setup_rcv(part,parts_rcv,row_lids,coo_values)
     owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_rcv) ))
     ptrs = zeros(Int32,length(parts_rcv)+1)
-    k_li, k_lj, k_v = coo_values
+    k_li, k_gj, k_v = coo_values
     for k in 1:length(k_li)
       li = k_li[k]
       owner = row_lids.lid_to_part[li]
@@ -1673,13 +1653,14 @@ function async_assemble!(
     v_rcv_data = zeros(eltype(k_v),ptrs[end]-1)
     for k in 1:length(k_li)
       li = k_li[k]
-      lj = k_lj[k]
-      v = k_v[k]
       owner = row_lids.lid_to_part[li]
       if owner != part
+        gi = row_lids.lid_to_gid[li]
+        gj = k_gj[k]
+        v = k_v[k]
         p = ptrs[owner_to_i[owner]]
-        gi_rcv_data[p] = row_lids.lid_to_gid[li]
-        gj_rcv_data[p] = col_lids.lid_to_gid[lj]
+        gi_rcv_data[p] = gi
+        gj_rcv_data[p] = gj
         v_rcv_data[p] = v
         k_v[k] = zero(v)
         ptrs[owner_to_i[owner]] += 1
@@ -1692,40 +1673,32 @@ function async_assemble!(
     gi_rcv, gj_rcv, v_rcv 
   end
   
-  gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.lids,cols.lids,coo_values)
-
-  display(parts_rcv)
-  display(gj_rcv)
-  #display(gj_rcv)
-
-  kkk
+  gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.lids,coo_values)
 
   gi_snd, t1 = async_exchange(gi_rcv,parts_snd,parts_rcv)
   gj_snd, t2 = async_exchange(gj_rcv,parts_snd,parts_rcv)
   v_snd, t3 = async_exchange(v_rcv,parts_snd,parts_rcv)
 
-  function setup_snd(t1,t2,t3,part,row_lids,col_lids,gi_snd,gj_snd,v_snd,coo_values)
+  function setup_snd(t1,t2,t3,part,row_lids,gi_snd,gj_snd,v_snd,coo_values)
     @task begin
       wait(schedule(t1))
       wait(schedule(t2))
       wait(schedule(t3))
-      k_li, k_lj, k_v = coo_values
+      k_li, k_gj, k_v = coo_values
+      to_gid!(k_li,row_lids)
       ptrs = gi_snd.ptrs
       for p in 1:length(gi_snd.data)
         gi = gi_snd.data[p]
         gj = gj_snd.data[p]
-        add_gid!(col_lids,gj)
         v = v_snd.data[p]
-        li = row_lids.gid_to_lid[gi]
-        lj = col_lids.gid_to_lid[gj]
-        push!(k_li,li)
-        push!(k_lj,lj)
+        push!(k_li,gi)
+        push!(k_gj,gj)
         push!(k_v,v)
       end
     end
   end
 
-  t4 = map_parts(setup_snd,t1,t2,t3,part,rows.lids,cols.lids,gi_snd,gj_snd,v_snd,coo_values)
+  t4 = map_parts(setup_snd,t1,t2,t3,part,rows.lids,gi_snd,gj_snd,v_snd,coo_values)
 
   t4
 end
