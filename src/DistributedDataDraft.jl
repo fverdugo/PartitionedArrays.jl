@@ -51,6 +51,7 @@ export local_view
 export global_view
 export async_assemble!
 export assemble!
+export DistributedCOO
 export DistributedSparseMatrix
 export nzindex
 export nziterator
