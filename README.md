@@ -38,5 +38,5 @@ This package aims to overcome these limitations. It implements (and allows to im
 - `MPIBackend`: Chunks of parallel data and parallel tasks are mapped to different MPI processes. The drivers are to be executed in MPI mode, e.g., `mpirun -n 4 julia --project=. input.jl`.
 
 
-The `SequentialBackend` is specially handy for developing new code. Since it runs in a standard Julia session, one can use tools like `Revise` and `Debugger` that will certainly do your live easier at the developing stage. Once the code works with the `SequentialBackend` can be automatically deployed in a super computer via the `MPIBackend`.  Other back ends like a `ThreadedBacked` or `MPIXBackend` can be added in the future.
+The `SequentialBackend` is specially handy for developing new code. Since it runs in a standard Julia session, one can use tools like `Revise` and `Debugger` that will certainly do your live easier at the developing stage. Once the code works with the `SequentialBackend`, it can be automatically deployed in a super computer via the `MPIBackend`.  Other back ends like a `ThreadedBacked` or `MPIXBackend` can be added in the future.
 
