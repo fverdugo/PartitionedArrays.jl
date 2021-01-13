@@ -346,6 +346,14 @@ num_gids(a::IndexSet) = a.ngids
 num_lids(a::IndexSet) = length(a.lid_to_part)
 num_oids(a::IndexSet) = length(a.oid_to_lid)
 num_hids(a::IndexSet) = length(a.hid_to_lid)
+get_part(a::IndexSet) = a.part
+get_lid_to_gid(a::IndexSet) = a.lid_to_gid
+get_lid_to_part(a::IndexSet) = a.lid_to_part
+get_gid_to_part(a::IndexSet) = a.gid_to_part
+get_oid_to_lid(a::IndexSet) = a.oid_to_lid
+get_hid_to_lid(a::IndexSet) = a.hid_to_lid
+get_lid_to_ohid(a::IndexSet) = a.lid_to_ohid
+get_gid_to_lid(a::IndexSet) = a.gid_to_lid
 
 function IndexSet(
   part::Integer,

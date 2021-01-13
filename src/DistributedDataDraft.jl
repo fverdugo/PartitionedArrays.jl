@@ -38,6 +38,13 @@ export num_hids
 export oids_are_equal
 export hids_are_equal
 export lids_are_equal
+export get_lid_to_gid
+export get_lid_to_part
+export get_gid_to_part
+export get_oid_to_lid
+export get_hid_to_lid
+export get_lid_to_ohid
+export get_gid_to_lid
 export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer

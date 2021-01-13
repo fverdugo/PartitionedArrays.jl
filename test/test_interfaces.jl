@@ -185,6 +185,14 @@ function test_interfaces(parts)
 
   map_parts(ids.lids) do lids
     @test lids.ngids == n
+    @test get_part(lids) == lids.part
+    @test get_lid_to_gid(lids) == lids.lid_to_gid
+    @test get_lid_to_part(lids) == lids.lid_to_part
+    @test get_gid_to_part(lids) == lids.gid_to_part
+    @test get_oid_to_lid(lids) == lids.oid_to_lid
+    @test get_hid_to_lid(lids) == lids.hid_to_lid
+    @test get_lid_to_ohid(lids) == lids.lid_to_ohid
+    @test get_gid_to_lid(lids) == lids.gid_to_lid
   end
   @test num_parts(ids) == nparts
   @test num_gids(ids) == n
