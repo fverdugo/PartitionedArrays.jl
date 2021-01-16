@@ -1,6 +1,6 @@
 # DistributedDataDraft
 
-🚧 ⛏️ WIP (DistributedDataDraft is just a provisional dummy package name)
+🚧 ⛏️ WIP (DistributedDataDraft is just a provisional dummy package name, see issue [#12](https://github.com/fverdugo/DistributedDataDraft.jl/issues/12))
 
 ## What
 
