@@ -1,7 +1,7 @@
 
 abstract type Backend end
 
-# Should return a ChunkyData{Int}
+# Should return a PartitionedData{Int}
 function get_part_ids(b::Backend,nparts::Integer)
   @abstractmethod
 end
@@ -17,54 +17,54 @@ function distributed_run(driver::Function,b::Backend,nparts)
 end
 
 # Data distributed in parts of type T
-abstract type ChunkyData{T,N} end
+abstract type PartitionedData{T,N} end
 
-Base.size(a::ChunkyData) = @abstractmethod
+Base.size(a::PartitionedData) = @abstractmethod
 
-Base.length(a::ChunkyData) = prod(size(a))
+Base.length(a::PartitionedData) = prod(size(a))
 
-num_parts(a::ChunkyData) = length(a)
+num_parts(a::PartitionedData) = length(a)
 
-get_backend(a::ChunkyData) = @abstractmethod
+get_backend(a::PartitionedData) = @abstractmethod
 
-Base.iterate(a::ChunkyData)  = @abstractmethod
+Base.iterate(a::PartitionedData)  = @abstractmethod
 
-Base.iterate(a::ChunkyData,state)  = @abstractmethod
+Base.iterate(a::PartitionedData,state)  = @abstractmethod
 
-get_part_ids(a::ChunkyData) = get_part_ids(get_backend(a),size(a))
+get_part_ids(a::PartitionedData) = get_part_ids(get_backend(a),size(a))
 
-map_parts(task::Function,a::ChunkyData...) = @abstractmethod
+map_parts(task::Function,a::PartitionedData...) = @abstractmethod
 
-i_am_master(::ChunkyData) = @abstractmethod
+i_am_master(::PartitionedData) = @abstractmethod
 
-Base.eltype(a::ChunkyData{T}) where T = T
-Base.eltype(::Type{<:ChunkyData{T}}) where T = T
+Base.eltype(a::PartitionedData{T}) where T = T
+Base.eltype(::Type{<:PartitionedData{T}}) where T = T
 
-Base.ndims(a::ChunkyData{T,N}) where {T,N} = N
-Base.ndims(::Type{<:ChunkyData{T,N}}) where {T,N} = N
+Base.ndims(a::PartitionedData{T,N}) where {T,N} = N
+Base.ndims(::Type{<:PartitionedData{T,N}}) where {T,N} = N
 
 #function map_parts(task::Function,a...)
-#  map_parts(task,map(ChunkyData,a)...)
+#  map_parts(task,map(PartitionedData,a)...)
 #end
 #
-#ChunkyData(a::ChunkyData) = a
+#PartitionedData(a::PartitionedData) = a
 
 const MASTER = 1
 
 # import the master part to the main scope
 # in MPI this will broadcast the master part to all procs
-get_master_part(a::ChunkyData) = get_part(a,MASTER)
+get_master_part(a::PartitionedData) = get_part(a,MASTER)
 
 # This one is safe to use only when all parts contain the same value, e.g. the result of a gather_all call.
-get_part(a::ChunkyData) = @abstractmethod
+get_part(a::PartitionedData) = @abstractmethod
 
-get_part(a::ChunkyData,part::Integer) = @abstractmethod
+get_part(a::PartitionedData,part::Integer) = @abstractmethod
 
-gather!(rcv::ChunkyData,snd::ChunkyData) = @abstractmethod
+gather!(rcv::PartitionedData,snd::PartitionedData) = @abstractmethod
 
-gather_all!(rcv::ChunkyData,snd::ChunkyData) = @abstractmethod
+gather_all!(rcv::PartitionedData,snd::PartitionedData) = @abstractmethod
 
-function gather(snd::ChunkyData)
+function gather(snd::PartitionedData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   rcv = map_parts(parts,snd) do part, snd
@@ -79,7 +79,7 @@ function gather(snd::ChunkyData)
   rcv
 end
 
-function gather_all(snd::ChunkyData)
+function gather_all(snd::PartitionedData)
   np = num_parts(snd)
   rcv = map_parts(snd) do snd
     T = typeof(snd)
@@ -89,11 +89,11 @@ function gather_all(snd::ChunkyData)
   rcv
 end
 
-function scatter(snd::ChunkyData)
+function scatter(snd::PartitionedData)
   @abstractmethod
 end
 
-function bcast(snd::ChunkyData)
+function bcast(snd::PartitionedData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
@@ -109,7 +109,7 @@ function bcast(snd::ChunkyData)
   scatter(snd2)
 end
 
-function reduce_master(op,snd::ChunkyData;init)
+function reduce_master(op,snd::PartitionedData;init)
   a = gather(snd)
   map_parts(i->reduce(op,i;init=init),a)
 end
@@ -119,36 +119,36 @@ function reduce_all(args...;kwargs...)
   bcast(b)
 end
 
-function Base.reduce(op,a::ChunkyData;init)
+function Base.reduce(op,a::PartitionedData;init)
   b = reduce_master(op,a;init=init)
   get_master_part(b)
 end
 
-function Base.sum(a::ChunkyData)
+function Base.sum(a::PartitionedData)
   reduce(+,a,init=zero(eltype(a)))
 end
 
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
-# Starts a non-blocking exchange. It returns a ChunkyData of Julia Tasks. Calling schedule and wait on these
+# Starts a non-blocking exchange. It returns a PartitionedData of Julia Tasks. Calling schedule and wait on these
 # tasks will wait until the exchange is done in the corresponding part
 # (i.e., at this point it is save to read/write the buffers again).
 function async_exchange!(
-  data_rcv::ChunkyData,
-  data_snd::ChunkyData,
-  parts_rcv::ChunkyData,
-  parts_snd::ChunkyData,
-  t_in::ChunkyData)
+  data_rcv::PartitionedData,
+  data_snd::PartitionedData,
+  parts_rcv::PartitionedData,
+  parts_snd::PartitionedData,
+  t_in::PartitionedData)
 
   @abstractmethod
 end
 
 function async_exchange!(
-  data_rcv::ChunkyData,
-  data_snd::ChunkyData,
-  parts_rcv::ChunkyData,
-  parts_snd::ChunkyData)
+  data_rcv::PartitionedData,
+  data_snd::PartitionedData,
+  parts_rcv::PartitionedData,
+  parts_snd::PartitionedData)
 
   t_in = _empty_tasks(parts_rcv)
   async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
@@ -163,10 +163,10 @@ end
 # Non-blocking allocating exchange
 # the returned data_rcv cannot be consumed in a part until the corresponding task in t is done.
 function async_exchange(
-  data_snd::ChunkyData,
-  parts_rcv::ChunkyData,
-  parts_snd::ChunkyData,
-  t_in::ChunkyData=_empty_tasks(parts_rcv))
+  data_snd::PartitionedData,
+  parts_rcv::PartitionedData,
+  parts_snd::PartitionedData,
+  t_in::PartitionedData=_empty_tasks(parts_rcv))
 
   data_rcv = map_parts(data_snd,parts_rcv) do data_snd, parts_rcv
     similar(data_snd,eltype(data_snd),length(parts_rcv))
@@ -179,21 +179,21 @@ end
 
 # Non-blocking in-place exchange variable length (compressed in a Table)
 function async_exchange!(
-  data_rcv::ChunkyData{<:Table},
-  data_snd::ChunkyData{<:Table},
-  parts_rcv::ChunkyData,
-  parts_snd::ChunkyData,
-  t_in::ChunkyData)
+  data_rcv::PartitionedData{<:Table},
+  data_snd::PartitionedData{<:Table},
+  parts_rcv::PartitionedData,
+  parts_snd::PartitionedData,
+  t_in::PartitionedData)
 
   @abstractmethod
 end
 
 # Non-blocking allocating exchange variable length (compressed in a Table)
 function async_exchange(
-  data_snd::ChunkyData{<:Table},
-  parts_rcv::ChunkyData,
-  parts_snd::ChunkyData,
-  t_in::ChunkyData)
+  data_snd::PartitionedData{<:Table},
+  parts_rcv::PartitionedData,
+  parts_snd::PartitionedData,
+  t_in::PartitionedData)
 
   # Allocate empty data
   data_rcv = map_parts(empty_table,data_snd)
@@ -255,7 +255,7 @@ end
 
 # Discover snd parts from rcv assuming that srd is a subset of neighbors
 # Assumes that neighbors is a symmetric communication graph
-function discover_parts_snd(parts_rcv::ChunkyData, neighbors::ChunkyData)
+function discover_parts_snd(parts_rcv::PartitionedData, neighbors::PartitionedData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
 
   parts = get_part_ids(parts_rcv)
@@ -281,7 +281,7 @@ end
 
 # TODO
 # If neighbors not provided, all procs are considered neighbors (to be improved)
-function discover_parts_snd(parts_rcv::ChunkyData)
+function discover_parts_snd(parts_rcv::PartitionedData)
   parts = get_part_ids(parts_rcv)
   nparts = num_parts(parts)
   neighbors = map_parts(parts,parts_rcv) do part, parts_rcv
@@ -291,7 +291,7 @@ function discover_parts_snd(parts_rcv::ChunkyData)
   discover_parts_snd(parts_rcv,neighbors)
 end
 
-function discover_parts_snd(parts_rcv::ChunkyData,::Nothing)
+function discover_parts_snd(parts_rcv::PartitionedData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
@@ -480,10 +480,10 @@ struct Exchanger{B,C}
   lids_rcv::C
   lids_snd::C
   function Exchanger(
-    parts_rcv::ChunkyData{<:AbstractVector{<:Integer}},
-    parts_snd::ChunkyData{<:AbstractVector{<:Integer}},
-    lids_rcv::ChunkyData{<:Table{<:Integer}},
-    lids_snd::ChunkyData{<:Table{<:Integer}})
+    parts_rcv::PartitionedData{<:AbstractVector{<:Integer}},
+    parts_snd::PartitionedData{<:AbstractVector{<:Integer}},
+    lids_rcv::PartitionedData{<:Table{<:Integer}},
+    lids_snd::PartitionedData{<:Table{<:Integer}})
 
     B = typeof(parts_rcv)
     C = typeof(lids_rcv)
@@ -491,7 +491,7 @@ struct Exchanger{B,C}
   end
 end
 
-function Exchanger(ids::ChunkyData{<:IndexSet},neighbors=nothing)
+function Exchanger(ids::PartitionedData{<:IndexSet},neighbors=nothing)
 
   parts = get_part_ids(ids)
 
@@ -548,7 +548,7 @@ function Exchanger(ids::ChunkyData{<:IndexSet},neighbors=nothing)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
-function empty_exchanger(a::ChunkyData)
+function empty_exchanger(a::PartitionedData)
   parts_rcv = map_parts(i->Int[],a)
   parts_snd = map_parts(i->Int[],a)
   lids_rcv = map_parts(i->Table(Vector{Int32}[]),a)
@@ -579,9 +579,9 @@ function allocate_snd_buffer(::Type{T},a::Exchanger) where T
 end
 
 function async_exchange!(
-  values::ChunkyData{<:AbstractVector{T}},
+  values::PartitionedData{<:AbstractVector{T}},
   exchanger::Exchanger,
-  t0::ChunkyData=_empty_tasks(exchanger.parts_rcv);
+  t0::PartitionedData=_empty_tasks(exchanger.parts_rcv);
   reduce_op=_replace) where T
 
   # Allocate buffers
@@ -625,14 +625,14 @@ end
 _replace(x,y) = y
 
 # TODO mutable is needed to correctly implement add_gid!
-mutable struct ChunkyRange{A,B} <: AbstractUnitRange{Int}
+mutable struct PartitionedRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
   ghost::Bool
   exchanger::B
-  function ChunkyRange(
+  function PartitionedRange(
     ngids::Integer,
-    lids::ChunkyData{<:IndexSet},
+    lids::PartitionedData{<:IndexSet},
     ghost::Bool,
     exchanger::Exchanger)
   
@@ -646,30 +646,30 @@ mutable struct ChunkyRange{A,B} <: AbstractUnitRange{Int}
   end
 end
 
-function Base.copy(a::ChunkyRange)
+function Base.copy(a::PartitionedRange)
   ngids = copy(a.ngids)
   lids = deepcopy(a.lids)
   ghost = copy(a.ghost)
   exchanger = deepcopy(a.exchanger)
-  ChunkyRange(ngids,lids,ghost,exchanger)
+  PartitionedRange(ngids,lids,ghost,exchanger)
 end
 
-function ChunkyRange(
+function PartitionedRange(
   ngids::Integer,
-  lids::ChunkyData{<:IndexSet},
+  lids::PartitionedData{<:IndexSet},
   ghost::Bool=true)
 
   exchanger =  ghost ? Exchanger(lids) : empty_exchanger(lids)
-  ChunkyRange(ngids,lids,ghost,exchanger)
+  PartitionedRange(ngids,lids,ghost,exchanger)
 end
 
-Base.first(a::ChunkyRange) = 1
-Base.last(a::ChunkyRange) = a.ngids
+Base.first(a::PartitionedRange) = 1
+Base.last(a::PartitionedRange) = a.ngids
 
-num_gids(a::ChunkyRange) = a.ngids
-num_parts(a::ChunkyRange) = num_parts(a.lids)
+num_gids(a::PartitionedRange) = a.ngids
+num_parts(a::PartitionedRange) = num_parts(a.lids)
 
-function ChunkyRange(parts::ChunkyData{<:Integer},ngids::Integer)
+function PartitionedRange(parts::PartitionedData{<:Integer},ngids::Integer)
   np = num_parts(parts)
   lids = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
@@ -689,17 +689,17 @@ function ChunkyRange(parts::ChunkyData{<:Integer},ngids::Integer)
       hid_to_lid)
   end
   ghost = false
-  ChunkyRange(ngids,lids,ghost)
+  PartitionedRange(ngids,lids,ghost)
 end
 
-function ChunkyRange(
-  parts::ChunkyData{<:Integer,1},
+function PartitionedRange(
+  parts::PartitionedData{<:Integer,1},
   ngids::NTuple{N,<:Integer}) where N
-  ChunkyRange(parts,prod(ngids))
+  PartitionedRange(parts,prod(ngids))
 end
 
-function ChunkyRange(
-  parts::ChunkyData{<:Integer,N},
+function PartitionedRange(
+  parts::PartitionedData{<:Integer,N},
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
@@ -721,7 +721,7 @@ function ChunkyRange(
       hid_to_lid)
   end
   ghost = false
-  ChunkyRange(prod(ngids),lids,ghost)
+  PartitionedRange(prod(ngids),lids,ghost)
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
@@ -808,7 +808,7 @@ function _find_part_from_gid(
   part
 end
 
-function add_gid!(a::ChunkyRange,gids::ChunkyData{<:AbstractArray{<:Integer}})
+function add_gid!(a::PartitionedRange,gids::PartitionedData{<:AbstractArray{<:Integer}})
   map_parts(a.lids,gids) do lids,gids
     for gid in gids
       add_gid!(lids,gid)
@@ -819,22 +819,22 @@ function add_gid!(a::ChunkyRange,gids::ChunkyData{<:AbstractArray{<:Integer}})
   a
 end
 
-function add_gid(a::ChunkyRange,gids::ChunkyData{<:AbstractArray{<:Integer}})
+function add_gid(a::PartitionedRange,gids::PartitionedData{<:AbstractArray{<:Integer}})
   lids = map_parts(deepcopy,a.lids)
-  b = ChunkyRange(a.ngids,lids)
+  b = PartitionedRange(a.ngids,lids)
   add_gid!(b,gids)
   b
 end
 
-function to_lid!(ids::ChunkyData{<:AbstractArray{<:Integer}},a::ChunkyRange)
+function to_lid!(ids::PartitionedData{<:AbstractArray{<:Integer}},a::PartitionedRange)
   map_parts(to_lid!,ids,a.lids)
 end
 
-function to_gid!(ids::ChunkyData{<:AbstractArray{<:Integer}},a::ChunkyRange)
+function to_gid!(ids::PartitionedData{<:AbstractArray{<:Integer}},a::PartitionedRange)
   map_parts(to_gid!,ids,a.lids)
 end
 
-function oids_are_equal(a::ChunkyRange,b::ChunkyRange)
+function oids_are_equal(a::PartitionedRange,b::PartitionedRange)
   if a.lids === b.lids
     true
   else
@@ -843,7 +843,7 @@ function oids_are_equal(a::ChunkyRange,b::ChunkyRange)
   end
 end
 
-function hids_are_equal(a::ChunkyRange,b::ChunkyRange)
+function hids_are_equal(a::PartitionedRange,b::PartitionedRange)
   if a.lids === b.lids
     true
   else
@@ -852,7 +852,7 @@ function hids_are_equal(a::ChunkyRange,b::ChunkyRange)
   end
 end
 
-function lids_are_equal(a::ChunkyRange,b::ChunkyRange)
+function lids_are_equal(a::PartitionedRange,b::PartitionedRange)
   if a.lids === b.lids
     true
   else
@@ -861,12 +861,12 @@ function lids_are_equal(a::ChunkyRange,b::ChunkyRange)
   end
 end
 
-struct ChunkyVector{T,A,B} <: AbstractVector{T}
+struct PartitionedVector{T,A,B} <: AbstractVector{T}
   values::A
   rows::B
-  function ChunkyVector(
-    values::ChunkyData{<:AbstractVector{T}},
-    rows::ChunkyRange) where T
+  function PartitionedVector(
+    values::PartitionedData{<:AbstractVector{T}},
+    rows::PartitionedRange) where T
 
     A = typeof(values)
     B = typeof(rows)
@@ -874,7 +874,7 @@ struct ChunkyVector{T,A,B} <: AbstractVector{T}
   end
 end
 
-function Base.getproperty(x::ChunkyVector, sym::Symbol)
+function Base.getproperty(x::PartitionedVector, sym::Symbol)
   if sym == :owned_values
     map_parts(x.values,x.rows.lids) do v,r
       view(v,r.oid_to_lid)
@@ -888,63 +888,63 @@ function Base.getproperty(x::ChunkyVector, sym::Symbol)
   end
 end
 
-function Base.propertynames(x::ChunkyVector, private=false)
+function Base.propertynames(x::PartitionedVector, private=false)
   (fieldnames(typeof(x))...,:owned_values,:ghost_values)
 end
 
-Base.size(a::ChunkyVector) = (length(a.rows),)
-Base.axes(a::ChunkyVector) = (a.rows,)
-Base.IndexStyle(::Type{<:ChunkyVector}) = IndexLinear()
-function Base.getindex(a::ChunkyVector,gid::Integer)
+Base.size(a::PartitionedVector) = (length(a.rows),)
+Base.axes(a::PartitionedVector) = (a.rows,)
+Base.IndexStyle(::Type{<:PartitionedVector}) = IndexLinear()
+function Base.getindex(a::PartitionedVector,gid::Integer)
   # In practice this function should not be used
   @notimplemented
 end
 
-function Base.similar(a::ChunkyVector)
+function Base.similar(a::PartitionedVector)
   similar(a,eltype(a),axes(a))
 end
 
-function Base.similar(a::ChunkyVector,::Type{T}) where T
+function Base.similar(a::PartitionedVector,::Type{T}) where T
   similar(a,T,axes(a))
 end
 
-function Base.similar(a::ChunkyVector,::Type{T},axes::Tuple{Int}) where T
+function Base.similar(a::PartitionedVector,::Type{T},axes::Tuple{Int}) where T
   @notimplemented
 end
 
-function Base.similar(a::ChunkyVector,::Type{T},axes::Tuple{<:ChunkyRange}) where T
+function Base.similar(a::PartitionedVector,::Type{T},axes::Tuple{<:PartitionedRange}) where T
   rows = axes[1]
   values = map_parts(a.values,rows.lids) do values, lids
     similar(values,T,num_lids(lids))
   end
-  ChunkyVector(values,rows)
+  PartitionedVector(values,rows)
 end
 
 function Base.similar(
-  ::Type{<:ChunkyVector{T,<:ChunkyData{A}}},axes::Tuple{Int}) where {T,A}
+  ::Type{<:PartitionedVector{T,<:PartitionedData{A}}},axes::Tuple{Int}) where {T,A}
   @notimplemented
 end
 
 function Base.similar(
-  ::Type{<:ChunkyVector{T,<:ChunkyData{A}}},axes::Tuple{<:ChunkyRange}) where {T,A}
+  ::Type{<:PartitionedVector{T,<:PartitionedData{A}}},axes::Tuple{<:PartitionedRange}) where {T,A}
   rows = axes[1]
   values = map_parts(rows.lids) do lids
     similar(A,num_lids(lids))
   end
-  ChunkyVector(values,rows)
+  PartitionedVector(values,rows)
 end
 
-function Base.copy!(a::ChunkyVector,b::ChunkyVector)
+function Base.copy!(a::PartitionedVector,b::PartitionedVector)
   map_parts(copy!,a.values,b.values)
   a
 end
 
-function Base.copyto!(a::ChunkyVector,b::ChunkyVector)
+function Base.copyto!(a::PartitionedVector,b::PartitionedVector)
   map_parts(copyto!,a.values,b.values)
   a
 end
 
-function Base.copy(b::ChunkyVector)
+function Base.copy(b::PartitionedVector)
   a = similar(b)
   copy!(a,b)
   a
@@ -959,7 +959,7 @@ end
 @inline function Base.materialize(b::DistributedBroadcasted)
   owned_values = map_parts(Base.materialize,b.owned_values)
   T = eltype(eltype(owned_values))
-  a = ChunkyVector{T}(undef,b.rows)
+  a = PartitionedVector{T}(undef,b.rows)
   map_parts(a.owned_values,owned_values) do dest, src
     dest .= src
   end
@@ -972,7 +972,7 @@ end
   a
 end
 
-@inline function Base.materialize!(a::ChunkyVector,b::DistributedBroadcasted)
+@inline function Base.materialize!(a::PartitionedVector,b::DistributedBroadcasted)
   map_parts(a.owned_values,b.owned_values) do dest, x
     Base.materialize!(dest,x)
   end
@@ -986,7 +986,7 @@ end
 
 function Base.broadcasted(
   f,
-  args::Union{ChunkyVector,DistributedBroadcasted}...)
+  args::Union{PartitionedVector,DistributedBroadcasted}...)
 
   a1 = first(args)
   @check all(ai->oids_are_equal(ai.rows,a1.rows),args)
@@ -1004,7 +1004,7 @@ end
 function Base.broadcasted(
   f,
   a::Number,
-  b::Union{ChunkyVector,DistributedBroadcasted})
+  b::Union{PartitionedVector,DistributedBroadcasted})
 
   owned_values = map_parts(b->Base.broadcasted(f,a,b),b.owned_values)
   if b.ghost_values !== nothing
@@ -1017,7 +1017,7 @@ end
 
 function Base.broadcasted(
   f,
-  a::Union{ChunkyVector,DistributedBroadcasted},
+  a::Union{PartitionedVector,DistributedBroadcasted},
   b::Number)
 
   owned_values = map_parts(a->Base.broadcasted(f,a,b),a.owned_values)
@@ -1029,36 +1029,36 @@ function Base.broadcasted(
   DistributedBroadcasted(owned_values,ghost_values,a.rows)
 end
 
-function LinearAlgebra.norm(a::ChunkyVector,p::Real=2)
+function LinearAlgebra.norm(a::PartitionedVector,p::Real=2)
   contibs = map_parts(a.owned_values) do oid_to_value
     norm(oid_to_value,p)^p
   end
   reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
 end
 
-function ChunkyVector{T}(
+function PartitionedVector{T}(
   ::UndefInitializer,
-  rows::ChunkyRange) where T
+  rows::PartitionedRange) where T
 
   values = map_parts(rows.lids) do lids
     nlids = num_lids(lids)
     Vector{T}(undef,nlids)
   end
-  ChunkyVector(values,rows)
+  PartitionedVector(values,rows)
 end
 
-function ChunkyVector(v::Number, rows::ChunkyRange)
-  a = ChunkyVector{typeof(v)}(undef,rows)
+function PartitionedVector(v::Number, rows::PartitionedRange)
+  a = PartitionedVector{typeof(v)}(undef,rows)
   fill!(a,v)
   a
 end
 
 # If one chooses ids=:global the ids are translated in-place in I.
-function ChunkyVector(
+function PartitionedVector(
   init,
-  I::ChunkyData{<:AbstractArray{<:Integer}},
-  V::ChunkyData{<:AbstractArray},
-  rows::ChunkyRange;
+  I::PartitionedData{<:AbstractArray{<:Integer}},
+  V::PartitionedData{<:AbstractArray},
+  rows::PartitionedRange;
   ids::Symbol)
 
   @assert ids in (:global,:local)
@@ -1076,67 +1076,67 @@ function ChunkyVector(
     values
   end
 
-  ChunkyVector(values,rows)
+  PartitionedVector(values,rows)
 end
 
-function ChunkyVector(
-  I::ChunkyData{<:AbstractArray{<:Integer}},
-  V::ChunkyData{<:AbstractArray{T}},
+function PartitionedVector(
+  I::PartitionedData{<:AbstractArray{<:Integer}},
+  V::PartitionedData{<:AbstractArray{T}},
   rows;
   ids::Symbol) where T
-  ChunkyVector(n->zeros(T,n),I,V,rows;ids=ids)
+  PartitionedVector(n->zeros(T,n),I,V,rows;ids=ids)
 end
 
-function ChunkyVector(
+function PartitionedVector(
   init,
-  I::ChunkyData{<:AbstractArray{<:Integer}},
-  V::ChunkyData{<:AbstractArray},
+  I::PartitionedData{<:AbstractArray{<:Integer}},
+  V::PartitionedData{<:AbstractArray},
   n::Integer;
   ids::Symbol)
 
   @assert ids == :global
   parts = get_part_ids(I)
-  rows = ChunkyRange(parts,n)
+  rows = PartitionedRange(parts,n)
   add_gid!(rows,I)
-  ChunkyVector(init,I,V,rows;ids=ids)
+  PartitionedVector(init,I,V,rows;ids=ids)
 end
 
-function Base.:*(a::Number,b::ChunkyVector)
+function Base.:*(a::Number,b::PartitionedVector)
   values = map_parts(b.values) do values
     a*values
   end
-  ChunkyVector(values,b.rows)
+  PartitionedVector(values,b.rows)
 end
 
-function Base.:*(b::ChunkyVector,a::Number)
+function Base.:*(b::PartitionedVector,a::Number)
   a*b
 end
 
 for op in (:+,:-)
   @eval begin
 
-    function Base.$op(a::ChunkyVector)
+    function Base.$op(a::PartitionedVector)
       values = map_parts(a.values) do a
         $op(a)
       end
-      ChunkyVector(values,a.rows)
+      PartitionedVector(values,a.rows)
     end
 
-    function Base.$op(a::ChunkyVector,b::ChunkyVector)
+    function Base.$op(a::PartitionedVector,b::PartitionedVector)
       $op.(a,b)
     end
 
   end
 end
 
-function Base.fill!(a::ChunkyVector,v)
+function Base.fill!(a::PartitionedVector,v)
   map_parts(a.values) do lid_to_value
     fill!(lid_to_value,v)
   end
   a
 end
 
-function Base.reduce(op,a::ChunkyVector;init)
+function Base.reduce(op,a::PartitionedVector;init)
   b = map_parts(a.values,a.rows.lids) do values,lids
     owned_values = view(values,lids.oid_to_lid)
     reduce(op,owned_values,init=init)
@@ -1144,11 +1144,11 @@ function Base.reduce(op,a::ChunkyVector;init)
   reduce(op,b,init=init)
 end
 
-function Base.sum(a::ChunkyVector)
+function Base.sum(a::PartitionedVector)
   reduce(+,a,init=zero(eltype(a)))
 end
 
-function LinearAlgebra.dot(a::ChunkyVector,b::ChunkyVector)
+function LinearAlgebra.dot(a::PartitionedVector,b::PartitionedVector)
   c = map_parts(a.values,b.values,a.rows.lids,b.rows.lids) do a,b,alids,blids
     a_owned = view(a,alids.oid_to_lid)
     b_owned = view(b,blids.oid_to_lid)
@@ -1157,11 +1157,11 @@ function LinearAlgebra.dot(a::ChunkyVector,b::ChunkyVector)
   sum(c)
 end
 
-function local_view(a::ChunkyVector)
+function local_view(a::PartitionedVector)
   a.values
 end
 
-function global_view(a::ChunkyVector)
+function global_view(a::PartitionedVector)
   map_parts(a.values,a.rows.lids) do values, lids
     GlobalView(values,(lids.gid_to_lid,),(lids.ngids,))
   end
@@ -1194,16 +1194,16 @@ function Base.setindex!(a::GlobalView{T,N},v,gid::Vararg{Integer,N}) where {T,N}
 end
 
 function async_exchange!(
-  a::ChunkyVector,
-  t0::ChunkyData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  a::PartitionedVector,
+  t0::PartitionedData=_empty_tasks(a.rows.exchanger.parts_rcv))
   async_exchange!(a.values,a.rows.exchanger,t0)
 end
 
 # Non-blocking assembly
 # TODO reduce op as first argument and init kwargument
 function async_assemble!(
-  a::ChunkyVector,
-  t0::ChunkyData=_empty_tasks(a.rows.exchanger.parts_rcv);
+  a::PartitionedVector,
+  t0::PartitionedData=_empty_tasks(a.rows.exchanger.parts_rcv);
   reduce_op=+)
 
   exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
@@ -1225,15 +1225,15 @@ function assemble!(args...;kwargs...)
   first(args)
 end
 
-struct ChunkySparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
+struct PartitionedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   values::A
   rows::B
   cols::C
   exchanger::D
-  function ChunkySparseMatrix(
-    values::ChunkyData{<:AbstractSparseMatrix{T}},
-    rows::ChunkyRange,
-    cols::ChunkyRange,
+  function PartitionedSparseMatrix(
+    values::PartitionedData{<:AbstractSparseMatrix{T}},
+    rows::PartitionedRange,
+    cols::PartitionedRange,
     exchanger::Exchanger) where T
 
     A = typeof(values)
@@ -1244,20 +1244,20 @@ struct ChunkySparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   end
 end
 
-function ChunkySparseMatrix(
-  values::ChunkyData{<:AbstractSparseMatrix{T}},
-  rows::ChunkyRange,
-  cols::ChunkyRange) where T
+function PartitionedSparseMatrix(
+  values::PartitionedData{<:AbstractSparseMatrix{T}},
+  rows::PartitionedRange,
+  cols::PartitionedRange) where T
 
   if rows.ghost
     exchanger = matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)
   else
     exchanger = empty_exchanger(rows.lids)
   end
-  ChunkySparseMatrix(values,rows,cols,exchanger)
+  PartitionedSparseMatrix(values,rows,cols,exchanger)
 end
 
-function Base.getproperty(x::ChunkySparseMatrix, sym::Symbol)
+function Base.getproperty(x::PartitionedSparseMatrix, sym::Symbol)
   if sym == :owned_owned_values
     map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
       indices = (r.oid_to_lid,c.oid_to_lid)
@@ -1291,7 +1291,7 @@ function Base.getproperty(x::ChunkySparseMatrix, sym::Symbol)
   end
 end
 
-function Base.propertynames(x::ChunkySparseMatrix, private=false)
+function Base.propertynames(x::PartitionedSparseMatrix, private=false)
   (
     fieldnames(typeof(x))...,
     :owned_owned_values,
@@ -1300,22 +1300,22 @@ function Base.propertynames(x::ChunkySparseMatrix, private=false)
     :ghost_ghost_values)
 end
 
-Base.size(a::ChunkySparseMatrix) = (num_gids(a.rows),num_gids(a.cols))
-Base.axes(a::ChunkySparseMatrix) = (a.rows,a.cols)
-Base.IndexStyle(::Type{<:ChunkySparseMatrix}) = IndexCartesian()
-function Base.getindex(a::ChunkySparseMatrix,gi::Integer,gj::Integer)
+Base.size(a::PartitionedSparseMatrix) = (num_gids(a.rows),num_gids(a.cols))
+Base.axes(a::PartitionedSparseMatrix) = (a.rows,a.cols)
+Base.IndexStyle(::Type{<:PartitionedSparseMatrix}) = IndexCartesian()
+function Base.getindex(a::PartitionedSparseMatrix,gi::Integer,gj::Integer)
   #This should not be used in practice
   @notimplemented
 end
 
 # If one chooses ids=:global the ids are translated in-place in I and J
-function ChunkySparseMatrix(
+function PartitionedSparseMatrix(
   init,
-  I::ChunkyData{<:AbstractArray{<:Integer}},
-  J::ChunkyData{<:AbstractArray{<:Integer}},
-  V::ChunkyData{<:AbstractArray},
-  rows::ChunkyRange,
-  cols::ChunkyRange;
+  I::PartitionedData{<:AbstractArray{<:Integer}},
+  J::PartitionedData{<:AbstractArray{<:Integer}},
+  V::PartitionedData{<:AbstractArray},
+  rows::PartitionedRange,
+  cols::PartitionedRange;
   ids::Symbol)
 
   @assert ids in (:global,:local)
@@ -1328,42 +1328,42 @@ function ChunkySparseMatrix(
     init(I,J,V,num_lids(rlids),num_lids(clids))
   end
 
-  ChunkySparseMatrix(values,rows,cols)
+  PartitionedSparseMatrix(values,rows,cols)
 end
 
-function ChunkySparseMatrix(
+function PartitionedSparseMatrix(
   init,
-  I::ChunkyData{<:AbstractArray{<:Integer}},
-  J::ChunkyData{<:AbstractArray{<:Integer}},
-  V::ChunkyData{<:AbstractArray},
+  I::PartitionedData{<:AbstractArray{<:Integer}},
+  J::PartitionedData{<:AbstractArray{<:Integer}},
+  V::PartitionedData{<:AbstractArray},
   nrows::Integer,
   ncols::Integer;
   ids::Symbol)
 
   @assert ids == :global
   parts = get_part_ids(I)
-  rows = ChunkyRange(parts,nrows)
-  cols = ChunkyRange(parts,ncols)
+  rows = PartitionedRange(parts,nrows)
+  cols = PartitionedRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
-  ChunkySparseMatrix(init,I,J,V,rows,cols;ids=ids)
+  PartitionedSparseMatrix(init,I,J,V,rows,cols;ids=ids)
 end
 
-function ChunkySparseMatrix(
-  I::ChunkyData{<:AbstractArray{<:Integer}},
-  J::ChunkyData{<:AbstractArray{<:Integer}},
-  V::ChunkyData{<:AbstractArray},
+function PartitionedSparseMatrix(
+  I::PartitionedData{<:AbstractArray{<:Integer}},
+  J::PartitionedData{<:AbstractArray{<:Integer}},
+  V::PartitionedData{<:AbstractArray},
   rows,
   cols;
   ids::Symbol)
 
-  ChunkySparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
+  PartitionedSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
 end
 
 function LinearAlgebra.mul!(
-  c::ChunkyVector,
-  a::ChunkySparseMatrix,
-  b::ChunkyVector,
+  c::PartitionedVector,
+  a::PartitionedSparseMatrix,
+  b::PartitionedVector,
   α::Number,
   β::Number)
 
@@ -1460,11 +1460,11 @@ function LinearAlgebra.mul!(
   C
 end
 
-function local_view(a::ChunkySparseMatrix)
+function local_view(a::PartitionedSparseMatrix)
   a.values
 end
 
-function global_view(a::ChunkySparseMatrix)
+function global_view(a::PartitionedSparseMatrix)
   map_parts(a.values,a.rows.lids,a.cols.lids) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
   end
@@ -1603,16 +1603,16 @@ end
 
 # Non-blocking exchange
 function async_exchange!(
-  a::ChunkySparseMatrix,
-  t0::ChunkyData=_empty_tasks(a.exchanger.parts_rcv))
+  a::PartitionedSparseMatrix,
+  t0::PartitionedData=_empty_tasks(a.exchanger.parts_rcv))
   nzval = map_parts(nonzeros,a.values)
   async_exchange!(nzval,a.exchanger,t0)
 end
 
 # Non-blocking assembly
 function async_assemble!(
-  a::ChunkySparseMatrix,
-  t0::ChunkyData=_empty_tasks(a.exchanger.parts_rcv);
+  a::PartitionedSparseMatrix,
+  t0::PartitionedData=_empty_tasks(a.exchanger.parts_rcv);
   reduce_op=+)
 
   exchanger_rcv = a.exchanger # receives data at ghost ids from remote parts
@@ -1628,11 +1628,11 @@ function async_assemble!(
 end
 
 function async_assemble!(
-  I::ChunkyData{<:AbstractVector{<:Integer}},
-  J::ChunkyData{<:AbstractVector{<:Integer}},
-  V::ChunkyData{<:AbstractVector},
-  rows::ChunkyRange,
-  t0::ChunkyData=_empty_tasks(rows.exchanger.parts_rcv);
+  I::PartitionedData{<:AbstractVector{<:Integer}},
+  J::PartitionedData{<:AbstractVector{<:Integer}},
+  V::PartitionedData{<:AbstractVector},
+  rows::PartitionedRange,
+  t0::PartitionedData=_empty_tasks(rows.exchanger.parts_rcv);
   reduce_op=+)
 
   map_parts(wait∘schedule,t0)
@@ -1711,20 +1711,20 @@ function async_assemble!(
   t4
 end
 
-function Base.:*(a::Number,b::ChunkySparseMatrix)
+function Base.:*(a::Number,b::PartitionedSparseMatrix)
   values = map_parts(b.values) do values
     a*values
   end
-  ChunkySparseMatrix(values,b.rows,b.cols,b.exchanger)
+  PartitionedSparseMatrix(values,b.rows,b.cols,b.exchanger)
 end
 
-function Base.:*(b::ChunkySparseMatrix,a::Number)
+function Base.:*(b::PartitionedSparseMatrix,a::Number)
   a*b
 end
 
-function Base.:*(a::ChunkySparseMatrix{Ta},b::ChunkyVector{Tb}) where {Ta,Tb}
+function Base.:*(a::PartitionedSparseMatrix{Ta},b::PartitionedVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
-  c = ChunkyVector{T}(undef,a.rows)
+  c = PartitionedVector{T}(undef,a.rows)
   mul!(c,a,b)
   c
 end
@@ -1732,11 +1732,11 @@ end
 for op in (:+,:-)
   @eval begin
 
-    function Base.$op(a::ChunkySparseMatrix)
+    function Base.$op(a::PartitionedSparseMatrix)
       values = map_parts(a.values) do a
         $op(a)
       end
-      ChunkySparseMatrix(values,a.rows,a.cols,a.exchanger)
+      PartitionedSparseMatrix(values,a.rows,a.cols,a.exchanger)
     end
 
   end
@@ -1749,9 +1749,9 @@ struct Jacobi{T,A,B,C}
   rows::B
   cols::C
   function Jacobi(
-    diaginv::ChunkyData{<:AbstractVector{T}},
-    rows::ChunkyRange,
-    cols::ChunkyRange) where T
+    diaginv::PartitionedData{<:AbstractVector{T}},
+    rows::PartitionedRange,
+    cols::PartitionedRange) where T
 
     A = typeof(diaginv)
     B = typeof(rows)
@@ -1760,7 +1760,7 @@ struct Jacobi{T,A,B,C}
   end
 end
 
-function Jacobi(a::ChunkySparseMatrix)
+function Jacobi(a::PartitionedSparseMatrix)
   diaginv = map_parts(a.values,a.rows.lids,a.cols.lids) do values, rlids, clids
     @assert num_oids(rlids) == num_oids(clids)
     @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
@@ -1772,9 +1772,9 @@ function Jacobi(a::ChunkySparseMatrix)
 end
 
 function LinearAlgebra.ldiv!(
-  c::ChunkyVector,
+  c::PartitionedVector,
   a::Jacobi,
-  b::ChunkyVector)
+  b::PartitionedVector)
 
   @check oids_are_equal(c.rows,a.cols)
   @check oids_are_equal(b.rows,a.rows)
@@ -1788,20 +1788,20 @@ end
 
 function LinearAlgebra.ldiv!(
   a::Jacobi,
-  b::ChunkyVector)
+  b::PartitionedVector)
   ldiv!(b,a,b)
 end
 
-function Base.:\(a::Jacobi{Ta},b::ChunkyVector{Tb}) where {Ta,Tb}
+function Base.:\(a::Jacobi{Ta},b::PartitionedVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = ChunkyVector{T}(undef,a.cols)
+  c = PartitionedVector{T}(undef,a.cols)
   ldiv!(c,a,b)
   c
 end
 
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
-function IterativeSolvers.zerox(A::ChunkySparseMatrix,b::ChunkyVector)
+function IterativeSolvers.zerox(A::PartitionedSparseMatrix,b::PartitionedVector)
   T = IterativeSolvers.Adivtype(A, b)
   x = similar(b, T, axes(A, 2))
   fill!(x, zero(T))

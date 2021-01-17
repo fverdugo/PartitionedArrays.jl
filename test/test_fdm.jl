@@ -1,7 +1,7 @@
 
 using LinearAlgebra
 using SparseArrays
-using ChunkyArrays
+using PartitionedArrays
 using Test
 using IterativeSolvers
 
@@ -32,14 +32,14 @@ function test_fdm(parts)
 
   # Use a Cartesian partition if possible
   if ndims(parts) == length(ns)
-    rows = ChunkyRange(parts,ns)
+    rows = PartitionedRange(parts,ns)
   else
-    rows = ChunkyRange(parts,n)
+    rows = PartitionedRange(parts,n)
   end
 
   # We don't need the ghost layer for the rhs
   # So, it can be allocated right now.
-  b = ChunkyVector{Float64}(undef,rows)
+  b = PartitionedVector{Float64}(undef,rows)
 
   # We don't need the ghost layer for the exact solution
   # So, it can be allocated right now.
@@ -82,20 +82,20 @@ function test_fdm(parts)
 
   # TODO fill b and x̂ while add_gid is communicating values.
 
-  # Build a ChunkyRange taking the owned ids in rows plus ghost ids from the touched cols
+  # Build a PartitionedRange taking the owned ids in rows plus ghost ids from the touched cols
   cols = add_gid(rows,J)
 
   # Now we can convert J to local numbering, I is already in local numbering.
   to_lid!(J,cols)
 
-  # Build the ChunkySparseMatrix from the coo-vectors (in local numbering)
+  # Build the PartitionedSparseMatrix from the coo-vectors (in local numbering)
   # and the data distribution described by rows and cols.
-  A = ChunkySparseMatrix(I,J,V,rows,cols;ids=:local)
+  A = PartitionedSparseMatrix(I,J,V,rows,cols;ids=:local)
 
   # The initial guess needs the ghost layer (that why we take cols)
   # in other to perform the product A*x in the cg solver.
   # We also need to set the boundary values
-  x = ChunkyVector(0.0,cols)
+  x = PartitionedVector(0.0,cols)
   map_parts(x.values,x.rows.lids) do x,rows
     for lid in rows.oid_to_lid
       cis = CartesianIndices(ns)

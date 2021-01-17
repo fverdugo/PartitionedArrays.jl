@@ -1,6 +1,6 @@
 module SequentialBackendTests
 
-using ChunkyArrays
+using PartitionedArrays
 using Test
 
 function main(parts)

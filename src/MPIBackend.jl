@@ -28,7 +28,7 @@ function distributed_run(driver::Function,b::MPIBackend,nparts)
   #end
 end
 
-struct MPIData{T,N} <: ChunkyData{T,N}
+struct MPIData{T,N} <: PartitionedData{T,N}
   part::T
   comm::MPI.Comm
   size::NTuple{N,Int}

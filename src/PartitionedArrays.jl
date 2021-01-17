@@ -1,4 +1,4 @@
-module ChunkyArrays
+module PartitionedArrays
 
 using SparseArrays
 using LinearAlgebra
@@ -7,7 +7,7 @@ import IterativeSolvers
 
 export Backend
 export distributed_run
-export ChunkyData
+export PartitionedData
 export num_parts
 export i_am_master
 export map_parts
@@ -48,17 +48,17 @@ export get_gid_to_lid
 export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
-export ChunkyRange
+export PartitionedRange
 export add_gid
 export add_gid!
 export to_lid!
 export to_gid!
-export ChunkyVector
+export PartitionedVector
 export local_view
 export global_view
 export async_assemble!
 export assemble!
-export ChunkySparseMatrix
+export PartitionedSparseMatrix
 export nzindex
 export nziterator
 export Jacobi
