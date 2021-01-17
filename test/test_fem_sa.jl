@@ -1,4 +1,3 @@
-
 using LinearAlgebra
 using SparseArrays
 using PartitionedArrays
@@ -7,15 +6,20 @@ using IterativeSolvers
 
 function test_fem_sa(parts)
 
-  u(x) = x[1]+x[2]
-  Ae = ones(4,4)
+  u(x) = 1.0 #x[1]+x[2]
   lx = 2.0
   ls = (lx,lx)
-  nx = 4
+  nx = 10
   ns = (nx,nx)
   n = prod(ns)
   h = lx/nx
   D = length(ns)
+  Ae = (h/6)*[
+    4.0  -1.0  -1.0  -2.0
+   -1.0   4.0  -2.0  -1.0
+   -1.0  -2.0   4.0  -1.0
+   -2.0  -1.0  -1.0   4.0
+  ]
 
   cis_gcells = CartesianIndices(ns)
   cis_gnodes = CartesianIndices(ns.+1)
@@ -48,14 +52,11 @@ function test_fem_sa(parts)
         else
           for ci_ecol in cis_enodes
             ci_gcol = ci_gcell + (ci_ecol - c1)
-            boundary = any(s->(1==s||s==(nx+1)),Tuple(ci_gcol))
-            if !boundary
-              gcol = lis_gnodes[ci_gcol]
-              ecol = lis_enodes[ci_ecol]
-              push!(I,grow)
-              push!(J,gcol)
-              push!(V,Ae[erow,ecol])
-            end
+            gcol = lis_gnodes[ci_gcol]
+            ecol = lis_enodes[ci_ecol]
+            push!(I,grow)
+            push!(J,gcol)
+            push!(V,Ae[erow,ecol])
           end
         end
       end
@@ -65,7 +66,7 @@ function test_fem_sa(parts)
 
   # Create rows and cols without ghost layer
   rows = PRange(parts,ns.+1)
-  cols = copy(rows)
+  cols = PRange(parts,ns.+1)
 
   # Add remote row gids to the rows ghost layer
   add_gid!(rows,I)
@@ -105,7 +106,7 @@ function test_fem_sa(parts)
   # Now we can add off processor col ids to the ghost layer of cols.
   add_gid!(cols,J)
 
-  # Compress the coo vectors and built the matrix
+  # Compress the coo vectors and build the matrix
   A = PSparseMatrix(I,J,V,rows,cols,ids=:global)
 
   # When filling b we have touched remote rows.
@@ -114,6 +115,25 @@ function test_fem_sa(parts)
   # problematic since we can have wrongly matching snd/rcv in MPI.
   assemble!(b)
 
-  nothing
+  # Setup initial and exact solution
+  x = PVector(0.0,cols)
+  x̂ = similar(x)
+  map_parts(x.values,x̂.values,x.rows.lids) do x,x̂,rows
+    for lid in rows.oid_to_lid
+      grow = rows.lid_to_gid[lid]
+      ci_grow = cis_gnodes[grow]
+      xi = (Tuple(ci_grow) .- 1) .* h
+      x̂[lid] = u(xi)
+      boundary = any(s->(1==s||s==(nx+1)),Tuple(ci_grow))
+      if boundary
+        x[lid] = u(xi)
+      end
+    end
+  end
+
+  # Solve!
+  IterativeSolvers.cg!(x,A,b,verbose=i_am_main(parts))
+
+  @test norm(x-x̂) < 1.0e-5
 
 end

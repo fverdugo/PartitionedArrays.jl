@@ -646,6 +646,8 @@ mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   end
 end
 
+# TODO in MPI this causes to copy the world comm
+# and makes some assertions to fail.
 function Base.copy(a::PRange)
   ngids = copy(a.ngids)
   lids = deepcopy(a.lids)

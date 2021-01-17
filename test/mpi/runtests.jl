@@ -10,4 +10,6 @@ using Test
 
 @testset "FDM" begin include("FDMTests.jl") end
 
+@testset "FEMSA" begin include("FEMSATests.jl") end
+
 end
