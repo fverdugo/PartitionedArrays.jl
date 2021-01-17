@@ -1,6 +1,6 @@
 module SequentialBackendTests
 
-using DistributedDataDraft
+using ChunkyAlgebra
 using Test
 
 function main(parts)

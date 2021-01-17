@@ -1,4 +1,4 @@
-module DistributedDataDraft
+module ChunkyAlgebra
 
 using SparseArrays
 using LinearAlgebra
@@ -7,7 +7,7 @@ import IterativeSolvers
 
 export Backend
 export distributed_run
-export DistributedData
+export ChunkyData
 export num_parts
 export i_am_master
 export map_parts
@@ -48,17 +48,17 @@ export get_gid_to_lid
 export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
-export DistributedRange
+export ChunkyRange
 export add_gid
 export add_gid!
 export to_lid!
 export to_gid!
-export DistributedVector
+export ChunkyVector
 export local_view
 export global_view
 export async_assemble!
 export assemble!
-export DistributedSparseMatrix
+export ChunkySparseMatrix
 export nzindex
 export nziterator
 export Jacobi

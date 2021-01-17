@@ -5,25 +5,25 @@ const sequential = SequentialBackend()
 
 function get_part_ids(b::SequentialBackend,nparts::Integer)
   parts = [ part for part in 1:nparts ]
-  SequentialDistributedData(parts)
+  SequentialChunkyData(parts)
 end
 
 function get_part_ids(b::SequentialBackend,nparts::Tuple)
   parts = collect(LinearIndices(nparts))
-  SequentialDistributedData(parts)
+  SequentialChunkyData(parts)
 end
 
-struct SequentialDistributedData{T,N} <: DistributedData{T,N}
+struct SequentialChunkyData{T,N} <: ChunkyData{T,N}
   parts::Array{T,N}
 end
 
-Base.size(a::SequentialDistributedData) = size(a.parts)
+Base.size(a::SequentialChunkyData) = size(a.parts)
 
-i_am_master(a::SequentialDistributedData) = true
+i_am_master(a::SequentialChunkyData) = true
 
-get_backend(a::SequentialDistributedData) = sequential
+get_backend(a::SequentialChunkyData) = sequential
 
-function Base.iterate(a::SequentialDistributedData)
+function Base.iterate(a::SequentialChunkyData)
   next = map_parts(iterate,a)
   if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
     return nothing
@@ -35,7 +35,7 @@ end
 
 _second(a) = a[2]
 
-function Base.iterate(a::SequentialDistributedData,state)
+function Base.iterate(a::SequentialChunkyData,state)
   next = map_parts(iterate,a,state)
   if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
     return nothing
@@ -45,15 +45,15 @@ function Base.iterate(a::SequentialDistributedData,state)
   item, state
 end
 
-function map_parts(task::Function,args::SequentialDistributedData...)
+function map_parts(task::Function,args::SequentialChunkyData...)
   @assert length(args) > 0
   @assert all(a->length(a.parts)==length(first(args).parts),args)
   parts_in = map(a->a.parts,args)
   parts_out = map(task,parts_in...)
-  SequentialDistributedData(parts_out)
+  SequentialChunkyData(parts_out)
 end
 
-function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
+function Base.show(io::IO,k::MIME"text/plain",data::SequentialChunkyData)
   for part in 1:num_parts(data)
     if part != 1
       println(io,"")
@@ -63,10 +63,10 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialDistributedData)
   end
 end
 
-get_part(a::SequentialDistributedData,part::Integer) = a.parts[part]
-get_part(a::SequentialDistributedData) = get_master_part(a)
+get_part(a::SequentialChunkyData,part::Integer) = a.parts[part]
+get_part(a::SequentialChunkyData) = get_master_part(a)
 
-function gather!(rcv::SequentialDistributedData,snd::SequentialDistributedData)
+function gather!(rcv::SequentialChunkyData,snd::SequentialChunkyData)
   @assert num_parts(rcv) == num_parts(snd)
   @assert length(rcv.parts[MASTER]) == num_parts(snd)
   for part in 1:num_parts(snd)
@@ -75,7 +75,7 @@ function gather!(rcv::SequentialDistributedData,snd::SequentialDistributedData)
   rcv
 end
 
-function gather_all!(rcv::SequentialDistributedData,snd::SequentialDistributedData)
+function gather_all!(rcv::SequentialChunkyData,snd::SequentialChunkyData)
   @assert num_parts(rcv) == num_parts(snd)
   for part_rcv in 1:num_parts(rcv)
     @assert length(rcv.parts[part_rcv]) == num_parts(snd)
@@ -86,19 +86,19 @@ function gather_all!(rcv::SequentialDistributedData,snd::SequentialDistributedDa
   rcv
 end
 
-function scatter(snd::SequentialDistributedData)
+function scatter(snd::SequentialChunkyData)
   @assert length(snd.parts[MASTER]) == num_parts(snd)
   parts = similar(snd.parts,eltype(snd.parts[MASTER]),size(snd.parts))
   copyto!(parts,snd.parts[MASTER])
-  SequentialDistributedData(parts)
+  SequentialChunkyData(parts)
 end
 
 function async_exchange!(
-  data_rcv::SequentialDistributedData,
-  data_snd::SequentialDistributedData,
-  parts_rcv::SequentialDistributedData,
-  parts_snd::SequentialDistributedData,
-  t_in::DistributedData)
+  data_rcv::SequentialChunkyData,
+  data_snd::SequentialChunkyData,
+  parts_rcv::SequentialChunkyData,
+  parts_snd::SequentialChunkyData,
+  t_in::ChunkyData)
 
   @check num_parts(parts_rcv) == num_parts(data_rcv)
   @check num_parts(parts_rcv) == num_parts(data_snd)
@@ -121,7 +121,7 @@ function async_exchange!(
   t_out
 end
 
-function _check_rcv_and_snd_match(parts_rcv::SequentialDistributedData,parts_snd::SequentialDistributedData)
+function _check_rcv_and_snd_match(parts_rcv::SequentialChunkyData,parts_snd::SequentialChunkyData)
   @check num_parts(parts_rcv) == num_parts(parts_snd)
   for part in 1:num_parts(parts_rcv)
     for i in parts_rcv.parts[part]
@@ -135,11 +135,11 @@ function _check_rcv_and_snd_match(parts_rcv::SequentialDistributedData,parts_snd
 end
 
 function async_exchange!(
-  data_rcv::SequentialDistributedData{<:Table},
-  data_snd::SequentialDistributedData{<:Table},
-  parts_rcv::SequentialDistributedData,
-  parts_snd::SequentialDistributedData,
-  t_in::SequentialDistributedData)
+  data_rcv::SequentialChunkyData{<:Table},
+  data_snd::SequentialChunkyData{<:Table},
+  parts_rcv::SequentialChunkyData,
+  parts_snd::SequentialChunkyData,
+  t_in::SequentialChunkyData)
 
   @check num_parts(parts_rcv) == num_parts(data_rcv)
   @check num_parts(parts_rcv) == num_parts(data_snd)
