@@ -1,15 +1,15 @@
-# ChunkyAlgebra.jl
+# ChunkyArrays.jl
 
 🚧 ⛏️ WIP
 
 ## What
 
-[![Build Status](https://github.com/fverdugo/ChunkyAlgebra.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/ChunkyAlgebra.jl/actions)
-[![Coverage](https://codecov.io/gh/fverdugo/ChunkyAlgebra.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/ChunkyAlgebra.jl)
+[![Build Status](https://github.com/fverdugo/ChunkyArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/ChunkyArrays.jl/actions)
+[![Coverage](https://codecov.io/gh/fverdugo/ChunkyArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/ChunkyArrays.jl)
 
 This package provides a data-oriented parallel implementation of the basic linear algebra objects needed in FD and FE simulations. The long-term goal of this package is to provide (when combined with other Julia packages as `IterativeSolvers.jl`) a Julia alternative to well-known distributed algebra back ends such as `PETSc` or `Trilinos`.
 
-At this moment, a simple FD system can be assembled and solved in parallel with this package together with a Conjugate Gradient method from `IterativeSolvers.jl` . See the file [test_fdm.jl]( https://github.com/fverdugo/ChunkyAlgebra.jl/blob/master/test/test_fdm.jl).
+At this moment, a simple FD system can be assembled and solved in parallel with this package together with a Conjugate Gradient method from `IterativeSolvers.jl` . See the file [test_fdm.jl]( https://github.com/fverdugo/ChunkyArrays.jl/blob/master/test/test_fdm.jl).
 
 These basic types are currently implemented:
 - `ChunkyData`: The low level type representing some data distributed over several chunks or parts. This is the core component of the data-oriented parallel implementation.

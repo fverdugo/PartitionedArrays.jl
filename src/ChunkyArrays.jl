@@ -1,4 +1,4 @@
-module ChunkyAlgebra
+module ChunkyArrays
 
 using SparseArrays
 using LinearAlgebra

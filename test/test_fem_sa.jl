@@ -1,7 +1,7 @@
 
 using LinearAlgebra
 using SparseArrays
-using ChunkyAlgebra
+using ChunkyArrays
 using Test
 using IterativeSolvers
 

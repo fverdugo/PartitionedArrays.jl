@@ -1,6 +1,6 @@
 module SequentialBackendTests
 
-using ChunkyAlgebra
+using ChunkyArrays
 using Test
 
 function main(parts)
