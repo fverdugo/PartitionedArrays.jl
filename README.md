@@ -15,7 +15,7 @@ These basic types are currently implemented:
 - `PData`: The low level type representing some data partitioned over several chunks or parts. This is the core component of the data-oriented parallel implementation.
 - `PRange`: A specialization of `AbstractUnitRange` that has information about how the ids in the range are partitioned in different chunks. This type is used to describe the parallel data layout of rows and cols in `PVector` and `PSparseMatrix` objects.
 - `PVector`: A vector partitioned in (overlapping or non-overlapping) chunks.
-- `PSparseMatrix`: A sparse matrix partitioned in (overlapping or non-overlapping)) chunks of rows.
+- `PSparseMatrix`: A sparse matrix partitioned in (overlapping or non-overlapping) chunks of rows.
 
 On these types, several communication operations are defined:
 
