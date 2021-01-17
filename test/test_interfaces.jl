@@ -1,7 +1,7 @@
 
 using LinearAlgebra
 using SparseArrays
-using DistributedDataDraft
+using ChunkyArrays
 using Test
 using IterativeSolvers
 
@@ -181,7 +181,7 @@ function test_interfaces(parts)
   exchange!(values,exchanger_snd;reduce_op=+)
   exchange!(values,exchanger_rcv)
 
-  ids = DistributedRange(n,lids)
+  ids = ChunkyRange(n,lids)
 
   map_parts(ids.lids) do lids
     @test lids.ngids == n
@@ -197,7 +197,7 @@ function test_interfaces(parts)
   @test num_parts(ids) == nparts
   @test num_gids(ids) == n
 
-  ids2 = DistributedRange(parts,n)
+  ids2 = ChunkyRange(parts,n)
   @test ids2.ghost == false
 
   gids = map_parts(parts) do part
@@ -218,7 +218,7 @@ function test_interfaces(parts)
   to_gid!(gids,ids3)
 
   if ndims(parts) > 1
-    ids4 = DistributedRange(parts,(5,4))
+    ids4 = ChunkyRange(parts,(5,4))
     @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
     map_parts(parts,ids4.lids) do part, ids4
@@ -235,9 +235,9 @@ function test_interfaces(parts)
     end
   end
 
-  v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:global)
-  v = DistributedVector(gids,map_parts(copy,gids),ids3;ids=:local)
-  v = DistributedVector(gids,map_parts(copy,gids),n;ids=:global)
+  v = ChunkyVector(gids,map_parts(copy,gids),ids3;ids=:global)
+  v = ChunkyVector(gids,map_parts(copy,gids),ids3;ids=:local)
+  v = ChunkyVector(gids,map_parts(copy,gids),n;ids=:global)
   u = 2*v
   map_parts(u.values,v.values) do u,v
     @test u == 2*v
@@ -256,21 +256,21 @@ function test_interfaces(parts)
   @test sum(w) == 0
 
   w = v .- u
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
   w =  1 .+ v
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
   w =  v .+ 1
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
   w =  v .+ w .- u
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
   w =  v .+ 1 .- u
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
 
   w .= v .- u
   w .= v .- 1 .- u
 
-  u = DistributedVector(1.0,ids2)
-  w = DistributedVector(3.0,ids3)
+  u = ChunkyVector(1.0,ids2)
+  w = ChunkyVector(3.0,ids3)
 
   @test oids_are_equal(u.rows,u.rows)
   @test hids_are_equal(u.rows,u.rows)
@@ -280,11 +280,11 @@ function test_interfaces(parts)
   @test !lids_are_equal(u.rows,w.rows)
 
   w = v .- u
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
   w =  v .+ w .- u
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
   w =  v .+ 1 .- u
-  @test isa(w,DistributedVector)
+  @test isa(w,ChunkyVector)
 
   w .= v .- u
   w .= v .- 1 .- u
@@ -313,10 +313,10 @@ function test_interfaces(parts)
     end
   end
 
-  v = DistributedVector{Float64}(undef,ids)
+  v = ChunkyVector{Float64}(undef,ids)
   fill!(v,1.0)
 
-  v = DistributedVector{Float64}(undef,ids)
+  v = ChunkyVector{Float64}(undef,ids)
   map_parts(parts,v.values,v.rows.lids) do part, values, lids
     for lid in 1:length(lids.lid_to_part)
       owner = lids.lid_to_part[lid]
@@ -345,12 +345,12 @@ function test_interfaces(parts)
     sparse(i,j,v,num_lids(rows),num_lids(cols))
   end
 
-  x = DistributedVector{Float64}(undef,cols)
+  x = ChunkyVector{Float64}(undef,cols)
   fill!(x,3)
-  b = DistributedVector{Float64}(undef,rows)
+  b = ChunkyVector{Float64}(undef,rows)
 
 
-  A = DistributedSparseMatrix(values,rows,cols)
+  A = ChunkySparseMatrix(values,rows,cols)
   mul!(b,A,x)
 
   map_parts(b.owned_values) do values
@@ -376,11 +376,11 @@ function test_interfaces(parts)
       [9,9,8,10], [9,2,8,10], [10.0,2.0,30.0,50.0]
     end
   end
-  A = DistributedSparseMatrix(I,J,V,n,n;ids=:global)
+  A = ChunkySparseMatrix(I,J,V,n,n;ids=:global)
   local_view(A)
   global_view(A)
 
-  x = DistributedVector{Float64}(undef,A.cols)
+  x = ChunkyVector{Float64}(undef,A.cols)
   fill!(x,1.0)
   y = A*x
   dy = y - y
@@ -388,11 +388,11 @@ function test_interfaces(parts)
   P = Jacobi(A)
   x = P\y
 
-  y = DistributedVector(1.0,A.rows)
+  y = ChunkyVector(1.0,A.rows)
   x = IterativeSolvers.cg(A,y)
   x = IterativeSolvers.cg(A,y,Pl=P)
 
-  x = DistributedVector(0.0,A.cols)
+  x = ChunkyVector(0.0,A.cols)
   IterativeSolvers.cg!(x,A,y)
   fill!(x,0.0)
   IterativeSolvers.cg!(x,A,y,Pl=P)

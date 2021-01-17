@@ -1,4 +1,4 @@
-using DistributedDataDraft
+using ChunkyArrays
 using Test
 
 function main(parts)
