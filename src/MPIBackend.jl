@@ -44,7 +44,7 @@ end
 Base.size(a::MPIData) = a.size
 get_part_id(a::MPIData) = get_part_id(a.comm)
 get_backend(a::MPIData) = mpi
-i_am_master(a::MPIData) = get_part_id(a.comm) == MASTER
+i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
 
 function Base.iterate(a::MPIData)
   next = iterate(a.part)
@@ -91,12 +91,12 @@ end
 
 function gather!(rcv::MPIData,snd::MPIData)
   @assert rcv.comm === snd.comm
-  if get_part_id(snd) == MASTER
+  if get_part_id(snd) == MAIN
     @assert length(rcv.part) == num_parts(snd)
-    rcv.part[MASTER] = snd.part
-    MPI.Gather!(MPI.IN_PLACE,MPI.UBuffer(rcv.part,1),MASTER-1,snd.comm)
+    rcv.part[MAIN] = snd.part
+    MPI.Gather!(MPI.IN_PLACE,MPI.UBuffer(rcv.part,1),MAIN-1,snd.comm)
   else
-    MPI.Gather!(Ref(snd.part),nothing,MASTER-1,snd.comm)
+    MPI.Gather!(Ref(snd.part),nothing,MAIN-1,snd.comm)
   end
   rcv
 end
@@ -109,19 +109,19 @@ function gather_all!(rcv::MPIData,snd::MPIData)
 end
 
 function scatter(snd::MPIData)
-  if get_part_id(snd) == MASTER
-    part = snd.part[MASTER]
-    MPI.Scatter!(MPI.UBuffer(snd.part,1),MPI.IN_PLACE,MASTER-1,snd.comm)
+  if get_part_id(snd) == MAIN
+    part = snd.part[MAIN]
+    MPI.Scatter!(MPI.UBuffer(snd.part,1),MPI.IN_PLACE,MAIN-1,snd.comm)
   else
     rcv = Vector{eltype(snd.part)}(undef,1)
-    MPI.Scatter!(nothing,rcv,MASTER-1,snd.comm)        
+    MPI.Scatter!(nothing,rcv,MAIN-1,snd.comm)        
     part = rcv[1]
   end
   MPIData(part,snd.comm,snd.size)
 end
 
 function bcast(snd::MPIData)
-  MPIData(get_master_part(snd),snd.comm,snd.size)
+  MPIData(get_main_part(snd),snd.comm,snd.size)
 end
 
 function async_exchange!(

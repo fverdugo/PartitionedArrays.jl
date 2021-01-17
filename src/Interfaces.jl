@@ -35,7 +35,7 @@ get_part_ids(a::PData) = get_part_ids(get_backend(a),size(a))
 
 map_parts(task::Function,a::PData...) = @abstractmethod
 
-i_am_master(::PData) = @abstractmethod
+i_am_main(::PData) = @abstractmethod
 
 Base.eltype(a::PData{T}) where T = T
 Base.eltype(::Type{<:PData{T}}) where T = T
@@ -49,11 +49,11 @@ Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
 #
 #PData(a::PData) = a
 
-const MASTER = 1
+const MAIN = 1
 
-# import the master part to the main scope
-# in MPI this will broadcast the master part to all procs
-get_master_part(a::PData) = get_part(a,MASTER)
+# import the main part to the main scope
+# in MPI this will broadcast the main part to all procs
+get_main_part(a::PData) = get_part(a,MAIN)
 
 # This one is safe to use only when all parts contain the same value, e.g. the result of a gather_all call.
 get_part(a::PData) = @abstractmethod
@@ -69,7 +69,7 @@ function gather(snd::PData)
   parts = get_part_ids(snd)
   rcv = map_parts(parts,snd) do part, snd
     T = typeof(snd)
-    if part == MASTER
+    if part == MAIN
       Vector{T}(undef,np)
     else
       Vector{T}(undef,0)
@@ -98,7 +98,7 @@ function bcast(snd::PData)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
     T = typeof(snd)
-    if part == MASTER
+    if part == MAIN
       v = Vector{T}(undef,np)
       fill!(v,snd)
     else
@@ -109,19 +109,19 @@ function bcast(snd::PData)
   scatter(snd2)
 end
 
-function reduce_master(op,snd::PData;init)
+function reduce_main(op,snd::PData;init)
   a = gather(snd)
   map_parts(i->reduce(op,i;init=init),a)
 end
 
 function reduce_all(args...;kwargs...)
-  b = reduce_master(args...;kwargs...)
+  b = reduce_main(args...;kwargs...)
   bcast(b)
 end
 
 function Base.reduce(op,a::PData;init)
-  b = reduce_master(op,a;init=init)
-  get_master_part(b)
+  b = reduce_main(op,a;init=init)
+  get_main_part(b)
 end
 
 function Base.sum(a::PData)

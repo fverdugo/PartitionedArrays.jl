@@ -8,7 +8,7 @@ function main(parts)
   nparts = num_parts(parts)
   @assert nparts == 4
 
-  @test i_am_master(parts) == true
+  @test i_am_main(parts) == true
   
   values = map_parts(parts) do part
     10*part
@@ -106,14 +106,14 @@ function main(parts)
   @test size(rcv) == size(parts)
   
   map_parts(parts,rcv) do part, rcv
-    if part == MASTER
+    if part == MAIN
       @test rcv == collect(1:nparts)
     else
       @test length(rcv) == 0
     end
   end
   
-  @test get_master_part(rcv) == collect(1:nparts)
+  @test get_main_part(rcv) == collect(1:nparts)
   
   rcv = scatter(rcv)
   map_parts(parts,rcv) do part, rcv

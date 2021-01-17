@@ -61,8 +61,8 @@ function test_interfaces(parts)
     @test r == data_rcv
   end
 
-  a = reduce_master(+,parts,init=0)
-  @test get_master_part(a) == 1+2+3+4
+  a = reduce_main(+,parts,init=0)
+  @test get_main_part(a) == 1+2+3+4
   b = reduce_all(+,parts,init=0)
   map_parts(b) do b
     @test b == 1+2+3+4

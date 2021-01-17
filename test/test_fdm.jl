@@ -111,7 +111,7 @@ function test_fdm(parts)
 
   # When this call returns, x has the correct answer only in the owned values.
   # The values at ghost ids can be recovered with exchange!(x)
-  IterativeSolvers.cg!(x,A,b,verbose=i_am_master(parts))
+  IterativeSolvers.cg!(x,A,b,verbose=i_am_main(parts))
 
   # This compares owned values, so we don't need to exchange!
   @test norm(x-x̂) < 1.0e-5

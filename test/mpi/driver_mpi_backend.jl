@@ -11,7 +11,7 @@ function main(parts)
   #s = size(parts)
   #display(map_parts(part->s,parts))
 
-  i_am_master(parts)
+  i_am_main(parts)
 
   values = map_parts(parts) do part
     10*part
@@ -109,7 +109,7 @@ function main(parts)
   @test size(rcv) == size(parts)
   
   map_parts(parts,rcv) do part, rcv
-    if part == MASTER
+    if part == MAIN
       @test rcv == collect(1:nparts)
     else
       @test length(rcv) == 0
@@ -137,7 +137,7 @@ function main(parts)
     @test rcv == 1
   end
   
-  @test get_master_part(rcv) == MASTER
+  @test get_main_part(rcv) == MAIN
   
   @test get_part(parts,3) == 3
 

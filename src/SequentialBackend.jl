@@ -19,7 +19,7 @@ end
 
 Base.size(a::SequentialData) = size(a.parts)
 
-i_am_master(a::SequentialData) = true
+i_am_main(a::SequentialData) = true
 
 get_backend(a::SequentialData) = sequential
 
@@ -64,13 +64,13 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialData)
 end
 
 get_part(a::SequentialData,part::Integer) = a.parts[part]
-get_part(a::SequentialData) = get_master_part(a)
+get_part(a::SequentialData) = get_main_part(a)
 
 function gather!(rcv::SequentialData,snd::SequentialData)
   @assert num_parts(rcv) == num_parts(snd)
-  @assert length(rcv.parts[MASTER]) == num_parts(snd)
+  @assert length(rcv.parts[MAIN]) == num_parts(snd)
   for part in 1:num_parts(snd)
-    rcv.parts[MASTER][part] = snd.parts[part]
+    rcv.parts[MAIN][part] = snd.parts[part]
   end
   rcv
 end
@@ -87,9 +87,9 @@ function gather_all!(rcv::SequentialData,snd::SequentialData)
 end
 
 function scatter(snd::SequentialData)
-  @assert length(snd.parts[MASTER]) == num_parts(snd)
-  parts = similar(snd.parts,eltype(snd.parts[MASTER]),size(snd.parts))
-  copyto!(parts,snd.parts[MASTER])
+  @assert length(snd.parts[MAIN]) == num_parts(snd)
+  parts = similar(snd.parts,eltype(snd.parts[MAIN]),size(snd.parts))
+  copyto!(parts,snd.parts[MAIN])
   SequentialData(parts)
 end
 
