@@ -1,4 +1,4 @@
-# ChunkyArrays.jl
+# ChunkyArrays
 
 🚧 ⛏️ WIP
 
