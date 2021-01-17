@@ -1,7 +1,7 @@
 
 abstract type Backend end
 
-# Should return a PartitionedData{Int}
+# Should return a PData{Int}
 function get_part_ids(b::Backend,nparts::Integer)
   @abstractmethod
 end
@@ -17,54 +17,54 @@ function distributed_run(driver::Function,b::Backend,nparts)
 end
 
 # Data distributed in parts of type T
-abstract type PartitionedData{T,N} end
+abstract type PData{T,N} end
 
-Base.size(a::PartitionedData) = @abstractmethod
+Base.size(a::PData) = @abstractmethod
 
-Base.length(a::PartitionedData) = prod(size(a))
+Base.length(a::PData) = prod(size(a))
 
-num_parts(a::PartitionedData) = length(a)
+num_parts(a::PData) = length(a)
 
-get_backend(a::PartitionedData) = @abstractmethod
+get_backend(a::PData) = @abstractmethod
 
-Base.iterate(a::PartitionedData)  = @abstractmethod
+Base.iterate(a::PData)  = @abstractmethod
 
-Base.iterate(a::PartitionedData,state)  = @abstractmethod
+Base.iterate(a::PData,state)  = @abstractmethod
 
-get_part_ids(a::PartitionedData) = get_part_ids(get_backend(a),size(a))
+get_part_ids(a::PData) = get_part_ids(get_backend(a),size(a))
 
-map_parts(task::Function,a::PartitionedData...) = @abstractmethod
+map_parts(task::Function,a::PData...) = @abstractmethod
 
-i_am_master(::PartitionedData) = @abstractmethod
+i_am_master(::PData) = @abstractmethod
 
-Base.eltype(a::PartitionedData{T}) where T = T
-Base.eltype(::Type{<:PartitionedData{T}}) where T = T
+Base.eltype(a::PData{T}) where T = T
+Base.eltype(::Type{<:PData{T}}) where T = T
 
-Base.ndims(a::PartitionedData{T,N}) where {T,N} = N
-Base.ndims(::Type{<:PartitionedData{T,N}}) where {T,N} = N
+Base.ndims(a::PData{T,N}) where {T,N} = N
+Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
 
 #function map_parts(task::Function,a...)
-#  map_parts(task,map(PartitionedData,a)...)
+#  map_parts(task,map(PData,a)...)
 #end
 #
-#PartitionedData(a::PartitionedData) = a
+#PData(a::PData) = a
 
 const MASTER = 1
 
 # import the master part to the main scope
 # in MPI this will broadcast the master part to all procs
-get_master_part(a::PartitionedData) = get_part(a,MASTER)
+get_master_part(a::PData) = get_part(a,MASTER)
 
 # This one is safe to use only when all parts contain the same value, e.g. the result of a gather_all call.
-get_part(a::PartitionedData) = @abstractmethod
+get_part(a::PData) = @abstractmethod
 
-get_part(a::PartitionedData,part::Integer) = @abstractmethod
+get_part(a::PData,part::Integer) = @abstractmethod
 
-gather!(rcv::PartitionedData,snd::PartitionedData) = @abstractmethod
+gather!(rcv::PData,snd::PData) = @abstractmethod
 
-gather_all!(rcv::PartitionedData,snd::PartitionedData) = @abstractmethod
+gather_all!(rcv::PData,snd::PData) = @abstractmethod
 
-function gather(snd::PartitionedData)
+function gather(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   rcv = map_parts(parts,snd) do part, snd
@@ -79,7 +79,7 @@ function gather(snd::PartitionedData)
   rcv
 end
 
-function gather_all(snd::PartitionedData)
+function gather_all(snd::PData)
   np = num_parts(snd)
   rcv = map_parts(snd) do snd
     T = typeof(snd)
@@ -89,11 +89,11 @@ function gather_all(snd::PartitionedData)
   rcv
 end
 
-function scatter(snd::PartitionedData)
+function scatter(snd::PData)
   @abstractmethod
 end
 
-function bcast(snd::PartitionedData)
+function bcast(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
@@ -109,7 +109,7 @@ function bcast(snd::PartitionedData)
   scatter(snd2)
 end
 
-function reduce_master(op,snd::PartitionedData;init)
+function reduce_master(op,snd::PData;init)
   a = gather(snd)
   map_parts(i->reduce(op,i;init=init),a)
 end
@@ -119,36 +119,36 @@ function reduce_all(args...;kwargs...)
   bcast(b)
 end
 
-function Base.reduce(op,a::PartitionedData;init)
+function Base.reduce(op,a::PData;init)
   b = reduce_master(op,a;init=init)
   get_master_part(b)
 end
 
-function Base.sum(a::PartitionedData)
+function Base.sum(a::PData)
   reduce(+,a,init=zero(eltype(a)))
 end
 
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
-# Starts a non-blocking exchange. It returns a PartitionedData of Julia Tasks. Calling schedule and wait on these
+# Starts a non-blocking exchange. It returns a PData of Julia Tasks. Calling schedule and wait on these
 # tasks will wait until the exchange is done in the corresponding part
 # (i.e., at this point it is save to read/write the buffers again).
 function async_exchange!(
-  data_rcv::PartitionedData,
-  data_snd::PartitionedData,
-  parts_rcv::PartitionedData,
-  parts_snd::PartitionedData,
-  t_in::PartitionedData)
+  data_rcv::PData,
+  data_snd::PData,
+  parts_rcv::PData,
+  parts_snd::PData,
+  t_in::PData)
 
   @abstractmethod
 end
 
 function async_exchange!(
-  data_rcv::PartitionedData,
-  data_snd::PartitionedData,
-  parts_rcv::PartitionedData,
-  parts_snd::PartitionedData)
+  data_rcv::PData,
+  data_snd::PData,
+  parts_rcv::PData,
+  parts_snd::PData)
 
   t_in = _empty_tasks(parts_rcv)
   async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
@@ -163,10 +163,10 @@ end
 # Non-blocking allocating exchange
 # the returned data_rcv cannot be consumed in a part until the corresponding task in t is done.
 function async_exchange(
-  data_snd::PartitionedData,
-  parts_rcv::PartitionedData,
-  parts_snd::PartitionedData,
-  t_in::PartitionedData=_empty_tasks(parts_rcv))
+  data_snd::PData,
+  parts_rcv::PData,
+  parts_snd::PData,
+  t_in::PData=_empty_tasks(parts_rcv))
 
   data_rcv = map_parts(data_snd,parts_rcv) do data_snd, parts_rcv
     similar(data_snd,eltype(data_snd),length(parts_rcv))
@@ -179,21 +179,21 @@ end
 
 # Non-blocking in-place exchange variable length (compressed in a Table)
 function async_exchange!(
-  data_rcv::PartitionedData{<:Table},
-  data_snd::PartitionedData{<:Table},
-  parts_rcv::PartitionedData,
-  parts_snd::PartitionedData,
-  t_in::PartitionedData)
+  data_rcv::PData{<:Table},
+  data_snd::PData{<:Table},
+  parts_rcv::PData,
+  parts_snd::PData,
+  t_in::PData)
 
   @abstractmethod
 end
 
 # Non-blocking allocating exchange variable length (compressed in a Table)
 function async_exchange(
-  data_snd::PartitionedData{<:Table},
-  parts_rcv::PartitionedData,
-  parts_snd::PartitionedData,
-  t_in::PartitionedData)
+  data_snd::PData{<:Table},
+  parts_rcv::PData,
+  parts_snd::PData,
+  t_in::PData)
 
   # Allocate empty data
   data_rcv = map_parts(empty_table,data_snd)
@@ -255,7 +255,7 @@ end
 
 # Discover snd parts from rcv assuming that srd is a subset of neighbors
 # Assumes that neighbors is a symmetric communication graph
-function discover_parts_snd(parts_rcv::PartitionedData, neighbors::PartitionedData)
+function discover_parts_snd(parts_rcv::PData, neighbors::PData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
 
   parts = get_part_ids(parts_rcv)
@@ -281,7 +281,7 @@ end
 
 # TODO
 # If neighbors not provided, all procs are considered neighbors (to be improved)
-function discover_parts_snd(parts_rcv::PartitionedData)
+function discover_parts_snd(parts_rcv::PData)
   parts = get_part_ids(parts_rcv)
   nparts = num_parts(parts)
   neighbors = map_parts(parts,parts_rcv) do part, parts_rcv
@@ -291,7 +291,7 @@ function discover_parts_snd(parts_rcv::PartitionedData)
   discover_parts_snd(parts_rcv,neighbors)
 end
 
-function discover_parts_snd(parts_rcv::PartitionedData,::Nothing)
+function discover_parts_snd(parts_rcv::PData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
@@ -480,10 +480,10 @@ struct Exchanger{B,C}
   lids_rcv::C
   lids_snd::C
   function Exchanger(
-    parts_rcv::PartitionedData{<:AbstractVector{<:Integer}},
-    parts_snd::PartitionedData{<:AbstractVector{<:Integer}},
-    lids_rcv::PartitionedData{<:Table{<:Integer}},
-    lids_snd::PartitionedData{<:Table{<:Integer}})
+    parts_rcv::PData{<:AbstractVector{<:Integer}},
+    parts_snd::PData{<:AbstractVector{<:Integer}},
+    lids_rcv::PData{<:Table{<:Integer}},
+    lids_snd::PData{<:Table{<:Integer}})
 
     B = typeof(parts_rcv)
     C = typeof(lids_rcv)
@@ -491,7 +491,7 @@ struct Exchanger{B,C}
   end
 end
 
-function Exchanger(ids::PartitionedData{<:IndexSet},neighbors=nothing)
+function Exchanger(ids::PData{<:IndexSet},neighbors=nothing)
 
   parts = get_part_ids(ids)
 
@@ -548,7 +548,7 @@ function Exchanger(ids::PartitionedData{<:IndexSet},neighbors=nothing)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
-function empty_exchanger(a::PartitionedData)
+function empty_exchanger(a::PData)
   parts_rcv = map_parts(i->Int[],a)
   parts_snd = map_parts(i->Int[],a)
   lids_rcv = map_parts(i->Table(Vector{Int32}[]),a)
@@ -579,9 +579,9 @@ function allocate_snd_buffer(::Type{T},a::Exchanger) where T
 end
 
 function async_exchange!(
-  values::PartitionedData{<:AbstractVector{T}},
+  values::PData{<:AbstractVector{T}},
   exchanger::Exchanger,
-  t0::PartitionedData=_empty_tasks(exchanger.parts_rcv);
+  t0::PData=_empty_tasks(exchanger.parts_rcv);
   reduce_op=_replace) where T
 
   # Allocate buffers
@@ -625,14 +625,14 @@ end
 _replace(x,y) = y
 
 # TODO mutable is needed to correctly implement add_gid!
-mutable struct PartitionedRange{A,B} <: AbstractUnitRange{Int}
+mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
   ghost::Bool
   exchanger::B
-  function PartitionedRange(
+  function PRange(
     ngids::Integer,
-    lids::PartitionedData{<:IndexSet},
+    lids::PData{<:IndexSet},
     ghost::Bool,
     exchanger::Exchanger)
   
@@ -646,30 +646,30 @@ mutable struct PartitionedRange{A,B} <: AbstractUnitRange{Int}
   end
 end
 
-function Base.copy(a::PartitionedRange)
+function Base.copy(a::PRange)
   ngids = copy(a.ngids)
   lids = deepcopy(a.lids)
   ghost = copy(a.ghost)
   exchanger = deepcopy(a.exchanger)
-  PartitionedRange(ngids,lids,ghost,exchanger)
+  PRange(ngids,lids,ghost,exchanger)
 end
 
-function PartitionedRange(
+function PRange(
   ngids::Integer,
-  lids::PartitionedData{<:IndexSet},
+  lids::PData{<:IndexSet},
   ghost::Bool=true)
 
   exchanger =  ghost ? Exchanger(lids) : empty_exchanger(lids)
-  PartitionedRange(ngids,lids,ghost,exchanger)
+  PRange(ngids,lids,ghost,exchanger)
 end
 
-Base.first(a::PartitionedRange) = 1
-Base.last(a::PartitionedRange) = a.ngids
+Base.first(a::PRange) = 1
+Base.last(a::PRange) = a.ngids
 
-num_gids(a::PartitionedRange) = a.ngids
-num_parts(a::PartitionedRange) = num_parts(a.lids)
+num_gids(a::PRange) = a.ngids
+num_parts(a::PRange) = num_parts(a.lids)
 
-function PartitionedRange(parts::PartitionedData{<:Integer},ngids::Integer)
+function PRange(parts::PData{<:Integer},ngids::Integer)
   np = num_parts(parts)
   lids = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
@@ -689,17 +689,17 @@ function PartitionedRange(parts::PartitionedData{<:Integer},ngids::Integer)
       hid_to_lid)
   end
   ghost = false
-  PartitionedRange(ngids,lids,ghost)
+  PRange(ngids,lids,ghost)
 end
 
-function PartitionedRange(
-  parts::PartitionedData{<:Integer,1},
+function PRange(
+  parts::PData{<:Integer,1},
   ngids::NTuple{N,<:Integer}) where N
-  PartitionedRange(parts,prod(ngids))
+  PRange(parts,prod(ngids))
 end
 
-function PartitionedRange(
-  parts::PartitionedData{<:Integer,N},
+function PRange(
+  parts::PData{<:Integer,N},
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
@@ -721,7 +721,7 @@ function PartitionedRange(
       hid_to_lid)
   end
   ghost = false
-  PartitionedRange(prod(ngids),lids,ghost)
+  PRange(prod(ngids),lids,ghost)
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
@@ -808,7 +808,7 @@ function _find_part_from_gid(
   part
 end
 
-function add_gid!(a::PartitionedRange,gids::PartitionedData{<:AbstractArray{<:Integer}})
+function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
   map_parts(a.lids,gids) do lids,gids
     for gid in gids
       add_gid!(lids,gid)
@@ -819,22 +819,22 @@ function add_gid!(a::PartitionedRange,gids::PartitionedData{<:AbstractArray{<:In
   a
 end
 
-function add_gid(a::PartitionedRange,gids::PartitionedData{<:AbstractArray{<:Integer}})
+function add_gid(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
   lids = map_parts(deepcopy,a.lids)
-  b = PartitionedRange(a.ngids,lids)
+  b = PRange(a.ngids,lids)
   add_gid!(b,gids)
   b
 end
 
-function to_lid!(ids::PartitionedData{<:AbstractArray{<:Integer}},a::PartitionedRange)
+function to_lid!(ids::PData{<:AbstractArray{<:Integer}},a::PRange)
   map_parts(to_lid!,ids,a.lids)
 end
 
-function to_gid!(ids::PartitionedData{<:AbstractArray{<:Integer}},a::PartitionedRange)
+function to_gid!(ids::PData{<:AbstractArray{<:Integer}},a::PRange)
   map_parts(to_gid!,ids,a.lids)
 end
 
-function oids_are_equal(a::PartitionedRange,b::PartitionedRange)
+function oids_are_equal(a::PRange,b::PRange)
   if a.lids === b.lids
     true
   else
@@ -843,7 +843,7 @@ function oids_are_equal(a::PartitionedRange,b::PartitionedRange)
   end
 end
 
-function hids_are_equal(a::PartitionedRange,b::PartitionedRange)
+function hids_are_equal(a::PRange,b::PRange)
   if a.lids === b.lids
     true
   else
@@ -852,7 +852,7 @@ function hids_are_equal(a::PartitionedRange,b::PartitionedRange)
   end
 end
 
-function lids_are_equal(a::PartitionedRange,b::PartitionedRange)
+function lids_are_equal(a::PRange,b::PRange)
   if a.lids === b.lids
     true
   else
@@ -861,12 +861,12 @@ function lids_are_equal(a::PartitionedRange,b::PartitionedRange)
   end
 end
 
-struct PartitionedVector{T,A,B} <: AbstractVector{T}
+struct PVector{T,A,B} <: AbstractVector{T}
   values::A
   rows::B
-  function PartitionedVector(
-    values::PartitionedData{<:AbstractVector{T}},
-    rows::PartitionedRange) where T
+  function PVector(
+    values::PData{<:AbstractVector{T}},
+    rows::PRange) where T
 
     A = typeof(values)
     B = typeof(rows)
@@ -874,7 +874,7 @@ struct PartitionedVector{T,A,B} <: AbstractVector{T}
   end
 end
 
-function Base.getproperty(x::PartitionedVector, sym::Symbol)
+function Base.getproperty(x::PVector, sym::Symbol)
   if sym == :owned_values
     map_parts(x.values,x.rows.lids) do v,r
       view(v,r.oid_to_lid)
@@ -888,63 +888,63 @@ function Base.getproperty(x::PartitionedVector, sym::Symbol)
   end
 end
 
-function Base.propertynames(x::PartitionedVector, private=false)
+function Base.propertynames(x::PVector, private=false)
   (fieldnames(typeof(x))...,:owned_values,:ghost_values)
 end
 
-Base.size(a::PartitionedVector) = (length(a.rows),)
-Base.axes(a::PartitionedVector) = (a.rows,)
-Base.IndexStyle(::Type{<:PartitionedVector}) = IndexLinear()
-function Base.getindex(a::PartitionedVector,gid::Integer)
+Base.size(a::PVector) = (length(a.rows),)
+Base.axes(a::PVector) = (a.rows,)
+Base.IndexStyle(::Type{<:PVector}) = IndexLinear()
+function Base.getindex(a::PVector,gid::Integer)
   # In practice this function should not be used
   @notimplemented
 end
 
-function Base.similar(a::PartitionedVector)
+function Base.similar(a::PVector)
   similar(a,eltype(a),axes(a))
 end
 
-function Base.similar(a::PartitionedVector,::Type{T}) where T
+function Base.similar(a::PVector,::Type{T}) where T
   similar(a,T,axes(a))
 end
 
-function Base.similar(a::PartitionedVector,::Type{T},axes::Tuple{Int}) where T
+function Base.similar(a::PVector,::Type{T},axes::Tuple{Int}) where T
   @notimplemented
 end
 
-function Base.similar(a::PartitionedVector,::Type{T},axes::Tuple{<:PartitionedRange}) where T
+function Base.similar(a::PVector,::Type{T},axes::Tuple{<:PRange}) where T
   rows = axes[1]
   values = map_parts(a.values,rows.lids) do values, lids
     similar(values,T,num_lids(lids))
   end
-  PartitionedVector(values,rows)
+  PVector(values,rows)
 end
 
 function Base.similar(
-  ::Type{<:PartitionedVector{T,<:PartitionedData{A}}},axes::Tuple{Int}) where {T,A}
+  ::Type{<:PVector{T,<:PData{A}}},axes::Tuple{Int}) where {T,A}
   @notimplemented
 end
 
 function Base.similar(
-  ::Type{<:PartitionedVector{T,<:PartitionedData{A}}},axes::Tuple{<:PartitionedRange}) where {T,A}
+  ::Type{<:PVector{T,<:PData{A}}},axes::Tuple{<:PRange}) where {T,A}
   rows = axes[1]
   values = map_parts(rows.lids) do lids
     similar(A,num_lids(lids))
   end
-  PartitionedVector(values,rows)
+  PVector(values,rows)
 end
 
-function Base.copy!(a::PartitionedVector,b::PartitionedVector)
+function Base.copy!(a::PVector,b::PVector)
   map_parts(copy!,a.values,b.values)
   a
 end
 
-function Base.copyto!(a::PartitionedVector,b::PartitionedVector)
+function Base.copyto!(a::PVector,b::PVector)
   map_parts(copyto!,a.values,b.values)
   a
 end
 
-function Base.copy(b::PartitionedVector)
+function Base.copy(b::PVector)
   a = similar(b)
   copy!(a,b)
   a
@@ -959,7 +959,7 @@ end
 @inline function Base.materialize(b::DistributedBroadcasted)
   owned_values = map_parts(Base.materialize,b.owned_values)
   T = eltype(eltype(owned_values))
-  a = PartitionedVector{T}(undef,b.rows)
+  a = PVector{T}(undef,b.rows)
   map_parts(a.owned_values,owned_values) do dest, src
     dest .= src
   end
@@ -972,7 +972,7 @@ end
   a
 end
 
-@inline function Base.materialize!(a::PartitionedVector,b::DistributedBroadcasted)
+@inline function Base.materialize!(a::PVector,b::DistributedBroadcasted)
   map_parts(a.owned_values,b.owned_values) do dest, x
     Base.materialize!(dest,x)
   end
@@ -986,7 +986,7 @@ end
 
 function Base.broadcasted(
   f,
-  args::Union{PartitionedVector,DistributedBroadcasted}...)
+  args::Union{PVector,DistributedBroadcasted}...)
 
   a1 = first(args)
   @check all(ai->oids_are_equal(ai.rows,a1.rows),args)
@@ -1004,7 +1004,7 @@ end
 function Base.broadcasted(
   f,
   a::Number,
-  b::Union{PartitionedVector,DistributedBroadcasted})
+  b::Union{PVector,DistributedBroadcasted})
 
   owned_values = map_parts(b->Base.broadcasted(f,a,b),b.owned_values)
   if b.ghost_values !== nothing
@@ -1017,7 +1017,7 @@ end
 
 function Base.broadcasted(
   f,
-  a::Union{PartitionedVector,DistributedBroadcasted},
+  a::Union{PVector,DistributedBroadcasted},
   b::Number)
 
   owned_values = map_parts(a->Base.broadcasted(f,a,b),a.owned_values)
@@ -1029,36 +1029,36 @@ function Base.broadcasted(
   DistributedBroadcasted(owned_values,ghost_values,a.rows)
 end
 
-function LinearAlgebra.norm(a::PartitionedVector,p::Real=2)
+function LinearAlgebra.norm(a::PVector,p::Real=2)
   contibs = map_parts(a.owned_values) do oid_to_value
     norm(oid_to_value,p)^p
   end
   reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
 end
 
-function PartitionedVector{T}(
+function PVector{T}(
   ::UndefInitializer,
-  rows::PartitionedRange) where T
+  rows::PRange) where T
 
   values = map_parts(rows.lids) do lids
     nlids = num_lids(lids)
     Vector{T}(undef,nlids)
   end
-  PartitionedVector(values,rows)
+  PVector(values,rows)
 end
 
-function PartitionedVector(v::Number, rows::PartitionedRange)
-  a = PartitionedVector{typeof(v)}(undef,rows)
+function PVector(v::Number, rows::PRange)
+  a = PVector{typeof(v)}(undef,rows)
   fill!(a,v)
   a
 end
 
 # If one chooses ids=:global the ids are translated in-place in I.
-function PartitionedVector(
+function PVector(
   init,
-  I::PartitionedData{<:AbstractArray{<:Integer}},
-  V::PartitionedData{<:AbstractArray},
-  rows::PartitionedRange;
+  I::PData{<:AbstractArray{<:Integer}},
+  V::PData{<:AbstractArray},
+  rows::PRange;
   ids::Symbol)
 
   @assert ids in (:global,:local)
@@ -1076,67 +1076,67 @@ function PartitionedVector(
     values
   end
 
-  PartitionedVector(values,rows)
+  PVector(values,rows)
 end
 
-function PartitionedVector(
-  I::PartitionedData{<:AbstractArray{<:Integer}},
-  V::PartitionedData{<:AbstractArray{T}},
+function PVector(
+  I::PData{<:AbstractArray{<:Integer}},
+  V::PData{<:AbstractArray{T}},
   rows;
   ids::Symbol) where T
-  PartitionedVector(n->zeros(T,n),I,V,rows;ids=ids)
+  PVector(n->zeros(T,n),I,V,rows;ids=ids)
 end
 
-function PartitionedVector(
+function PVector(
   init,
-  I::PartitionedData{<:AbstractArray{<:Integer}},
-  V::PartitionedData{<:AbstractArray},
+  I::PData{<:AbstractArray{<:Integer}},
+  V::PData{<:AbstractArray},
   n::Integer;
   ids::Symbol)
 
   @assert ids == :global
   parts = get_part_ids(I)
-  rows = PartitionedRange(parts,n)
+  rows = PRange(parts,n)
   add_gid!(rows,I)
-  PartitionedVector(init,I,V,rows;ids=ids)
+  PVector(init,I,V,rows;ids=ids)
 end
 
-function Base.:*(a::Number,b::PartitionedVector)
+function Base.:*(a::Number,b::PVector)
   values = map_parts(b.values) do values
     a*values
   end
-  PartitionedVector(values,b.rows)
+  PVector(values,b.rows)
 end
 
-function Base.:*(b::PartitionedVector,a::Number)
+function Base.:*(b::PVector,a::Number)
   a*b
 end
 
 for op in (:+,:-)
   @eval begin
 
-    function Base.$op(a::PartitionedVector)
+    function Base.$op(a::PVector)
       values = map_parts(a.values) do a
         $op(a)
       end
-      PartitionedVector(values,a.rows)
+      PVector(values,a.rows)
     end
 
-    function Base.$op(a::PartitionedVector,b::PartitionedVector)
+    function Base.$op(a::PVector,b::PVector)
       $op.(a,b)
     end
 
   end
 end
 
-function Base.fill!(a::PartitionedVector,v)
+function Base.fill!(a::PVector,v)
   map_parts(a.values) do lid_to_value
     fill!(lid_to_value,v)
   end
   a
 end
 
-function Base.reduce(op,a::PartitionedVector;init)
+function Base.reduce(op,a::PVector;init)
   b = map_parts(a.values,a.rows.lids) do values,lids
     owned_values = view(values,lids.oid_to_lid)
     reduce(op,owned_values,init=init)
@@ -1144,11 +1144,11 @@ function Base.reduce(op,a::PartitionedVector;init)
   reduce(op,b,init=init)
 end
 
-function Base.sum(a::PartitionedVector)
+function Base.sum(a::PVector)
   reduce(+,a,init=zero(eltype(a)))
 end
 
-function LinearAlgebra.dot(a::PartitionedVector,b::PartitionedVector)
+function LinearAlgebra.dot(a::PVector,b::PVector)
   c = map_parts(a.values,b.values,a.rows.lids,b.rows.lids) do a,b,alids,blids
     a_owned = view(a,alids.oid_to_lid)
     b_owned = view(b,blids.oid_to_lid)
@@ -1157,11 +1157,11 @@ function LinearAlgebra.dot(a::PartitionedVector,b::PartitionedVector)
   sum(c)
 end
 
-function local_view(a::PartitionedVector)
+function local_view(a::PVector)
   a.values
 end
 
-function global_view(a::PartitionedVector)
+function global_view(a::PVector)
   map_parts(a.values,a.rows.lids) do values, lids
     GlobalView(values,(lids.gid_to_lid,),(lids.ngids,))
   end
@@ -1194,16 +1194,16 @@ function Base.setindex!(a::GlobalView{T,N},v,gid::Vararg{Integer,N}) where {T,N}
 end
 
 function async_exchange!(
-  a::PartitionedVector,
-  t0::PartitionedData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  a::PVector,
+  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
   async_exchange!(a.values,a.rows.exchanger,t0)
 end
 
 # Non-blocking assembly
 # TODO reduce op as first argument and init kwargument
 function async_assemble!(
-  a::PartitionedVector,
-  t0::PartitionedData=_empty_tasks(a.rows.exchanger.parts_rcv);
+  a::PVector,
+  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv);
   reduce_op=+)
 
   exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
@@ -1225,15 +1225,15 @@ function assemble!(args...;kwargs...)
   first(args)
 end
 
-struct PartitionedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
+struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   values::A
   rows::B
   cols::C
   exchanger::D
-  function PartitionedSparseMatrix(
-    values::PartitionedData{<:AbstractSparseMatrix{T}},
-    rows::PartitionedRange,
-    cols::PartitionedRange,
+  function PSparseMatrix(
+    values::PData{<:AbstractSparseMatrix{T}},
+    rows::PRange,
+    cols::PRange,
     exchanger::Exchanger) where T
 
     A = typeof(values)
@@ -1244,20 +1244,20 @@ struct PartitionedSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   end
 end
 
-function PartitionedSparseMatrix(
-  values::PartitionedData{<:AbstractSparseMatrix{T}},
-  rows::PartitionedRange,
-  cols::PartitionedRange) where T
+function PSparseMatrix(
+  values::PData{<:AbstractSparseMatrix{T}},
+  rows::PRange,
+  cols::PRange) where T
 
   if rows.ghost
     exchanger = matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)
   else
     exchanger = empty_exchanger(rows.lids)
   end
-  PartitionedSparseMatrix(values,rows,cols,exchanger)
+  PSparseMatrix(values,rows,cols,exchanger)
 end
 
-function Base.getproperty(x::PartitionedSparseMatrix, sym::Symbol)
+function Base.getproperty(x::PSparseMatrix, sym::Symbol)
   if sym == :owned_owned_values
     map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
       indices = (r.oid_to_lid,c.oid_to_lid)
@@ -1291,7 +1291,7 @@ function Base.getproperty(x::PartitionedSparseMatrix, sym::Symbol)
   end
 end
 
-function Base.propertynames(x::PartitionedSparseMatrix, private=false)
+function Base.propertynames(x::PSparseMatrix, private=false)
   (
     fieldnames(typeof(x))...,
     :owned_owned_values,
@@ -1300,22 +1300,22 @@ function Base.propertynames(x::PartitionedSparseMatrix, private=false)
     :ghost_ghost_values)
 end
 
-Base.size(a::PartitionedSparseMatrix) = (num_gids(a.rows),num_gids(a.cols))
-Base.axes(a::PartitionedSparseMatrix) = (a.rows,a.cols)
-Base.IndexStyle(::Type{<:PartitionedSparseMatrix}) = IndexCartesian()
-function Base.getindex(a::PartitionedSparseMatrix,gi::Integer,gj::Integer)
+Base.size(a::PSparseMatrix) = (num_gids(a.rows),num_gids(a.cols))
+Base.axes(a::PSparseMatrix) = (a.rows,a.cols)
+Base.IndexStyle(::Type{<:PSparseMatrix}) = IndexCartesian()
+function Base.getindex(a::PSparseMatrix,gi::Integer,gj::Integer)
   #This should not be used in practice
   @notimplemented
 end
 
 # If one chooses ids=:global the ids are translated in-place in I and J
-function PartitionedSparseMatrix(
+function PSparseMatrix(
   init,
-  I::PartitionedData{<:AbstractArray{<:Integer}},
-  J::PartitionedData{<:AbstractArray{<:Integer}},
-  V::PartitionedData{<:AbstractArray},
-  rows::PartitionedRange,
-  cols::PartitionedRange;
+  I::PData{<:AbstractArray{<:Integer}},
+  J::PData{<:AbstractArray{<:Integer}},
+  V::PData{<:AbstractArray},
+  rows::PRange,
+  cols::PRange;
   ids::Symbol)
 
   @assert ids in (:global,:local)
@@ -1328,42 +1328,42 @@ function PartitionedSparseMatrix(
     init(I,J,V,num_lids(rlids),num_lids(clids))
   end
 
-  PartitionedSparseMatrix(values,rows,cols)
+  PSparseMatrix(values,rows,cols)
 end
 
-function PartitionedSparseMatrix(
+function PSparseMatrix(
   init,
-  I::PartitionedData{<:AbstractArray{<:Integer}},
-  J::PartitionedData{<:AbstractArray{<:Integer}},
-  V::PartitionedData{<:AbstractArray},
+  I::PData{<:AbstractArray{<:Integer}},
+  J::PData{<:AbstractArray{<:Integer}},
+  V::PData{<:AbstractArray},
   nrows::Integer,
   ncols::Integer;
   ids::Symbol)
 
   @assert ids == :global
   parts = get_part_ids(I)
-  rows = PartitionedRange(parts,nrows)
-  cols = PartitionedRange(parts,ncols)
+  rows = PRange(parts,nrows)
+  cols = PRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
-  PartitionedSparseMatrix(init,I,J,V,rows,cols;ids=ids)
+  PSparseMatrix(init,I,J,V,rows,cols;ids=ids)
 end
 
-function PartitionedSparseMatrix(
-  I::PartitionedData{<:AbstractArray{<:Integer}},
-  J::PartitionedData{<:AbstractArray{<:Integer}},
-  V::PartitionedData{<:AbstractArray},
+function PSparseMatrix(
+  I::PData{<:AbstractArray{<:Integer}},
+  J::PData{<:AbstractArray{<:Integer}},
+  V::PData{<:AbstractArray},
   rows,
   cols;
   ids::Symbol)
 
-  PartitionedSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
+  PSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
 end
 
 function LinearAlgebra.mul!(
-  c::PartitionedVector,
-  a::PartitionedSparseMatrix,
-  b::PartitionedVector,
+  c::PVector,
+  a::PSparseMatrix,
+  b::PVector,
   α::Number,
   β::Number)
 
@@ -1460,11 +1460,11 @@ function LinearAlgebra.mul!(
   C
 end
 
-function local_view(a::PartitionedSparseMatrix)
+function local_view(a::PSparseMatrix)
   a.values
 end
 
-function global_view(a::PartitionedSparseMatrix)
+function global_view(a::PSparseMatrix)
   map_parts(a.values,a.rows.lids,a.cols.lids) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
   end
@@ -1603,16 +1603,16 @@ end
 
 # Non-blocking exchange
 function async_exchange!(
-  a::PartitionedSparseMatrix,
-  t0::PartitionedData=_empty_tasks(a.exchanger.parts_rcv))
+  a::PSparseMatrix,
+  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
   nzval = map_parts(nonzeros,a.values)
   async_exchange!(nzval,a.exchanger,t0)
 end
 
 # Non-blocking assembly
 function async_assemble!(
-  a::PartitionedSparseMatrix,
-  t0::PartitionedData=_empty_tasks(a.exchanger.parts_rcv);
+  a::PSparseMatrix,
+  t0::PData=_empty_tasks(a.exchanger.parts_rcv);
   reduce_op=+)
 
   exchanger_rcv = a.exchanger # receives data at ghost ids from remote parts
@@ -1628,11 +1628,11 @@ function async_assemble!(
 end
 
 function async_assemble!(
-  I::PartitionedData{<:AbstractVector{<:Integer}},
-  J::PartitionedData{<:AbstractVector{<:Integer}},
-  V::PartitionedData{<:AbstractVector},
-  rows::PartitionedRange,
-  t0::PartitionedData=_empty_tasks(rows.exchanger.parts_rcv);
+  I::PData{<:AbstractVector{<:Integer}},
+  J::PData{<:AbstractVector{<:Integer}},
+  V::PData{<:AbstractVector},
+  rows::PRange,
+  t0::PData=_empty_tasks(rows.exchanger.parts_rcv);
   reduce_op=+)
 
   map_parts(wait∘schedule,t0)
@@ -1711,20 +1711,20 @@ function async_assemble!(
   t4
 end
 
-function Base.:*(a::Number,b::PartitionedSparseMatrix)
+function Base.:*(a::Number,b::PSparseMatrix)
   values = map_parts(b.values) do values
     a*values
   end
-  PartitionedSparseMatrix(values,b.rows,b.cols,b.exchanger)
+  PSparseMatrix(values,b.rows,b.cols,b.exchanger)
 end
 
-function Base.:*(b::PartitionedSparseMatrix,a::Number)
+function Base.:*(b::PSparseMatrix,a::Number)
   a*b
 end
 
-function Base.:*(a::PartitionedSparseMatrix{Ta},b::PartitionedVector{Tb}) where {Ta,Tb}
+function Base.:*(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
-  c = PartitionedVector{T}(undef,a.rows)
+  c = PVector{T}(undef,a.rows)
   mul!(c,a,b)
   c
 end
@@ -1732,11 +1732,11 @@ end
 for op in (:+,:-)
   @eval begin
 
-    function Base.$op(a::PartitionedSparseMatrix)
+    function Base.$op(a::PSparseMatrix)
       values = map_parts(a.values) do a
         $op(a)
       end
-      PartitionedSparseMatrix(values,a.rows,a.cols,a.exchanger)
+      PSparseMatrix(values,a.rows,a.cols,a.exchanger)
     end
 
   end
@@ -1749,9 +1749,9 @@ struct Jacobi{T,A,B,C}
   rows::B
   cols::C
   function Jacobi(
-    diaginv::PartitionedData{<:AbstractVector{T}},
-    rows::PartitionedRange,
-    cols::PartitionedRange) where T
+    diaginv::PData{<:AbstractVector{T}},
+    rows::PRange,
+    cols::PRange) where T
 
     A = typeof(diaginv)
     B = typeof(rows)
@@ -1760,7 +1760,7 @@ struct Jacobi{T,A,B,C}
   end
 end
 
-function Jacobi(a::PartitionedSparseMatrix)
+function Jacobi(a::PSparseMatrix)
   diaginv = map_parts(a.values,a.rows.lids,a.cols.lids) do values, rlids, clids
     @assert num_oids(rlids) == num_oids(clids)
     @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
@@ -1772,9 +1772,9 @@ function Jacobi(a::PartitionedSparseMatrix)
 end
 
 function LinearAlgebra.ldiv!(
-  c::PartitionedVector,
+  c::PVector,
   a::Jacobi,
-  b::PartitionedVector)
+  b::PVector)
 
   @check oids_are_equal(c.rows,a.cols)
   @check oids_are_equal(b.rows,a.rows)
@@ -1788,20 +1788,20 @@ end
 
 function LinearAlgebra.ldiv!(
   a::Jacobi,
-  b::PartitionedVector)
+  b::PVector)
   ldiv!(b,a,b)
 end
 
-function Base.:\(a::Jacobi{Ta},b::PartitionedVector{Tb}) where {Ta,Tb}
+function Base.:\(a::Jacobi{Ta},b::PVector{Tb}) where {Ta,Tb}
   T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = PartitionedVector{T}(undef,a.cols)
+  c = PVector{T}(undef,a.cols)
   ldiv!(c,a,b)
   c
 end
 
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
-function IterativeSolvers.zerox(A::PartitionedSparseMatrix,b::PartitionedVector)
+function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
   T = IterativeSolvers.Adivtype(A, b)
   x = similar(b, T, axes(A, 2))
   fill!(x, zero(T))

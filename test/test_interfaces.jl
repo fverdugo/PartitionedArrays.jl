@@ -181,7 +181,7 @@ function test_interfaces(parts)
   exchange!(values,exchanger_snd;reduce_op=+)
   exchange!(values,exchanger_rcv)
 
-  ids = PartitionedRange(n,lids)
+  ids = PRange(n,lids)
 
   map_parts(ids.lids) do lids
     @test lids.ngids == n
@@ -197,7 +197,7 @@ function test_interfaces(parts)
   @test num_parts(ids) == nparts
   @test num_gids(ids) == n
 
-  ids2 = PartitionedRange(parts,n)
+  ids2 = PRange(parts,n)
   @test ids2.ghost == false
 
   gids = map_parts(parts) do part
@@ -218,7 +218,7 @@ function test_interfaces(parts)
   to_gid!(gids,ids3)
 
   if ndims(parts) > 1
-    ids4 = PartitionedRange(parts,(5,4))
+    ids4 = PRange(parts,(5,4))
     @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
     map_parts(parts,ids4.lids) do part, ids4
@@ -235,9 +235,9 @@ function test_interfaces(parts)
     end
   end
 
-  v = PartitionedVector(gids,map_parts(copy,gids),ids3;ids=:global)
-  v = PartitionedVector(gids,map_parts(copy,gids),ids3;ids=:local)
-  v = PartitionedVector(gids,map_parts(copy,gids),n;ids=:global)
+  v = PVector(gids,map_parts(copy,gids),ids3;ids=:global)
+  v = PVector(gids,map_parts(copy,gids),ids3;ids=:local)
+  v = PVector(gids,map_parts(copy,gids),n;ids=:global)
   u = 2*v
   map_parts(u.values,v.values) do u,v
     @test u == 2*v
@@ -256,21 +256,21 @@ function test_interfaces(parts)
   @test sum(w) == 0
 
   w = v .- u
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
   w =  1 .+ v
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
   w =  v .+ 1
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
   w =  v .+ w .- u
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
   w =  v .+ 1 .- u
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
 
   w .= v .- u
   w .= v .- 1 .- u
 
-  u = PartitionedVector(1.0,ids2)
-  w = PartitionedVector(3.0,ids3)
+  u = PVector(1.0,ids2)
+  w = PVector(3.0,ids3)
 
   @test oids_are_equal(u.rows,u.rows)
   @test hids_are_equal(u.rows,u.rows)
@@ -280,11 +280,11 @@ function test_interfaces(parts)
   @test !lids_are_equal(u.rows,w.rows)
 
   w = v .- u
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
   w =  v .+ w .- u
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
   w =  v .+ 1 .- u
-  @test isa(w,PartitionedVector)
+  @test isa(w,PVector)
 
   w .= v .- u
   w .= v .- 1 .- u
@@ -313,10 +313,10 @@ function test_interfaces(parts)
     end
   end
 
-  v = PartitionedVector{Float64}(undef,ids)
+  v = PVector{Float64}(undef,ids)
   fill!(v,1.0)
 
-  v = PartitionedVector{Float64}(undef,ids)
+  v = PVector{Float64}(undef,ids)
   map_parts(parts,v.values,v.rows.lids) do part, values, lids
     for lid in 1:length(lids.lid_to_part)
       owner = lids.lid_to_part[lid]
@@ -345,12 +345,12 @@ function test_interfaces(parts)
     sparse(i,j,v,num_lids(rows),num_lids(cols))
   end
 
-  x = PartitionedVector{Float64}(undef,cols)
+  x = PVector{Float64}(undef,cols)
   fill!(x,3)
-  b = PartitionedVector{Float64}(undef,rows)
+  b = PVector{Float64}(undef,rows)
 
 
-  A = PartitionedSparseMatrix(values,rows,cols)
+  A = PSparseMatrix(values,rows,cols)
   mul!(b,A,x)
 
   map_parts(b.owned_values) do values
@@ -376,11 +376,11 @@ function test_interfaces(parts)
       [9,9,8,10], [9,2,8,10], [10.0,2.0,30.0,50.0]
     end
   end
-  A = PartitionedSparseMatrix(I,J,V,n,n;ids=:global)
+  A = PSparseMatrix(I,J,V,n,n;ids=:global)
   local_view(A)
   global_view(A)
 
-  x = PartitionedVector{Float64}(undef,A.cols)
+  x = PVector{Float64}(undef,A.cols)
   fill!(x,1.0)
   y = A*x
   dy = y - y
@@ -388,11 +388,11 @@ function test_interfaces(parts)
   P = Jacobi(A)
   x = P\y
 
-  y = PartitionedVector(1.0,A.rows)
+  y = PVector(1.0,A.rows)
   x = IterativeSolvers.cg(A,y)
   x = IterativeSolvers.cg(A,y,Pl=P)
 
-  x = PartitionedVector(0.0,A.cols)
+  x = PVector(0.0,A.cols)
   IterativeSolvers.cg!(x,A,y)
   fill!(x,0.0)
   IterativeSolvers.cg!(x,A,y,Pl=P)

@@ -24,7 +24,7 @@ function test_fem_sa(parts)
   lis_gnodes = LinearIndices(cis_gnodes)
   c1 = CartesianIndex(ntuple(i->1,Val(D)))
 
-  cells = PartitionedRange(parts,ns)
+  cells = PRange(parts,ns)
 
   # Loop over owned cells, and fill the coo-vectors
   # Note that during the process we will touch remote rows and cols
@@ -64,7 +64,7 @@ function test_fem_sa(parts)
   end
 
   # Create rows and cols without ghost layer
-  rows = PartitionedRange(parts,ns.+1)
+  rows = PRange(parts,ns.+1)
   cols = copy(rows)
 
   # Add remote row gids to the rows ghost layer
@@ -76,7 +76,7 @@ function test_fem_sa(parts)
 
   # Meanwhile we can fill the rhs.
   # Allocate it.
-  b = PartitionedVector(0.0,rows)
+  b = PVector(0.0,rows)
 
   # Fill it.
   # we use `global_view` in order to be able to index
@@ -106,7 +106,7 @@ function test_fem_sa(parts)
   add_gid!(cols,J)
 
   # Compress the coo vectors and built the matrix
-  A = PartitionedSparseMatrix(I,J,V,rows,cols,ids=:global)
+  A = PSparseMatrix(I,J,V,rows,cols,ids=:global)
 
   # When filling b we have touched remote rows.
   # Send and add their contribution to the owner part

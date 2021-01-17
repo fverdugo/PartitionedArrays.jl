@@ -7,7 +7,7 @@ import IterativeSolvers
 
 export Backend
 export distributed_run
-export PartitionedData
+export PData
 export num_parts
 export i_am_master
 export map_parts
@@ -48,17 +48,17 @@ export get_gid_to_lid
 export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
-export PartitionedRange
+export PRange
 export add_gid
 export add_gid!
 export to_lid!
 export to_gid!
-export PartitionedVector
+export PVector
 export local_view
 export global_view
 export async_assemble!
 export assemble!
-export PartitionedSparseMatrix
+export PSparseMatrix
 export nzindex
 export nziterator
 export Jacobi
