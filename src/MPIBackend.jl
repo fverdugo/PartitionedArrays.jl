@@ -9,13 +9,13 @@ const mpi = MPIBackend()
 function get_part_ids(b::MPIBackend,nparts::Integer)
   comm = MPI.COMM_WORLD
   @notimplementedif num_parts(comm) != nparts
-  MPIChunkyData(get_part_id(comm),comm,(nparts,))
+  MPIData(get_part_id(comm),comm,(nparts,))
 end
 
 function get_part_ids(b::MPIBackend,nparts::Tuple)
   comm = MPI.COMM_WORLD
   @notimplementedif num_parts(comm) != prod(nparts)
-  MPIChunkyData(get_part_id(comm),comm,nparts)
+  MPIData(get_part_id(comm),comm,nparts)
 end
 
 function distributed_run(driver::Function,b::MPIBackend,nparts)
@@ -28,11 +28,11 @@ function distributed_run(driver::Function,b::MPIBackend,nparts)
   #end
 end
 
-struct MPIChunkyData{T,N} <: ChunkyData{T,N}
+struct MPIData{T,N} <: ChunkyData{T,N}
   part::T
   comm::MPI.Comm
   size::NTuple{N,Int}
-  function MPIChunkyData(
+  function MPIData(
     part::T,
     comm::MPI.Comm,
     size::NTuple{N,<:Integer}) where {T,N}
@@ -41,38 +41,38 @@ struct MPIChunkyData{T,N} <: ChunkyData{T,N}
   end
 end
 
-Base.size(a::MPIChunkyData) = a.size
-get_part_id(a::MPIChunkyData) = get_part_id(a.comm)
-get_backend(a::MPIChunkyData) = mpi
-i_am_master(a::MPIChunkyData) = get_part_id(a.comm) == MASTER
+Base.size(a::MPIData) = a.size
+get_part_id(a::MPIData) = get_part_id(a.comm)
+get_backend(a::MPIData) = mpi
+i_am_master(a::MPIData) = get_part_id(a.comm) == MASTER
 
-function Base.iterate(a::MPIChunkyData)
+function Base.iterate(a::MPIData)
   next = iterate(a.part)
   if next == nothing
     return next
   end
   item, state = next
-  MPIChunkyData(item,a.comm,a.size), state
+  MPIData(item,a.comm,a.size), state
 end
 
-function Base.iterate(a::MPIChunkyData,state)
+function Base.iterate(a::MPIData,state)
   next = iterate(a.part,state)
   if next == nothing
     return next
   end
   item, state = next
-  MPIChunkyData(item,a.comm,a.size), state
+  MPIData(item,a.comm,a.size), state
 end
 
-function map_parts(task::Function,args::MPIChunkyData...)
+function map_parts(task::Function,args::MPIData...)
   @assert length(args) > 0
   @assert all(a->a.comm===first(args).comm,args)
   parts_in = map(a->a.part,args)
   part_out = task(parts_in...)
-  MPIChunkyData(part_out,first(args).comm,first(args).size)
+  MPIData(part_out,first(args).comm,first(args).size)
 end
 
-function Base.show(io::IO,k::MIME"text/plain",data::MPIChunkyData)
+function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
   MPI.Barrier(data.comm)
   str = """
   On part $(get_part_id(data)) of $(num_parts(data)):
@@ -82,14 +82,14 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIChunkyData)
   MPI.Barrier(data.comm)
 end
 
-get_part(a::MPIChunkyData) = a.part
+get_part(a::MPIData) = a.part
 
-function get_part(a::MPIChunkyData,part::Integer)
+function get_part(a::MPIData,part::Integer)
   part = MPI.Bcast!(Ref(copy(a.part)),part-1,a.comm)
   part[]
 end
 
-function gather!(rcv::MPIChunkyData,snd::MPIChunkyData)
+function gather!(rcv::MPIData,snd::MPIData)
   @assert rcv.comm === snd.comm
   if get_part_id(snd) == MASTER
     @assert length(rcv.part) == num_parts(snd)
@@ -101,14 +101,14 @@ function gather!(rcv::MPIChunkyData,snd::MPIChunkyData)
   rcv
 end
 
-function gather_all!(rcv::MPIChunkyData,snd::MPIChunkyData)
+function gather_all!(rcv::MPIData,snd::MPIData)
   @assert rcv.comm === snd.comm
   @assert length(rcv.part) == num_parts(snd)
   MPI.Allgather!(Ref(snd.part),MPI.UBuffer(rcv.part,1),snd.comm)
   rcv
 end
 
-function scatter(snd::MPIChunkyData)
+function scatter(snd::MPIData)
   if get_part_id(snd) == MASTER
     part = snd.part[MASTER]
     MPI.Scatter!(MPI.UBuffer(snd.part,1),MPI.IN_PLACE,MASTER-1,snd.comm)
@@ -117,19 +117,19 @@ function scatter(snd::MPIChunkyData)
     MPI.Scatter!(nothing,rcv,MASTER-1,snd.comm)        
     part = rcv[1]
   end
-  MPIChunkyData(part,snd.comm,snd.size)
+  MPIData(part,snd.comm,snd.size)
 end
 
-function bcast(snd::MPIChunkyData)
-  MPIChunkyData(get_master_part(snd),snd.comm,snd.size)
+function bcast(snd::MPIData)
+  MPIData(get_master_part(snd),snd.comm,snd.size)
 end
 
 function async_exchange!(
-  data_rcv::MPIChunkyData,
-  data_snd::MPIChunkyData,
-  parts_rcv::MPIChunkyData,
-  parts_snd::MPIChunkyData,
-  t_in::MPIChunkyData)
+  data_rcv::MPIData,
+  data_snd::MPIData,
+  parts_rcv::MPIData,
+  parts_snd::MPIData,
+  t_in::MPIData)
 
   @check parts_rcv.comm === data_rcv.comm
   @check parts_rcv.comm === data_snd.comm
@@ -168,16 +168,16 @@ function async_exchange!(
     MPI.Waitall!(req_all)
   end
 
-  t_out = MPIChunkyData(t2,comm,s)
+  t_out = MPIData(t2,comm,s)
   t_out
 end
 
 function async_exchange!(
-  data_rcv::MPIChunkyData{<:Table},
-  data_snd::MPIChunkyData{<:Table},
-  parts_rcv::MPIChunkyData,
-  parts_snd::MPIChunkyData,
-  t_in::MPIChunkyData)
+  data_rcv::MPIData{<:Table},
+  data_snd::MPIData{<:Table},
+  parts_rcv::MPIData,
+  parts_snd::MPIData,
+  t_in::MPIData)
 
   @check parts_rcv.comm === data_rcv.comm
   @check parts_rcv.comm === data_snd.comm
@@ -218,7 +218,7 @@ function async_exchange!(
     MPI.Waitall!(req_all)
   end
 
-  t_out = MPIChunkyData(t2,comm,s)
+  t_out = MPIData(t2,comm,s)
   t_out
 end
 

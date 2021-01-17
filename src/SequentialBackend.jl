@@ -5,25 +5,25 @@ const sequential = SequentialBackend()
 
 function get_part_ids(b::SequentialBackend,nparts::Integer)
   parts = [ part for part in 1:nparts ]
-  SequentialChunkyData(parts)
+  SequentialData(parts)
 end
 
 function get_part_ids(b::SequentialBackend,nparts::Tuple)
   parts = collect(LinearIndices(nparts))
-  SequentialChunkyData(parts)
+  SequentialData(parts)
 end
 
-struct SequentialChunkyData{T,N} <: ChunkyData{T,N}
+struct SequentialData{T,N} <: ChunkyData{T,N}
   parts::Array{T,N}
 end
 
-Base.size(a::SequentialChunkyData) = size(a.parts)
+Base.size(a::SequentialData) = size(a.parts)
 
-i_am_master(a::SequentialChunkyData) = true
+i_am_master(a::SequentialData) = true
 
-get_backend(a::SequentialChunkyData) = sequential
+get_backend(a::SequentialData) = sequential
 
-function Base.iterate(a::SequentialChunkyData)
+function Base.iterate(a::SequentialData)
   next = map_parts(iterate,a)
   if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
     return nothing
@@ -35,7 +35,7 @@ end
 
 _second(a) = a[2]
 
-function Base.iterate(a::SequentialChunkyData,state)
+function Base.iterate(a::SequentialData,state)
   next = map_parts(iterate,a,state)
   if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
     return nothing
@@ -45,15 +45,15 @@ function Base.iterate(a::SequentialChunkyData,state)
   item, state
 end
 
-function map_parts(task::Function,args::SequentialChunkyData...)
+function map_parts(task::Function,args::SequentialData...)
   @assert length(args) > 0
   @assert all(a->length(a.parts)==length(first(args).parts),args)
   parts_in = map(a->a.parts,args)
   parts_out = map(task,parts_in...)
-  SequentialChunkyData(parts_out)
+  SequentialData(parts_out)
 end
 
-function Base.show(io::IO,k::MIME"text/plain",data::SequentialChunkyData)
+function Base.show(io::IO,k::MIME"text/plain",data::SequentialData)
   for part in 1:num_parts(data)
     if part != 1
       println(io,"")
@@ -63,10 +63,10 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialChunkyData)
   end
 end
 
-get_part(a::SequentialChunkyData,part::Integer) = a.parts[part]
-get_part(a::SequentialChunkyData) = get_master_part(a)
+get_part(a::SequentialData,part::Integer) = a.parts[part]
+get_part(a::SequentialData) = get_master_part(a)
 
-function gather!(rcv::SequentialChunkyData,snd::SequentialChunkyData)
+function gather!(rcv::SequentialData,snd::SequentialData)
   @assert num_parts(rcv) == num_parts(snd)
   @assert length(rcv.parts[MASTER]) == num_parts(snd)
   for part in 1:num_parts(snd)
@@ -75,7 +75,7 @@ function gather!(rcv::SequentialChunkyData,snd::SequentialChunkyData)
   rcv
 end
 
-function gather_all!(rcv::SequentialChunkyData,snd::SequentialChunkyData)
+function gather_all!(rcv::SequentialData,snd::SequentialData)
   @assert num_parts(rcv) == num_parts(snd)
   for part_rcv in 1:num_parts(rcv)
     @assert length(rcv.parts[part_rcv]) == num_parts(snd)
@@ -86,18 +86,18 @@ function gather_all!(rcv::SequentialChunkyData,snd::SequentialChunkyData)
   rcv
 end
 
-function scatter(snd::SequentialChunkyData)
+function scatter(snd::SequentialData)
   @assert length(snd.parts[MASTER]) == num_parts(snd)
   parts = similar(snd.parts,eltype(snd.parts[MASTER]),size(snd.parts))
   copyto!(parts,snd.parts[MASTER])
-  SequentialChunkyData(parts)
+  SequentialData(parts)
 end
 
 function async_exchange!(
-  data_rcv::SequentialChunkyData,
-  data_snd::SequentialChunkyData,
-  parts_rcv::SequentialChunkyData,
-  parts_snd::SequentialChunkyData,
+  data_rcv::SequentialData,
+  data_snd::SequentialData,
+  parts_rcv::SequentialData,
+  parts_snd::SequentialData,
   t_in::ChunkyData)
 
   @check num_parts(parts_rcv) == num_parts(data_rcv)
@@ -121,7 +121,7 @@ function async_exchange!(
   t_out
 end
 
-function _check_rcv_and_snd_match(parts_rcv::SequentialChunkyData,parts_snd::SequentialChunkyData)
+function _check_rcv_and_snd_match(parts_rcv::SequentialData,parts_snd::SequentialData)
   @check num_parts(parts_rcv) == num_parts(parts_snd)
   for part in 1:num_parts(parts_rcv)
     for i in parts_rcv.parts[part]
@@ -135,11 +135,11 @@ function _check_rcv_and_snd_match(parts_rcv::SequentialChunkyData,parts_snd::Seq
 end
 
 function async_exchange!(
-  data_rcv::SequentialChunkyData{<:Table},
-  data_snd::SequentialChunkyData{<:Table},
-  parts_rcv::SequentialChunkyData,
-  parts_snd::SequentialChunkyData,
-  t_in::SequentialChunkyData)
+  data_rcv::SequentialData{<:Table},
+  data_snd::SequentialData{<:Table},
+  parts_rcv::SequentialData,
+  parts_snd::SequentialData,
+  t_in::SequentialData)
 
   @check num_parts(parts_rcv) == num_parts(data_rcv)
   @check num_parts(parts_rcv) == num_parts(data_snd)
