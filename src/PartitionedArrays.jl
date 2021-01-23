@@ -53,6 +53,7 @@ export add_gid
 export add_gid!
 export to_lid!
 export to_gid!
+export PCartesianIndices
 export PVector
 export local_view
 export global_view

@@ -233,6 +233,20 @@ function test_interfaces(parts)
       end
       @test ids4.gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
     end
+
+    pcis = PCartesianIndices(parts,(5,4))
+    map_parts(parts,pcis) do part, cis
+      if part == 1
+        @test cis == CartesianIndices((1:2,1:2))
+      elseif part == 2
+        @test cis == CartesianIndices((3:5,1:2))
+      elseif part == 3
+        @test cis == CartesianIndices((1:2,3:4))
+      else
+        @test cis == CartesianIndices((3:5,3:4))
+      end
+    end
+
   end
 
   v = PVector(gids,map_parts(copy,gids),ids3;ids=:global)

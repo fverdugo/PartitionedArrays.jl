@@ -726,6 +726,20 @@ function PRange(
   PRange(prod(ngids),lids,ghost)
 end
 
+function PCartesianIndices(
+  parts::PData{<:Integer,N},ngids::NTuple{N,<:Integer}) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
+    CartesianIndices(d_to_odid_to_gdid)
+  end
+
+  lids
+end
+
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
   _olength = ngids ÷ np
   _offset = _olength * (p-1)
