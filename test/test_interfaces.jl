@@ -218,6 +218,7 @@ function test_interfaces(parts)
   to_gid!(gids,ids3)
 
   if ndims(parts) > 1
+
     ids4 = PRange(parts,(5,4))
     @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
@@ -245,6 +246,33 @@ function test_interfaces(parts)
       else
         @test cis == CartesianIndices((3:5,3:4))
       end
+    end
+
+    pcis = PCartesianIndices(parts,(5,4),ghost=true)
+    map_parts(parts,pcis) do part, cis
+      if part == 1
+        @test cis == CartesianIndices((1:3,1:3))
+      elseif part == 2
+        @test cis == CartesianIndices((2:5,1:3))
+      elseif part == 3
+        @test cis == CartesianIndices((1:3,2:4))
+      else
+        @test cis == CartesianIndices((2:5,2:4))
+      end
+    end
+
+    ids4 = PRange(parts,(5,4),ghost=true)
+    map_parts(parts,ids4.lids) do part, ids4
+      if part == 1
+        @test ids4.lid_to_gid == [1, 2, 3, 6, 7, 8, 11, 12, 13]
+      elseif part == 2
+        @test ids4.lid_to_gid == [2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15]
+      elseif part == 3
+        @test ids4.lid_to_gid == [6, 7, 8, 11, 12, 13, 16, 17, 18]
+      else
+        @test ids4.lid_to_gid == [7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20]
+      end
+      @test ids4.gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
     end
 
   end
