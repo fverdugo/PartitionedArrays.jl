@@ -128,6 +128,39 @@ function Base.sum(a::PData)
   reduce(+,a,init=zero(eltype(a)))
 end
 
+# inclusive prefix reduction
+function iscan(op,a::PData;init)
+  b = gather(a)
+  parts = get_part_ids(a)
+  map_parts(parts,b) do part, b
+    if part == MAIN
+      b[1] = op(init,b[1])
+      @inbounds for i in 1:(length(b)-1)
+        b[i+1] = op(b[i],b[i+1])
+      end
+    end
+  end
+  scatter(b)
+end
+
+# exclusive prefix reduction
+function xscan(op,a::PData;init)
+  b = gather(a)
+  parts = get_part_ids(a)
+  map_parts(parts,b) do part, b
+    if part == MAIN
+      @inbounds for i in (length(b)-1):-1:1
+        b[i+1] = b[i]
+      end
+      b[1] = init
+      @inbounds for i in 1:(length(b)-1)
+        b[i+1] = op(b[i],b[i+1])
+      end
+    end
+  end
+  scatter(b)
+end
+
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
@@ -700,6 +733,7 @@ function PRange(
   PRange(parts,prod(ngids))
 end
 
+# TODO this is type instable
 function PRange(
   parts::PData{<:Integer,N},
   ngids::NTuple{N,<:Integer};
@@ -736,6 +770,7 @@ function PRange(
   PRange(prod(ngids),lids,ghost)
 end
 
+# TODO this is type instable
 function PCartesianIndices(
   parts::PData{<:Integer,N},
   ngids::NTuple{N,<:Integer};

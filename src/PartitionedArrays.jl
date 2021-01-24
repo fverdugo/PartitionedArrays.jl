@@ -24,6 +24,8 @@ export scatter
 export bcast
 export reduce_main
 export reduce_all
+export iscan
+export xscan
 export async_exchange!
 export exchange!
 export exchange

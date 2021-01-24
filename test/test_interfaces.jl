@@ -70,6 +70,42 @@ function test_interfaces(parts)
   @test reduce(+,parts,init=0) == 1+2+3+4
   @test sum(parts) == 1+2+3+4
 
+  a = map_parts(parts) do part
+    if part == 1
+      4
+    elseif part == 2
+      2
+    elseif part == 3
+      6
+    else
+      3
+    end
+  end
+  b = iscan(+,a,init=0)
+  map_parts(parts,b) do part,b
+    if part == 1
+      @test b == 4
+    elseif part == 2
+      @test b == 6
+    elseif part == 3
+      @test b == 12
+    else
+      @test b == 15
+    end
+  end
+  b = xscan(+,a,init=1)
+  map_parts(parts,b) do part,b
+    if part == 1
+      @test b == 1
+    elseif part == 2
+      @test b == 5
+    elseif part == 3
+      @test b == 7
+    else
+      @test b == 13
+    end
+  end
+
   data_rcv, t = async_exchange(
     data_snd,
     parts_rcv,
