@@ -93,7 +93,7 @@ function scatter(snd::PData)
   @abstractmethod
 end
 
-function bcast(snd::PData)
+function transmit(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
@@ -116,7 +116,7 @@ end
 
 function reduce_all(args...;kwargs...)
   b = reduce_main(args...;kwargs...)
-  bcast(b)
+  transmit(b)
 end
 
 function Base.reduce(op,a::PData;init)

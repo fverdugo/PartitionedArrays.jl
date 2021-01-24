@@ -21,7 +21,7 @@ export gather_all!
 export gather
 export gather_all
 export scatter
-export bcast
+export transmit
 export reduce_main
 export reduce_all
 export iscan

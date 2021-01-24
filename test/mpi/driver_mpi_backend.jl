@@ -129,7 +129,7 @@ function main(parts)
   
   @test get_part(rcv) == collect(1:nparts)
   
-  rcv = bcast(parts)
+  rcv = transmit(parts)
 
   @test size(rcv) == size(parts)
   
