@@ -204,6 +204,29 @@ function test_interfaces(parts)
     end
   end
 
+  values = map_parts(parts,lids) do part, lids
+    values = [ zeros(Int,3) for lid in 1:num_lids(lids)]
+    for lid in lids.oid_to_lid
+      gid = lids.lid_to_gid[lid]
+      for i in 1:3
+        values[lid][i] = 100*part + 10*gid + i
+      end
+    end
+    Table(values)
+  end
+
+  exchange!(values,exchanger)
+
+  map_parts(parts,lids,values) do part, lids, values
+    for lid in 1:num_lids(lids)
+      gid = lids.lid_to_gid[lid]
+      owner = lids.lid_to_part[lid]
+      for i in 1:3
+        @test values[lid][i] == 100*owner + 10*gid + i
+      end
+    end
+  end
+
   exchanger_rcv = exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
 

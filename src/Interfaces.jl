@@ -657,6 +657,60 @@ end
 
 _replace(x,y) = y
 
+function async_exchange!(
+  values::PData{<:Table},
+  exchanger::Exchanger,
+  t0::PData=_empty_tasks(exchanger.parts_rcv);
+  reduce_op=_replace)
+
+  data, ptrs = map_parts(t->(t.data,t.ptrs),values)
+  t_exchanger = _table_exchanger(exchanger,ptrs)
+  async_exchange!(data,t_exchanger,t0;reduce_op=reduce_op)
+end
+
+function _table_exchanger(exchanger,values)
+  lids_rcv = _table_lids_snd(exchanger.lids_rcv,values)
+  lids_snd = _table_lids_snd(exchanger.lids_snd,values)
+  parts_rcv = exchanger.parts_rcv
+  parts_snd = exchanger.parts_snd
+  Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
+end
+
+function _table_lids_snd(lids_snd,tptrs)
+  k_snd = map_parts(tptrs,lids_snd) do tptrs,lids_snd
+    ptrs = similar(lids_snd.ptrs)
+    fill!(ptrs,zero(eltype(ptrs)))
+    np = length(ptrs)-1
+    for p in 1:np
+      iini = lids_snd.ptrs[p]
+      iend = lids_snd.ptrs[p+1]-1
+      for i in iini:iend
+        d = lids_snd.data[i]
+        ptrs[p+1] += tptrs[d+1]-tptrs[d]
+      end
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = similar(lids_snd.data,eltype(lids_snd.data),ndata)
+    for p in 1:np
+      iini = lids_snd.ptrs[p]
+      iend = lids_snd.ptrs[p+1]-1
+      for i in iini:iend
+        d = lids_snd.data[i]
+        jini = tptrs[d]
+        jend = tptrs[d+1]-1
+        for j in jini:jend
+          data[ptrs[p]] = j
+          ptrs[p] += 1
+        end
+      end
+    end
+    rewind_ptrs!(ptrs)
+    Table(data,ptrs)
+  end
+  k_snd
+end
+
 # TODO mutable is needed to correctly implement add_gid!
 mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
