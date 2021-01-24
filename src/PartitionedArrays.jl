@@ -21,9 +21,11 @@ export gather_all!
 export gather
 export gather_all
 export scatter
-export bcast
+export transmit
 export reduce_main
 export reduce_all
+export iscan
+export xscan
 export async_exchange!
 export exchange!
 export exchange
@@ -53,6 +55,7 @@ export add_gid
 export add_gid!
 export to_lid!
 export to_gid!
+export PCartesianIndices
 export PVector
 export local_view
 export global_view

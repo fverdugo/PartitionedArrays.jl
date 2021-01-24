@@ -93,7 +93,7 @@ function scatter(snd::PData)
   @abstractmethod
 end
 
-function bcast(snd::PData)
+function transmit(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
@@ -116,7 +116,7 @@ end
 
 function reduce_all(args...;kwargs...)
   b = reduce_main(args...;kwargs...)
-  bcast(b)
+  transmit(b)
 end
 
 function Base.reduce(op,a::PData;init)
@@ -126,6 +126,39 @@ end
 
 function Base.sum(a::PData)
   reduce(+,a,init=zero(eltype(a)))
+end
+
+# inclusive prefix reduction
+function iscan(op,a::PData;init)
+  b = gather(a)
+  parts = get_part_ids(a)
+  map_parts(parts,b) do part, b
+    if part == MAIN
+      b[1] = op(init,b[1])
+      @inbounds for i in 1:(length(b)-1)
+        b[i+1] = op(b[i],b[i+1])
+      end
+    end
+  end
+  scatter(b)
+end
+
+# exclusive prefix reduction
+function xscan(op,a::PData;init)
+  b = gather(a)
+  parts = get_part_ids(a)
+  map_parts(parts,b) do part, b
+    if part == MAIN
+      @inbounds for i in (length(b)-1):-1:1
+        b[i+1] = b[i]
+      end
+      b[1] = init
+      @inbounds for i in 1:(length(b)-1)
+        b[i+1] = op(b[i],b[i+1])
+      end
+    end
+  end
+  scatter(b)
 end
 
 # Non-blocking in-place exchange
@@ -624,6 +657,60 @@ end
 
 _replace(x,y) = y
 
+function async_exchange!(
+  values::PData{<:Table},
+  exchanger::Exchanger,
+  t0::PData=_empty_tasks(exchanger.parts_rcv);
+  reduce_op=_replace)
+
+  data, ptrs = map_parts(t->(t.data,t.ptrs),values)
+  t_exchanger = _table_exchanger(exchanger,ptrs)
+  async_exchange!(data,t_exchanger,t0;reduce_op=reduce_op)
+end
+
+function _table_exchanger(exchanger,values)
+  lids_rcv = _table_lids_snd(exchanger.lids_rcv,values)
+  lids_snd = _table_lids_snd(exchanger.lids_snd,values)
+  parts_rcv = exchanger.parts_rcv
+  parts_snd = exchanger.parts_snd
+  Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
+end
+
+function _table_lids_snd(lids_snd,tptrs)
+  k_snd = map_parts(tptrs,lids_snd) do tptrs,lids_snd
+    ptrs = similar(lids_snd.ptrs)
+    fill!(ptrs,zero(eltype(ptrs)))
+    np = length(ptrs)-1
+    for p in 1:np
+      iini = lids_snd.ptrs[p]
+      iend = lids_snd.ptrs[p+1]-1
+      for i in iini:iend
+        d = lids_snd.data[i]
+        ptrs[p+1] += tptrs[d+1]-tptrs[d]
+      end
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = similar(lids_snd.data,eltype(lids_snd.data),ndata)
+    for p in 1:np
+      iini = lids_snd.ptrs[p]
+      iend = lids_snd.ptrs[p+1]-1
+      for i in iini:iend
+        d = lids_snd.data[i]
+        jini = tptrs[d]
+        jend = tptrs[d+1]-1
+        for j in jini:jend
+          data[ptrs[p]] = j
+          ptrs[p] += 1
+        end
+      end
+    end
+    rewind_ptrs!(ptrs)
+    Table(data,ptrs)
+  end
+  k_snd
+end
+
 # TODO mutable is needed to correctly implement add_gid!
 mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
@@ -700,19 +787,31 @@ function PRange(
   PRange(parts,prod(ngids))
 end
 
+# TODO this is type instable
 function PRange(
   parts::PData{<:Integer,N},
-  ngids::NTuple{N,<:Integer}) where N
+  ngids::NTuple{N,<:Integer};
+  ghost::Bool=false) where N
 
   np = size(parts)
   lids = map_parts(parts) do part
-    gids = _oid_to_gid(ngids,np,part)
-    lid_to_gid = gids
-    lid_to_part = fill(part,length(gids))
+    if ghost
+      cp = Tuple(CartesianIndices(np)[part])
+      d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
+      lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
+      d_to_nldids = map(length,d_to_ldid_to_gdid)
+      lid_to_part = _lid_to_part(d_to_nldids,np,cp)
+      oid_to_lid = collect(Int32,findall(lid_to_part .== part))
+      hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
+    else
+      gids = _oid_to_gid(ngids,np,part)
+      lid_to_gid = gids
+      lid_to_part = fill(part,length(gids))
+      oid_to_lid = Int32(1):Int32(length(gids))
+      hid_to_lid = collect(Int32(1):Int32(0))
+    end
     part_to_gid = _part_to_gid(ngids,np)
     gid_to_part = GidToPart(ngids,part_to_gid)
-    oid_to_lid = Int32(1):Int32(length(gids))
-    hid_to_lid = collect(Int32(1):Int32(0))
     IndexSet(
       part,
       prod(ngids),
@@ -722,8 +821,27 @@ function PRange(
       oid_to_lid,
       hid_to_lid)
   end
-  ghost = false
   PRange(prod(ngids),lids,ghost)
+end
+
+# TODO this is type instable
+function PCartesianIndices(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer};
+  ghost::Bool= false) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    if ghost
+      d_to_odid_to_gdid = map(_lid_to_gid,ngids,np,p)
+    else
+      d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
+    end
+    CartesianIndices(d_to_odid_to_gdid)
+  end
+  lids
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
@@ -740,6 +858,38 @@ function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
   Int(1+offset):Int(olength+offset)
 end
 
+function _lid_to_gid(ngids::Integer,np::Integer,p::Integer)
+  oid_to_gid = _oid_to_gid(ngids,np,p)
+  gini = first(oid_to_gid)
+  gend = last(oid_to_gid)
+  if np == 1
+    lid_to_gid = oid_to_gid
+  elseif p == 1
+    lid_to_gid = gini:(gend+1)
+  elseif p != np
+    lid_to_gid = (gini-1):(gend+1)
+  else
+    lid_to_gid = (gini-1):gend
+  end
+  lid_to_gid
+end
+
+function _lid_to_part(nlids::Integer,np::Integer,p::Integer)
+  lid_to_part = Vector{Int32}(undef,nlids)
+  fill!(lid_to_part,p)
+  if np == 1
+    lid_to_part
+  elseif p == 1
+    lid_to_part[end] = p+1
+  elseif p != np
+    lid_to_part[1] = p-1
+    lid_to_part[end] = p+1
+  else
+    lid_to_part[1] = p-1
+  end
+  lid_to_part
+end
+
 function _oid_to_gid(ngids::Tuple,np::Tuple,p::Integer)
   cp = Tuple(CartesianIndices(np)[p])
   _oid_to_gid(ngids,np,cp)
@@ -749,17 +899,41 @@ function _oid_to_gid(ngids::Tuple,np::Tuple,p::Tuple)
   D = length(np)
   @assert length(ngids) == D
   d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
-  _id_tensor_product(d_to_odid_to_gdid,ngids)
+  _id_tensor_product(Int,d_to_odid_to_gdid,ngids)
 end
 
-function _id_tensor_product(d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tuple)
+function _lid_to_gid(ngids::Tuple,np::Tuple,p::Integer)
+  cp = Tuple(CartesianIndices(np)[p])
+  _lid_to_gid(ngids,np,cp)
+end
+
+function _lid_to_gid(ngids::Tuple,np::Tuple,p::Tuple)
+  D = length(np)
+  @assert length(ngids) == D
+  d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,p)
+  _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
+end
+
+function _lid_to_part(nlids::Tuple,np::Tuple,p::Integer)
+  cp = Tuple(CartesianIndices(np)[p])
+  _lid_to_part(nlids,np,cp)
+end
+
+function _lid_to_part(nlids::Tuple,np::Tuple,p::Tuple)
+  D = length(np)
+  @assert length(nlids) == D
+  d_to_ldid_to_dpart = map(_lid_to_part,nlids,np,p)
+  _id_tensor_product(Int,d_to_ldid_to_dpart,np)
+end
+
+function _id_tensor_product(::Type{T},d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tuple) where T
   d_to_nldids = map(length,d_to_dlid_to_gdid)
   lcis = CartesianIndices(d_to_nldids)
   llis = LinearIndices(d_to_nldids)
   glis = LinearIndices(d_to_ngdids)
   D = length(d_to_ngdids)
-  gci = zeros(Int,D)
-  lid_to_gid = zeros(Int,length(lcis))
+  gci = zeros(T,D)
+  lid_to_gid = zeros(T,length(lcis))
   for lci in lcis
     for d in 1:D
       ldid = lci[d]
@@ -771,6 +945,26 @@ function _id_tensor_product(d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tuple)
   end
   lid_to_gid
 end
+
+#function _part_tensor_product(d_to_dlid_to_dpart::Tuple,d_to_ndparts::Tuple)
+#  d_to_nldids = map(length,d_to_dlid_to_dpart)
+#  lcis = CartesianIndices(d_to_nldids)
+#  llis = LinearIndices(d_to_nldids)
+#  plis = LinearIndices(d_to_ndparts)
+#  lid_to_part = zeros(Int32,length(lcis))
+#  D = length(d_to_ndparts)
+#  pci = zeros(Int32,D)
+#  for lci in lcis
+#    for d in 1:D
+#      ldid = lci[d]
+#      dpart = d_to_dlid_to_dpart[d][ldid]
+#      pci[d] = dpart
+#    end
+#    lid = llis[lci]
+#    lid_to_part[lid] = plis[CartesianIndex(Tuple(pci))]
+#  end
+#  lid_to_part
+#end
 
 function _part_to_gid(ngids::Integer,np::Integer)
   [first(_oid_to_gid(ngids,np,p)) for p in 1:np]

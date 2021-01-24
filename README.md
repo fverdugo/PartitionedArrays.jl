@@ -21,7 +21,8 @@ On these types, several communication operations are defined:
 
 - `gather!`, `gather`, `gather_all!`, `gather_all`
 - `reduce`, `reduce_all`, `reduce_main`
-- `scatter`, `bcast`
+- `scatter`, `transmit`
+- `iscan`, `xscan`
 - `exchange!` `exchange`, `async_exchange!` `async_exchange`
 - `assemble!`, `async_assemble!`
 
@@ -40,7 +41,7 @@ This package aims to overcome these limitations. It implements (and allows to im
 
 The `SequentialBackend` is specially handy for developing new code. Since it runs in a standard Julia session, one can use tools like `Revise` and `Debugger` that will certainly do your live easier at the developing stage. Once the code works with the `SequentialBackend`, it can be automatically deployed in a super computer via the `MPIBackend`.  Other back ends like a `ThreadedBacked`, `DistributedBackend`, or `MPIXBackend` can be added in the future.
 
-## Do you want to collaborate?
+## How to collaborate
 
 We have a number of [issues waiting for help](https://github.com/fverdugo/PartitionedArrays.jl/labels/help%20wanted). You can start contributing to `PartitionedArrays.jl` by solving some of those issues. Contact with us to coordinate.
 

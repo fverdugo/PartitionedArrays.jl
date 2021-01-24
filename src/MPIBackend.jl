@@ -120,7 +120,7 @@ function scatter(snd::MPIData)
   MPIData(part,snd.comm,snd.size)
 end
 
-function bcast(snd::MPIData)
+function transmit(snd::MPIData)
   MPIData(get_main_part(snd),snd.comm,snd.size)
 end
 
