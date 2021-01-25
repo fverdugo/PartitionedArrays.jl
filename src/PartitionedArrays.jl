@@ -35,6 +35,8 @@ export exchange!
 export exchange
 export async_exchange
 export Table
+export length_to_ptrs!
+export rewind_ptrs!
 export discover_parts_snd
 export IndexSet
 export num_gids

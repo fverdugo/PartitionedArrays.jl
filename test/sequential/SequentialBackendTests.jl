@@ -119,7 +119,51 @@ function main(parts)
   map_parts(parts,rcv) do part, rcv
     @test part == rcv
   end
-  
+
+  snd = map_parts(parts) do part
+    if part == MAIN
+      v = [[1,2],[2,3,4],[5,6],[7,8,9,10]]
+    else
+      v = Vector{Int}[]
+    end
+    Table(v)
+  end
+  rcv = scatter(snd)
+  map_parts(parts,rcv) do part,rcv
+    if part == 1
+      r = [1,2]
+    elseif part == 2
+      r = [2,3,4]
+    elseif part == 3
+      r = [5,6]
+    else
+      r= [7,8,9,10]
+    end
+    @test r == rcv
+  end
+
+  snd = map_parts(parts) do part
+    if part == MAIN
+      v = [[1,2],[2,3,4],[5,6],[7,8,9,10]]
+    else
+      v = Vector{Int}[]
+    end
+    v
+  end
+  rcv = scatter(snd)
+  map_parts(parts,rcv) do part,rcv
+    if part == 1
+      r = [1,2]
+    elseif part == 2
+      r = [2,3,4]
+    elseif part == 3
+      r = [5,6]
+    else
+      r= [7,8,9,10]
+    end
+    @test r == rcv
+  end
+
   rcv = gather_all(parts) 
   
   map_parts(rcv) do rcv

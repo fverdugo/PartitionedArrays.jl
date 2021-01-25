@@ -33,7 +33,7 @@ Base.iterate(a::PData,state)  = @abstractmethod
 
 get_part_ids(a::PData) = get_part_ids(get_backend(a),size(a))
 
-map_parts(task::Function,a::PData...) = @abstractmethod
+map_parts(task,a::PData...) = @abstractmethod
 
 i_am_main(::PData) = @abstractmethod
 
@@ -43,7 +43,7 @@ Base.eltype(::Type{<:PData{T}}) where T = T
 Base.ndims(a::PData{T,N}) where {T,N} = N
 Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
 
-#function map_parts(task::Function,a...)
+#function map_parts(task,a...)
 #  map_parts(task,map(PData,a)...)
 #end
 #
@@ -89,10 +89,13 @@ function gather_all(snd::PData)
   rcv
 end
 
+# The back-end need to support these cases:
+# i.e. PData{AbstractVector{<:Number}} and PData{AbstractVector{<:AbstractVector{<:Number}}}
 function scatter(snd::PData)
   @abstractmethod
 end
 
+# AKA broadcast
 function emit(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
