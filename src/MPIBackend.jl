@@ -64,7 +64,7 @@ function Base.iterate(a::MPIData,state)
   MPIData(item,a.comm,a.size), state
 end
 
-function map_parts(task::Function,args::MPIData...)
+function map_parts(task,args::MPIData...)
   @assert length(args) > 0
   @assert all(a->a.comm===first(args).comm,args)
   parts_in = map(a->a.part,args)
@@ -85,8 +85,20 @@ end
 get_part(a::MPIData) = a.part
 
 function get_part(a::MPIData,part::Integer)
-  part = MPI.Bcast!(Ref(copy(a.part)),part-1,a.comm)
-  part[]
+  rcv = MPI.Bcast!(Ref(copy(a.part)),part-1,a.comm)
+  rcv[]
+end
+
+function get_part(a::MPIData{<:AbstractVector},part::Integer)
+  l = map_parts(length,a)
+  l_at_part = get_part(l,part)
+  if get_part_id(a) == part
+    rcv = a.part
+  else
+    rcv = similar(a.part,eltype(a.part),l_at_part)
+  end
+  MPI.Bcast!(rcv,part-1,a.comm)
+  rcv
 end
 
 function gather!(rcv::MPIData,snd::MPIData)
@@ -120,7 +132,46 @@ function scatter(snd::MPIData)
   MPIData(part,snd.comm,snd.size)
 end
 
-function transmit(snd::MPIData)
+function scatter(snd::MPIData{<:Table})
+  counts_main = _counts_main(snd)
+  counts_scat = scatter(counts_main)
+  if get_part_id(snd) == MAIN
+    buf = MPI.VBuffer(snd.part.data,counts_main.part)
+    MPI.Scatterv!(buf,MPI.IN_PLACE,MAIN-1,snd.comm)
+    rcv = snd.part[MAIN]
+  else
+    rcv = eltype(snd.part)(undef,counts_scat.part)
+    MPI.Scatterv!(nothing,rcv,MAIN-1,snd.comm)        
+  end
+  MPIData(rcv,snd.comm,snd.size)
+end
+
+function _counts_main(snd::PData{<:Table})
+  parts = get_part_ids(snd)
+  np = num_parts(snd)
+  counts_main = map_parts(parts,snd) do part,snd
+    data = snd.data
+    ptrs = snd.ptrs
+    if part == MAIN
+      counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
+      @check length(counts) == np
+      for i in 1:length(counts)
+        counts[i] = ptrs[i+1]-ptrs[i]
+      end
+    else
+      counts = similar(ptrs,eltype(ptrs),0)
+    end
+    counts
+  end
+  counts_main
+end
+
+function scatter(snd::MPIData{<:AbstractVector{<:AbstractVector}})
+  snd_table = map_parts(Table,snd)
+  scatter(snd_table)
+end
+
+function emit(snd::MPIData)
   MPIData(get_main_part(snd),snd.comm,snd.size)
 end
 

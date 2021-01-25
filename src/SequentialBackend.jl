@@ -45,7 +45,7 @@ function Base.iterate(a::SequentialData,state)
   item, state
 end
 
-function map_parts(task::Function,args::SequentialData...)
+function map_parts(task,args::SequentialData...)
   @assert length(args) > 0
   @assert all(a->length(a.parts)==length(first(args).parts),args)
   parts_in = map(a->a.parts,args)

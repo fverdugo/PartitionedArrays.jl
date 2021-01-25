@@ -33,7 +33,7 @@ Base.iterate(a::PData,state)  = @abstractmethod
 
 get_part_ids(a::PData) = get_part_ids(get_backend(a),size(a))
 
-map_parts(task::Function,a::PData...) = @abstractmethod
+map_parts(task,a::PData...) = @abstractmethod
 
 i_am_main(::PData) = @abstractmethod
 
@@ -43,7 +43,7 @@ Base.eltype(::Type{<:PData{T}}) where T = T
 Base.ndims(a::PData{T,N}) where {T,N} = N
 Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
 
-#function map_parts(task::Function,a...)
+#function map_parts(task,a...)
 #  map_parts(task,map(PData,a)...)
 #end
 #
@@ -89,11 +89,14 @@ function gather_all(snd::PData)
   rcv
 end
 
+# The back-end need to support these cases:
+# i.e. PData{AbstractVector{<:Number}} and PData{AbstractVector{<:AbstractVector{<:Number}}}
 function scatter(snd::PData)
   @abstractmethod
 end
 
-function transmit(snd::PData)
+# AKA broadcast
+function emit(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
@@ -116,7 +119,7 @@ end
 
 function reduce_all(args...;kwargs...)
   b = reduce_main(args...;kwargs...)
-  transmit(b)
+  emit(b)
 end
 
 function Base.reduce(op,a::PData;init)
@@ -130,6 +133,16 @@ end
 
 # inclusive prefix reduction
 function iscan(op,a::PData;init)
+  b = iscan_main(op,a,init=init)
+  scatter(b)
+end
+
+function iscan_all(op,a::PData;init)
+  b = iscan_main(op,a,init=init)
+  emit(b)
+end
+
+function iscan_main(op,a;init)
   b = gather(a)
   parts = get_part_ids(a)
   map_parts(parts,b) do part, b
@@ -140,11 +153,21 @@ function iscan(op,a::PData;init)
       end
     end
   end
-  scatter(b)
+  b
 end
 
 # exclusive prefix reduction
 function xscan(op,a::PData;init)
+  b = xscan_main(op,a,init=init)
+  scatter(b)
+end
+
+function xscan_all(op,a::PData;init)
+  b = xscan_main(op,a,init=init)
+  emit(b)
+end
+
+function xscan_main(op,a::PData;init)
   b = gather(a)
   parts = get_part_ids(a)
   map_parts(parts,b) do part, b
@@ -158,7 +181,7 @@ function xscan(op,a::PData;init)
       end
     end
   end
-  scatter(b)
+  b
 end
 
 # Non-blocking in-place exchange
@@ -786,6 +809,29 @@ function PRange(
   ngids::NTuple{N,<:Integer}) where N
   PRange(parts,prod(ngids))
 end
+
+function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
+  ngids = reduce(+,noids,init=0)
+  firstgids = xscan_all(+,noids,init=1)
+  lids = map_parts(parts,noids,firstgids) do part,noids,firstgids
+    lid_to_gid = collect(Int,(1:noids) .+ (firstgids[part]-1))
+    lid_to_part = fill(part,length(lid_to_gid))
+    gid_to_part = GidToPart(ngids,firstgids)
+    oid_to_lid = Int32(1):Int32(length(lid_to_gid))
+    hid_to_lid = collect(Int32(1):Int32(0))
+    IndexSet(
+      part,
+      ngids,
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  ghost = false
+  PRange(ngids,lids,ghost)
+end
+
 
 # TODO this is type instable
 function PRange(
