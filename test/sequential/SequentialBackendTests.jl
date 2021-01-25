@@ -128,7 +128,7 @@ function main(parts)
   
   @test get_part(rcv) == collect(1:nparts)
   
-  rcv = transmit(parts)
+  rcv = emit(parts)
 
   @test size(rcv) == size(parts)
   

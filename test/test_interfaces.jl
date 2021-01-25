@@ -276,6 +276,31 @@ function test_interfaces(parts)
   to_lid!(gids,ids3)
   to_gid!(gids,ids3)
 
+  a = map_parts(parts) do part
+    if part == 1
+      4
+    elseif part == 2
+      2
+    elseif part == 3
+      6
+    else
+      3
+    end
+  end
+  ids5 = PRange(parts,a)
+  map_parts(parts,ids5.lids) do part, ids5
+    if part == 1
+      @test ids5.lid_to_gid == [1, 2, 3, 4]
+    elseif part == 2
+      @test ids5.lid_to_gid == [5, 6]
+    elseif part == 3
+      @test ids5.lid_to_gid == [7, 8, 9, 10, 11, 12]
+    else
+      @test ids5.lid_to_gid == [13, 14, 15]
+    end
+    @test ids5.gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
+  end
+
   if ndims(parts) > 1
 
     ids4 = PRange(parts,(5,4))

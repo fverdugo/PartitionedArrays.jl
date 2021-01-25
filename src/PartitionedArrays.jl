@@ -21,11 +21,15 @@ export gather_all!
 export gather
 export gather_all
 export scatter
-export transmit
+export emit
 export reduce_main
 export reduce_all
 export iscan
+export iscan_main
+export iscan_all
 export xscan
+export xscan_main
+export xscan_all
 export async_exchange!
 export exchange!
 export exchange
