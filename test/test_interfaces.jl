@@ -237,7 +237,7 @@ function test_interfaces(parts)
     end
     values
   end
-  exchange!(values,exchanger_snd;reduce_op=+)
+  exchange!(+,values,exchanger_snd)
   exchange!(values,exchanger_rcv)
 
   ids = PRange(n,lids)

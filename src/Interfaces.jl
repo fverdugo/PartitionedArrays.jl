@@ -227,6 +227,7 @@ function xscan_main(op,a::PData;init)
   b
 end
 
+# TODO improve the mechanism for waiting
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
@@ -421,6 +422,7 @@ function discover_parts_snd(parts_rcv::PData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
+# TODO simplify type signature
 # Arbitrary set of global indices stored in a part
 # gid_to_part can be omitted with nothing since only for some particular parallel
 # data layouts (e.g. uniform partitions) it is efficient to recover this information. 
@@ -707,8 +709,18 @@ end
 function async_exchange!(
   values::PData{<:AbstractVector{T}},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv);
-  reduce_op=_replace) where T
+  t0::PData=_empty_tasks(exchanger.parts_rcv)) where T
+
+  async_exchange!(_replace,values,exchanger,t0)
+end
+
+_replace(x,y) = y
+
+function async_exchange!(
+  combine_op,
+  values::PData{<:AbstractVector{T}},
+  exchanger::Exchanger,
+  t0::PData=_empty_tasks(exchanger.parts_rcv)) where T
 
   # Allocate buffers
   data_rcv = allocate_rcv_buffer(T,exchanger)
@@ -740,7 +752,7 @@ function async_exchange!(
       wait(schedule(t2))
       for p in 1:length(lids_rcv.data)
         lid = lids_rcv.data[p]
-        values[lid] = reduce_op(values[lid],data_rcv.data[p])
+        values[lid] = combine_op(values[lid],data_rcv.data[p])
       end
     end
   end
@@ -748,17 +760,23 @@ function async_exchange!(
   t3
 end
 
-_replace(x,y) = y
-
 function async_exchange!(
   values::PData{<:Table},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv);
-  reduce_op=_replace)
+  t0::PData=_empty_tasks(exchanger.parts_rcv))
+
+  async_exchange!(_replace,values,exchanger,t0)
+end
+
+function async_exchange!(
+  combine_op,
+  values::PData{<:Table},
+  exchanger::Exchanger,
+  t0::PData=_empty_tasks(exchanger.parts_rcv))
 
   data, ptrs = map_parts(t->(t.data,t.ptrs),values)
   t_exchanger = _table_exchanger(exchanger,ptrs)
-  async_exchange!(data,t_exchanger,t0;reduce_op=reduce_op)
+  async_exchange!(combine_op,data,t_exchanger,t0)
 end
 
 function _table_exchanger(exchanger,values)
@@ -804,7 +822,7 @@ function _table_lids_snd(lids_snd,tptrs)
   k_snd
 end
 
-# TODO mutable is needed to correctly implement add_gid!
+# mutable is needed to correctly implement add_gid!
 mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
@@ -1512,15 +1530,20 @@ function async_exchange!(
 end
 
 # Non-blocking assembly
-# TODO reduce op as first argument and init kwargument
 function async_assemble!(
   a::PVector,
-  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv);
-  reduce_op=+)
+  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  async_assemble!(+,a,t0)
+end
+
+function async_assemble!(
+  combine_op,
+  a::PVector,
+  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
 
   exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
-  t1 = async_exchange!(a.values,exchanger_snd,t0;reduce_op=reduce_op)
+  t1 = async_exchange!(combine_op,a.values,exchanger_snd,t0)
   map_parts(t1,a.values,a.rows.lids) do t1,values,lids
     @task begin
       wait(schedule(t1))
@@ -1924,13 +1947,19 @@ end
 # Non-blocking assembly
 function async_assemble!(
   a::PSparseMatrix,
-  t0::PData=_empty_tasks(a.exchanger.parts_rcv);
-  reduce_op=+)
+  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
+  async_assemble!(+,a,t0)
+end
+
+function async_assemble!(
+  combine_op,
+  a::PSparseMatrix,
+  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
 
   exchanger_rcv = a.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
   nzval = map_parts(nonzeros,a.values)
-  t1 = async_exchange!(nzval,exchanger_snd,t0;reduce_op=reduce_op)
+  t1 = async_exchange!(combine_op,nzval,exchanger_snd,t0)
   map_parts(t1,nzval,exchanger_snd.lids_snd) do t1,nzval,lids_snd
     @task begin
       wait(schedule(t1))
@@ -1944,8 +1973,7 @@ function async_assemble!(
   J::PData{<:AbstractVector{<:Integer}},
   V::PData{<:AbstractVector},
   rows::PRange,
-  t0::PData=_empty_tasks(rows.exchanger.parts_rcv);
-  reduce_op=+)
+  t0::PData=_empty_tasks(rows.exchanger.parts_rcv))
 
   map_parts(wait∘schedule,t0)
 
