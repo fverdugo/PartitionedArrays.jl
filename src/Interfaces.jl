@@ -920,30 +920,17 @@ function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
   PRange(ngids,lids,ghost)
 end
 
-
-# TODO this is type instable
 function PRange(
   parts::PData{<:Integer,N},
-  ngids::NTuple{N,<:Integer};
-  ghost::Bool=false) where N
+  ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
   lids = map_parts(parts) do part
-    if ghost
-      cp = Tuple(CartesianIndices(np)[part])
-      d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
-      lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
-      d_to_nldids = map(length,d_to_ldid_to_gdid)
-      lid_to_part = _lid_to_part(d_to_nldids,np,cp)
-      oid_to_lid = collect(Int32,findall(lid_to_part .== part))
-      hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
-    else
-      gids = _oid_to_gid(ngids,np,part)
-      lid_to_gid = gids
-      lid_to_part = fill(part,length(gids))
-      oid_to_lid = Int32(1):Int32(length(gids))
-      hid_to_lid = collect(Int32(1):Int32(0))
-    end
+    gids = _oid_to_gid(ngids,np,part)
+    lid_to_gid = gids
+    lid_to_part = fill(part,length(gids))
+    oid_to_lid = Int32(1):Int32(length(gids))
+    hid_to_lid = collect(Int32(1):Int32(0))
     part_to_gid = _part_to_gid(ngids,np)
     gid_to_part = GidToPart(ngids,part_to_gid)
     IndexSet(
@@ -955,27 +942,88 @@ function PRange(
       oid_to_lid,
       hid_to_lid)
   end
+  ghost = false
   PRange(prod(ngids),lids,ghost)
 end
 
-# TODO this is type instable
 function PCartesianIndices(
   parts::PData{<:Integer,N},
-  ngids::NTuple{N,<:Integer};
-  ghost::Bool= false) where N
+  ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
   lids = map_parts(parts) do part
     cis_parts = CartesianIndices(np)
     p = Tuple(cis_parts[part])
-    if ghost
-      d_to_odid_to_gdid = map(_lid_to_gid,ngids,np,p)
-    else
-      d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
-    end
+    d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
     CartesianIndices(d_to_odid_to_gdid)
   end
   lids
+end
+
+struct WithGhost end
+with_ghost = WithGhost()
+
+struct NoGhost end
+no_ghost = NoGhost()
+
+function PRange(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cp = Tuple(CartesianIndices(np)[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
+    lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
+    d_to_nldids = map(length,d_to_ldid_to_gdid)
+    lid_to_part = _lid_to_part(d_to_nldids,np,cp)
+    oid_to_lid = collect(Int32,findall(lid_to_part .== part))
+    hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
+    part_to_gid = _part_to_gid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_gid)
+    IndexSet(
+      part,
+      prod(ngids),
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  ghost = true
+  PRange(prod(ngids),lids,ghost)
+end
+
+function PRange(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::NoGhost) where N
+
+  PRange(parts,ngids)
+end
+
+function PCartesianIndices(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_odid_to_gdid = map(_lid_to_gid,ngids,np,p)
+    CartesianIndices(d_to_odid_to_gdid)
+  end
+  lids
+end
+
+function PCartesianIndices(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::NoGhost) where N
+
+  PCartesianIndices(parts,ngids)
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)

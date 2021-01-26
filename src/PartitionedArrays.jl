@@ -59,6 +59,10 @@ export Exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
 export PRange
+export WithGhost
+export with_ghost
+export NoGhost
+export no_ghost
 export add_gid
 export add_gid!
 export to_lid!

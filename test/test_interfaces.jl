@@ -332,7 +332,8 @@ function test_interfaces(parts)
       end
     end
 
-    pcis = PCartesianIndices(parts,(5,4),ghost=true)
+    pcis = PCartesianIndices(parts,(5,4),no_ghost)
+    pcis = PCartesianIndices(parts,(5,4),with_ghost)
     map_parts(parts,pcis) do part, cis
       if part == 1
         @test cis == CartesianIndices((1:3,1:3))
@@ -345,7 +346,8 @@ function test_interfaces(parts)
       end
     end
 
-    ids4 = PRange(parts,(5,4),ghost=true)
+    ids4 = PRange(parts,(5,4),no_ghost)
+    ids4 = PRange(parts,(5,4),with_ghost)
     map_parts(parts,ids4.lids) do part, ids4
       if part == 1
         @test ids4.lid_to_gid == [1, 2, 3, 6, 7, 8, 11, 12, 13]
@@ -358,6 +360,7 @@ function test_interfaces(parts)
       end
       @test ids4.gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
     end
+    @test ids4.ghost = true
 
   end
 
