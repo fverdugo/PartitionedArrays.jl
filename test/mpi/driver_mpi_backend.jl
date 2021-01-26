@@ -105,6 +105,33 @@ function main(parts)
     @test b == b1
   end
 
+  snd = map_parts(parts) do part
+    if part == 1
+      [1,2]
+    elseif part == 2
+      [2,3,4]
+    elseif part == 3
+      [5,6]
+    else
+      [7,8,9,10]
+    end
+  end
+  rcv = gather(snd) 
+  map_parts(parts,rcv) do part, rcv
+    if part == MAIN
+      @test rcv == [[1,2],[2,3,4],[5,6],[7,8,9,10]]
+    else
+      @test rcv == Vector{Int}[]
+    end
+    @test isa(rcv,Table)
+  end
+
+  rcv = gather_all(snd) 
+  map_parts(rcv) do rcv
+    @test rcv == [[1,2],[2,3,4],[5,6],[7,8,9,10]]
+    @test isa(rcv,Table)
+  end
+
   rcv = gather(parts) 
   @test size(rcv) == size(parts)
   

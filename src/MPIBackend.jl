@@ -72,6 +72,7 @@ function map_parts(task,args::MPIData...)
   MPIData(part_out,first(args).comm,first(args).size)
 end
 
+#TODO Tables are not displayed correctly
 function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
   MPI.Barrier(data.comm)
   str = """
@@ -113,10 +114,33 @@ function gather!(rcv::MPIData,snd::MPIData)
   rcv
 end
 
+function gather!(rcv::MPIData{<:Table},snd::MPIData)
+  @assert rcv.comm === snd.comm
+  if get_part_id(snd) == MAIN
+    @assert length(rcv.part) == num_parts(snd)
+    kini = rcv.part.ptrs[MAIN]
+    kend = rcv.part.ptrs[MAIN+1]-1
+    rcv.part.data[kini:kend] = snd.part
+    counts = ptrs_to_counts(rcv.part.ptrs)
+    MPI.Gatherv!(MPI.IN_PLACE,MPI.VBuffer(rcv.part.data,counts),MAIN-1,snd.comm)
+  else
+    MPI.Gatherv!(snd.part,nothing,MAIN-1,snd.comm)
+  end
+  rcv
+end
+
 function gather_all!(rcv::MPIData,snd::MPIData)
   @assert rcv.comm === snd.comm
   @assert length(rcv.part) == num_parts(snd)
   MPI.Allgather!(Ref(snd.part),MPI.UBuffer(rcv.part,1),snd.comm)
+  rcv
+end
+
+function gather_all!(rcv::MPIData{<:Table},snd::MPIData)
+  @assert rcv.comm === snd.comm
+  @assert length(rcv.part) == num_parts(snd)
+  counts = ptrs_to_counts(rcv.part.ptrs)
+  MPI.Allgatherv!(snd.part,MPI.VBuffer(rcv.part.data,counts),snd.comm)
   rcv
 end
 
@@ -133,7 +157,7 @@ function scatter(snd::MPIData)
 end
 
 function scatter(snd::MPIData{<:Table})
-  counts_main = _counts_main(snd)
+  counts_main = map_parts(ptrs_to_counts∘get_ptrs,snd)
   counts_scat = scatter(counts_main)
   if get_part_id(snd) == MAIN
     buf = MPI.VBuffer(snd.part.data,counts_main.part)
@@ -144,26 +168,6 @@ function scatter(snd::MPIData{<:Table})
     MPI.Scatterv!(nothing,rcv,MAIN-1,snd.comm)        
   end
   MPIData(rcv,snd.comm,snd.size)
-end
-
-function _counts_main(snd::PData{<:Table})
-  parts = get_part_ids(snd)
-  np = num_parts(snd)
-  counts_main = map_parts(parts,snd) do part,snd
-    data = snd.data
-    ptrs = snd.ptrs
-    if part == MAIN
-      counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
-      @check length(counts) == np
-      for i in 1:length(counts)
-        counts[i] = ptrs[i+1]-ptrs[i]
-      end
-    else
-      counts = similar(ptrs,eltype(ptrs),0)
-    end
-    counts
-  end
-  counts_main
 end
 
 function scatter(snd::MPIData{<:AbstractVector{<:AbstractVector}})
