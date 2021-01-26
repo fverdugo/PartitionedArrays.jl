@@ -65,6 +65,9 @@ struct Table{T} <: AbstractVector{Vector{T}}
   ptrs::Vector{Int32}
 end
 
+get_data(a::Table) = a.data
+get_ptrs(a::Table) = a.ptrs
+
 Base.size(a::Table) = (length(a.ptrs)-1,)
 Base.IndexStyle(::Type{<:Table}) = IndexLinear()
 function Base.getindex(a::Table{T},i::Integer) where T
@@ -124,6 +127,24 @@ function length_to_ptrs!(ptrs::AbstractArray{<:Integer})
   @inbounds for i in 1:(length(ptrs)-1)
     ptrs[i+1] += ptrs[i]
   end
+end
+
+function counts_to_ptrs(counts)
+  n = length(counts)
+  ptrs = Vector{Int32}(undef,n+1)
+  @inbounds for i in 1:n
+    ptrs[i+1] = counts[i]
+  end
+  length_to_ptrs!(ptrs)
+  ptrs
+end
+
+function ptrs_to_counts(ptrs)
+  counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
+  @inbounds for i in 1:length(counts)
+    counts[i] = ptrs[i+1]-ptrs[i]
+  end
+  counts
 end
 
 function rewind_ptrs!(ptrs::AbstractVector{<:Integer})

@@ -75,12 +75,38 @@ function gather!(rcv::SequentialData,snd::SequentialData)
   rcv
 end
 
+function gather!(rcv::SequentialData{<:Table},snd::SequentialData)
+  @assert num_parts(rcv) == num_parts(snd)
+  @assert length(rcv.parts[MAIN]) == num_parts(snd)
+  for part in 1:num_parts(snd)
+    offset = rcv.parts[MAIN].ptrs[part]-1
+    for i in 1:length(snd.parts[part])
+      rcv.parts[MAIN].data[i+offset] = snd.parts[part][i]
+    end
+  end
+  rcv
+end
+
 function gather_all!(rcv::SequentialData,snd::SequentialData)
   @assert num_parts(rcv) == num_parts(snd)
   for part_rcv in 1:num_parts(rcv)
     @assert length(rcv.parts[part_rcv]) == num_parts(snd)
     for part_snd in 1:num_parts(snd)
       rcv.parts[part_rcv][part_snd] = snd.parts[part_snd]
+    end
+  end
+  rcv
+end
+
+function gather_all!(rcv::SequentialData{<:Table},snd::SequentialData)
+  @assert num_parts(rcv) == num_parts(snd)
+  for part_rcv in 1:num_parts(rcv)
+    @assert length(rcv.parts[part_rcv]) == num_parts(snd)
+    for part_snd in 1:num_parts(snd)
+      offset = rcv.parts[part_rcv].ptrs[part_snd]-1
+      for i in 1:length(snd.parts[part_snd])
+        rcv.parts[part_rcv].data[i+offset] = snd.parts[part_snd][i]
+      end
     end
   end
   rcv

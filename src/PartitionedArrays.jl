@@ -35,6 +35,8 @@ export exchange!
 export exchange
 export async_exchange
 export Table
+export get_data
+export get_ptrs
 export length_to_ptrs!
 export rewind_ptrs!
 export discover_parts_snd

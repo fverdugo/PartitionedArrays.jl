@@ -60,11 +60,12 @@ get_part(a::PData) = @abstractmethod
 
 get_part(a::PData,part::Integer) = @abstractmethod
 
+# rcv can contain vectors or tables
 gather!(rcv::PData,snd::PData) = @abstractmethod
 
 gather_all!(rcv::PData,snd::PData) = @abstractmethod
 
-function gather(snd::PData)
+function allocate_gather(snd::PData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   rcv = map_parts(parts,snd) do part, snd
@@ -75,16 +76,58 @@ function gather(snd::PData)
       Vector{T}(undef,0)
     end
   end
+  rcv
+end
+
+function allocate_gather(snd::PData{<:AbstractVector})
+  l = map_parts(length,snd)
+  l_main = gather(l)
+  parts = get_part_ids(snd)
+  rcv = map_parts(parts,l_main,snd) do part, l, snd
+    if part == MAIN
+      ptrs = counts_to_ptrs(l)
+      ndata = ptrs[end]-1
+      data = Vector{eltype(snd)}(undef,ndata)
+      Table(data,ptrs)
+    else
+      ptrs = Vector{Int32}(undef,1)
+      data = Vector{eltype(snd)}(undef,0)
+      Table(data,ptrs)
+    end
+  end
+  rcv
+end
+
+function gather(snd::PData)
+  rcv = allocate_gather(snd)
   gather!(rcv,snd)
   rcv
 end
 
-function gather_all(snd::PData)
+function allocate_gather_all(snd::PData)
   np = num_parts(snd)
   rcv = map_parts(snd) do snd
     T = typeof(snd)
     Vector{T}(undef,np)
   end
+  rcv
+end
+
+function allocate_gather_all(snd::PData{<:AbstractVector})
+  l = map_parts(length,snd)
+  l_all = gather_all(l)
+  parts = get_part_ids(snd)
+  rcv = map_parts(parts,l_all,snd) do part, l, snd
+    ptrs = counts_to_ptrs(l)
+    ndata = ptrs[end]-1
+    data = Vector{eltype(snd)}(undef,ndata)
+    Table(data,ptrs)
+  end
+  rcv
+end
+
+function gather_all(snd::PData)
+  rcv = allocate_gather_all(snd)
   gather_all!(rcv,snd)
   rcv
 end
@@ -309,7 +352,7 @@ function exchange(args...;kwargs...)
   data_rcv
 end
 
-# Discover snd parts from rcv assuming that srd is a subset of neighbors
+# Discover snd parts from rcv assuming that snd is a subset of neighbors
 # Assumes that neighbors is a symmetric communication graph
 function discover_parts_snd(parts_rcv::PData, neighbors::PData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
@@ -335,16 +378,43 @@ function discover_parts_snd(parts_rcv::PData, neighbors::PData)
   parts_snd
 end
 
-# TODO
-# If neighbors not provided, all procs are considered neighbors (to be improved)
+# If neighbors not provided, we need to gather in main
 function discover_parts_snd(parts_rcv::PData)
-  parts = get_part_ids(parts_rcv)
-  nparts = num_parts(parts)
-  neighbors = map_parts(parts,parts_rcv) do part, parts_rcv
-    T = eltype(parts_rcv)
-    [T(i) for i in 1:nparts if i!=part]
+  parts_rcv_main = gather(parts_rcv)
+  parts_snd_main = map_parts(_parts_rcv_to_parts_snd,parts_rcv_main)
+  parts_snd = scatter(parts_snd_main)
+  parts_snd
+end
+
+# This also works in part != MAIN since it is able to deal
+# with an empty table (the result is also an empty table in this case)
+function _parts_rcv_to_parts_snd(parts_rcv::Table)
+  I = Int32[]
+  J = Int32[]
+  np = length(parts_rcv)
+  for p in 1:np
+    kini = parts_rcv.ptrs[p]
+    kend = parts_rcv.ptrs[p+1]-1
+    for k in kini:kend
+      push!(I,p)
+      push!(J,parts_rcv.data[k])
+    end
   end
-  discover_parts_snd(parts_rcv,neighbors)
+  graph = sparse(I,J,I,np,np)
+  ptrs = similar(parts_rcv.ptrs)
+  fill!(ptrs,zero(eltype(ptrs)))
+  for (i,j,_) in nziterator(graph)
+    ptrs[j+1] += 1
+  end
+  length_to_ptrs!(ptrs)
+  ndata = ptrs[end]-1
+  data = similar(parts_rcv.data,eltype(parts_rcv.data),ndata)
+  for (i,j,_) in nziterator(graph)
+    data[ptrs[j]] = i
+    ptrs[j] += 1
+  end
+  rewind_ptrs!(ptrs)
+  parts_snd = Table(data,ptrs)
 end
 
 function discover_parts_snd(parts_rcv::PData,::Nothing)
