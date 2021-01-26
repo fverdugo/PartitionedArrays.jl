@@ -352,7 +352,7 @@ function exchange(args...;kwargs...)
   data_rcv
 end
 
-# Discover snd parts from rcv assuming that srd is a subset of neighbors
+# Discover snd parts from rcv assuming that snd is a subset of neighbors
 # Assumes that neighbors is a symmetric communication graph
 function discover_parts_snd(parts_rcv::PData, neighbors::PData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
@@ -380,22 +380,14 @@ end
 
 # If neighbors not provided, we need to gather in main
 function discover_parts_snd(parts_rcv::PData)
-  parts = get_part_ids(parts_rcv)
   parts_rcv_main = gather(parts_rcv)
-  parts_snd_main = map_parts(parts,parts_rcv_main) do part,parts_rcv
-    if part == MAIN
-      parts_snd = _parts_rcv_to_parts_snd(parts_rcv)
-    else
-      ptrs = similar(parts_rcv.ptrs,eltype(parts_rcv.ptrs),1)
-      data = similar(parts_rcv.data,eltype(parts_rcv.data),0)
-      parts_snd = Table(data,ptrs)
-    end
-    parts_snd
-  end
+  parts_snd_main = map_parts(_parts_rcv_to_parts_snd,parts_rcv_main)
   parts_snd = scatter(parts_snd_main)
   parts_snd
 end
 
+# This also works in part != MAIN since it is able to deal
+# with an empty table (the result is also an empty table in this case)
 function _parts_rcv_to_parts_snd(parts_rcv::Table)
   I = Int32[]
   J = Int32[]
