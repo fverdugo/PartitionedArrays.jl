@@ -22,7 +22,7 @@ On these types, several communication operations are defined:
 - `gather!`, `gather`, `gather_all!`, `gather_all`
 - `reduce`, `reduce_all`, `reduce_main`
 - `scatter`
-- `emit`
+- `emit` (aka broadcast)
 - `iscan`, `iscan_all`, `iscan_main`
 - `xscan`, `xscan_all`, `xscan_main`
 - `exchange!` `exchange`, `async_exchange!` `async_exchange`
