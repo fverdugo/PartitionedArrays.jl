@@ -43,6 +43,8 @@ Base.eltype(::Type{<:PData{T}}) where T = T
 Base.ndims(a::PData{T,N}) where {T,N} = N
 Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
 
+Base.copy(a::PData) = map_parts(copy,a)
+
 #function map_parts(task,a...)
 #  map_parts(task,map(PData,a)...)
 #end
@@ -227,6 +229,7 @@ function xscan_main(op,a::PData;init)
   b
 end
 
+# TODO improve the mechanism for waiting
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
@@ -421,6 +424,7 @@ function discover_parts_snd(parts_rcv::PData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
+# TODO simplify type signature
 # Arbitrary set of global indices stored in a part
 # gid_to_part can be omitted with nothing since only for some particular parallel
 # data layouts (e.g. uniform partitions) it is efficient to recover this information. 
@@ -466,6 +470,19 @@ struct IndexSet{A,B,C,D,E,F,G}
       lid_to_ohid,
       gid_to_lid)
   end
+end
+
+function Base.copy(a::IndexSet)
+  IndexSet(
+    copy(a.part),
+    copy(a.ngids),
+    copy(a.lid_to_gid),
+    copy(a.lid_to_part),
+    a.gid_to_part === nothing ? nothing : copy(a.gid_to_part),
+    copy(a.oid_to_lid),
+    copy(a.hid_to_lid),
+    copy(a.lid_to_ohid),
+    copy(a.gid_to_lid))
 end
 
 num_gids(a::IndexSet) = a.ngids
@@ -617,6 +634,14 @@ struct Exchanger{B,C}
   end
 end
 
+function Base.copy(a::Exchanger)
+  Exchanger(
+    copy(a.parts_rcv),
+    copy(a.parts_snd),
+    copy(a.lids_rcv),
+    copy(a.lids_snd))
+end
+
 function Exchanger(ids::PData{<:IndexSet},neighbors=nothing)
 
   parts = get_part_ids(ids)
@@ -707,8 +732,18 @@ end
 function async_exchange!(
   values::PData{<:AbstractVector{T}},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv);
-  reduce_op=_replace) where T
+  t0::PData=_empty_tasks(exchanger.parts_rcv)) where T
+
+  async_exchange!(_replace,values,exchanger,t0)
+end
+
+_replace(x,y) = y
+
+function async_exchange!(
+  combine_op,
+  values::PData{<:AbstractVector{T}},
+  exchanger::Exchanger,
+  t0::PData=_empty_tasks(exchanger.parts_rcv)) where T
 
   # Allocate buffers
   data_rcv = allocate_rcv_buffer(T,exchanger)
@@ -740,7 +775,7 @@ function async_exchange!(
       wait(schedule(t2))
       for p in 1:length(lids_rcv.data)
         lid = lids_rcv.data[p]
-        values[lid] = reduce_op(values[lid],data_rcv.data[p])
+        values[lid] = combine_op(values[lid],data_rcv.data[p])
       end
     end
   end
@@ -748,17 +783,23 @@ function async_exchange!(
   t3
 end
 
-_replace(x,y) = y
-
 function async_exchange!(
   values::PData{<:Table},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv);
-  reduce_op=_replace)
+  t0::PData=_empty_tasks(exchanger.parts_rcv))
+
+  async_exchange!(_replace,values,exchanger,t0)
+end
+
+function async_exchange!(
+  combine_op,
+  values::PData{<:Table},
+  exchanger::Exchanger,
+  t0::PData=_empty_tasks(exchanger.parts_rcv))
 
   data, ptrs = map_parts(t->(t.data,t.ptrs),values)
   t_exchanger = _table_exchanger(exchanger,ptrs)
-  async_exchange!(data,t_exchanger,t0;reduce_op=reduce_op)
+  async_exchange!(combine_op,data,t_exchanger,t0)
 end
 
 function _table_exchanger(exchanger,values)
@@ -804,7 +845,7 @@ function _table_lids_snd(lids_snd,tptrs)
   k_snd
 end
 
-# TODO mutable is needed to correctly implement add_gid!
+# mutable is needed to correctly implement add_gid!
 mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
   lids::A
@@ -826,14 +867,12 @@ mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   end
 end
 
-# TODO in MPI this causes to copy the world comm
-# and makes some assertions to fail.
 function Base.copy(a::PRange)
-  ngids = copy(a.ngids)
-  lids = deepcopy(a.lids)
-  ghost = copy(a.ghost)
-  exchanger = deepcopy(a.exchanger)
-  PRange(ngids,lids,ghost,exchanger)
+  PRange(
+    copy(a.ngids),
+    copy(a.lids),
+    copy(a.ghost),
+    copy(a.exchanger))
 end
 
 function PRange(
@@ -902,30 +941,17 @@ function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
   PRange(ngids,lids,ghost)
 end
 
-
-# TODO this is type instable
 function PRange(
   parts::PData{<:Integer,N},
-  ngids::NTuple{N,<:Integer};
-  ghost::Bool=false) where N
+  ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
   lids = map_parts(parts) do part
-    if ghost
-      cp = Tuple(CartesianIndices(np)[part])
-      d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
-      lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
-      d_to_nldids = map(length,d_to_ldid_to_gdid)
-      lid_to_part = _lid_to_part(d_to_nldids,np,cp)
-      oid_to_lid = collect(Int32,findall(lid_to_part .== part))
-      hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
-    else
-      gids = _oid_to_gid(ngids,np,part)
-      lid_to_gid = gids
-      lid_to_part = fill(part,length(gids))
-      oid_to_lid = Int32(1):Int32(length(gids))
-      hid_to_lid = collect(Int32(1):Int32(0))
-    end
+    gids = _oid_to_gid(ngids,np,part)
+    lid_to_gid = gids
+    lid_to_part = fill(part,length(gids))
+    oid_to_lid = Int32(1):Int32(length(gids))
+    hid_to_lid = collect(Int32(1):Int32(0))
     part_to_gid = _part_to_gid(ngids,np)
     gid_to_part = GidToPart(ngids,part_to_gid)
     IndexSet(
@@ -937,27 +963,88 @@ function PRange(
       oid_to_lid,
       hid_to_lid)
   end
+  ghost = false
   PRange(prod(ngids),lids,ghost)
 end
 
-# TODO this is type instable
 function PCartesianIndices(
   parts::PData{<:Integer,N},
-  ngids::NTuple{N,<:Integer};
-  ghost::Bool= false) where N
+  ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
   lids = map_parts(parts) do part
     cis_parts = CartesianIndices(np)
     p = Tuple(cis_parts[part])
-    if ghost
-      d_to_odid_to_gdid = map(_lid_to_gid,ngids,np,p)
-    else
-      d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
-    end
+    d_to_odid_to_gdid = map(_oid_to_gid,ngids,np,p)
     CartesianIndices(d_to_odid_to_gdid)
   end
   lids
+end
+
+struct WithGhost end
+with_ghost = WithGhost()
+
+struct NoGhost end
+no_ghost = NoGhost()
+
+function PRange(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cp = Tuple(CartesianIndices(np)[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
+    lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
+    d_to_nldids = map(length,d_to_ldid_to_gdid)
+    lid_to_part = _lid_to_part(d_to_nldids,np,cp)
+    oid_to_lid = collect(Int32,findall(lid_to_part .== part))
+    hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
+    part_to_gid = _part_to_gid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_gid)
+    IndexSet(
+      part,
+      prod(ngids),
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  ghost = true
+  PRange(prod(ngids),lids,ghost)
+end
+
+function PRange(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::NoGhost) where N
+
+  PRange(parts,ngids)
+end
+
+function PCartesianIndices(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_odid_to_gdid = map(_lid_to_gid,ngids,np,p)
+    CartesianIndices(d_to_odid_to_gdid)
+  end
+  lids
+end
+
+function PCartesianIndices(
+  parts::PData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::NoGhost) where N
+
+  PCartesianIndices(parts,ngids)
 end
 
 function _oid_to_gid(ngids::Integer,np::Integer,p::Integer)
@@ -1132,7 +1219,7 @@ function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
 end
 
 function add_gid(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  lids = map_parts(deepcopy,a.lids)
+  lids = map_parts(copy,a.lids)
   b = PRange(a.ngids,lids)
   add_gid!(b,gids)
   b
@@ -1512,15 +1599,20 @@ function async_exchange!(
 end
 
 # Non-blocking assembly
-# TODO reduce op as first argument and init kwargument
 function async_assemble!(
   a::PVector,
-  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv);
-  reduce_op=+)
+  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  async_assemble!(+,a,t0)
+end
+
+function async_assemble!(
+  combine_op,
+  a::PVector,
+  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
 
   exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
-  t1 = async_exchange!(a.values,exchanger_snd,t0;reduce_op=reduce_op)
+  t1 = async_exchange!(combine_op,a.values,exchanger_snd,t0)
   map_parts(t1,a.values,a.rows.lids) do t1,values,lids
     @task begin
       wait(schedule(t1))
@@ -1554,6 +1646,14 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     D = typeof(exchanger)
     new{T,A,B,C,D}(values,rows,cols,exchanger)
   end
+end
+
+function Base.copy(a::PSparseMatrix)
+  PSparseMatrix(
+    copy(a.values),
+    copy(a.rows),
+    copy(a.cols),
+    copy(a.exchanger))
 end
 
 function PSparseMatrix(
@@ -1924,13 +2024,19 @@ end
 # Non-blocking assembly
 function async_assemble!(
   a::PSparseMatrix,
-  t0::PData=_empty_tasks(a.exchanger.parts_rcv);
-  reduce_op=+)
+  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
+  async_assemble!(+,a,t0)
+end
+
+function async_assemble!(
+  combine_op,
+  a::PSparseMatrix,
+  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
 
   exchanger_rcv = a.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
   nzval = map_parts(nonzeros,a.values)
-  t1 = async_exchange!(nzval,exchanger_snd,t0;reduce_op=reduce_op)
+  t1 = async_exchange!(combine_op,nzval,exchanger_snd,t0)
   map_parts(t1,nzval,exchanger_snd.lids_snd) do t1,nzval,lids_snd
     @task begin
       wait(schedule(t1))
@@ -1944,8 +2050,7 @@ function async_assemble!(
   J::PData{<:AbstractVector{<:Integer}},
   V::PData{<:AbstractVector},
   rows::PRange,
-  t0::PData=_empty_tasks(rows.exchanger.parts_rcv);
-  reduce_op=+)
+  t0::PData=_empty_tasks(rows.exchanger.parts_rcv))
 
   map_parts(wait∘schedule,t0)
 

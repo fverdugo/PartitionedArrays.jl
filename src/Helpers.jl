@@ -80,6 +80,7 @@ function Base.getindex(a::Table{T},i::Integer) where T
   end
   v
 end
+Base.copy(a::Table) = Table(copy(a.data),copy(a.ptrs))
 
 function Table(a::AbstractArray{<:AbstractArray})
   data, ptrs = generate_data_and_ptrs(a)
