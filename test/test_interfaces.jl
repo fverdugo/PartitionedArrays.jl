@@ -241,6 +241,11 @@ function test_interfaces(parts)
   exchange!(values,exchanger_rcv)
 
   ids = PRange(n,lids)
+  ids2 = copy(ids)
+
+  @test ids !== ids2
+  @test ids.lids !== ids2.lids
+  @test ids.exchanger !== ids2.exchanger
 
   map_parts(ids.lids) do lids
     @test lids.ngids == n

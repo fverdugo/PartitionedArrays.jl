@@ -43,6 +43,8 @@ Base.eltype(::Type{<:PData{T}}) where T = T
 Base.ndims(a::PData{T,N}) where {T,N} = N
 Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
 
+Base.copy(a::PData) = map_parts(copy,a)
+
 #function map_parts(task,a...)
 #  map_parts(task,map(PData,a)...)
 #end
@@ -470,6 +472,19 @@ struct IndexSet{A,B,C,D,E,F,G}
   end
 end
 
+function Base.copy(a::IndexSet)
+  IndexSet(
+    copy(a.part),
+    copy(a.ngids),
+    copy(a.lid_to_gid),
+    copy(a.lid_to_part),
+    a.gid_to_part === nothing ? nothing : copy(a.gid_to_part),
+    copy(a.oid_to_lid),
+    copy(a.hid_to_lid),
+    copy(a.lid_to_ohid),
+    copy(a.gid_to_lid))
+end
+
 num_gids(a::IndexSet) = a.ngids
 num_lids(a::IndexSet) = length(a.lid_to_part)
 num_oids(a::IndexSet) = length(a.oid_to_lid)
@@ -617,6 +632,14 @@ struct Exchanger{B,C}
     C = typeof(lids_rcv)
     new{B,C}(parts_rcv,parts_snd,lids_rcv,lids_snd)
   end
+end
+
+function Base.copy(a::Exchanger)
+  Exchanger(
+    copy(a.parts_rcv),
+    copy(a.parts_snd),
+    copy(a.lids_rcv),
+    copy(a.lids_snd))
 end
 
 function Exchanger(ids::PData{<:IndexSet},neighbors=nothing)
@@ -844,14 +867,12 @@ mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   end
 end
 
-# TODO in MPI this causes to copy the world comm
-# and makes some assertions to fail.
 function Base.copy(a::PRange)
-  ngids = copy(a.ngids)
-  lids = deepcopy(a.lids)
-  ghost = copy(a.ghost)
-  exchanger = deepcopy(a.exchanger)
-  PRange(ngids,lids,ghost,exchanger)
+  PRange(
+    copy(a.ngids),
+    copy(a.lids),
+    copy(a.ghost),
+    copy(a.exchanger))
 end
 
 function PRange(
@@ -1198,7 +1219,7 @@ function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
 end
 
 function add_gid(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  lids = map_parts(deepcopy,a.lids)
+  lids = map_parts(copy,a.lids)
   b = PRange(a.ngids,lids)
   add_gid!(b,gids)
   b
@@ -1625,6 +1646,14 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     D = typeof(exchanger)
     new{T,A,B,C,D}(values,rows,cols,exchanger)
   end
+end
+
+function Base.copy(a::PSparseMatrix)
+  PSparseMatrix(
+    copy(a.values),
+    copy(a.rows),
+    copy(a.cols),
+    copy(a.exchanger))
 end
 
 function PSparseMatrix(
