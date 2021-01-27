@@ -49,7 +49,7 @@ function test_fdm(parts)
   # In this case, we always touch local rows, but arbitrary cols.
   # Thus, row ids can be readily stored in local numbering so that we do not need to convert
   # them later.
-  I,J,V = map_parts(rows.lids,b.values,x̂.values) do rows,b,x̂
+  I,J,V = map_parts(rows.partition,b.values,x̂.values) do rows,b,x̂
     cis = CartesianIndices(ns)
     lis = LinearIndices(cis)
     I = Int[]
@@ -96,7 +96,7 @@ function test_fdm(parts)
   # in other to perform the product A*x in the cg solver.
   # We also need to set the boundary values
   x = PVector(0.0,cols)
-  map_parts(x.values,x.rows.lids) do x,rows
+  map_parts(x.values,x.rows.partition) do x,rows
     for lid in rows.oid_to_lid
       cis = CartesianIndices(ns)
       i = rows.lid_to_gid[lid]

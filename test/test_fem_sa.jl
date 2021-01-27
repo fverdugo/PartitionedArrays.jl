@@ -33,7 +33,7 @@ function test_fem_sa(parts)
   # Loop over owned cells, and fill the coo-vectors
   # Note that during the process we will touch remote rows and cols
   # This will be fixed later with an assembly.
-  I,J,V = map_parts(cells.lids) do cells
+  I,J,V = map_parts(cells.partition) do cells
     I = Int[]
     J = Int[]
     V = Float64[]
@@ -83,7 +83,7 @@ function test_fem_sa(parts)
   # we use `global_view` in order to be able to index
   # b with global ids from within the parts.
   # Note that we touch non owned rows.
-  map_parts(global_view(b),cells.lids) do b, cells
+  map_parts(global_view(b),cells.partition) do b, cells
     for ocell in cells.oid_to_lid
       gcell = cells.lid_to_gid[ocell]
       ci_gcell = cis_gcells[gcell]
@@ -118,7 +118,7 @@ function test_fem_sa(parts)
   # Setup initial and exact solution
   x = PVector(0.0,cols)
   x̂ = similar(x)
-  map_parts(x.values,x̂.values,x.rows.lids) do x,x̂,rows
+  map_parts(x.values,x̂.values,x.rows.partition) do x,x̂,rows
     for lid in rows.oid_to_lid
       grow = rows.lid_to_gid[lid]
       ci_grow = cis_gnodes[grow]

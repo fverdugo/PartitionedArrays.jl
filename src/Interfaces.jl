@@ -848,20 +848,20 @@ end
 # mutable is needed to correctly implement add_gid!
 mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   ngids::Int
-  lids::A
+  partition::A
   ghost::Bool
   exchanger::B
   function PRange(
     ngids::Integer,
-    lids::PData{<:IndexSet},
+    partition::PData{<:IndexSet},
     ghost::Bool,
     exchanger::Exchanger)
   
-    A = typeof(lids)
+    A = typeof(partition)
     B = typeof(exchanger)
     new{A,B}(
       ngids,
-      lids,
+      partition,
       ghost,
       exchanger)
   end
@@ -870,29 +870,29 @@ end
 function Base.copy(a::PRange)
   PRange(
     copy(a.ngids),
-    copy(a.lids),
+    copy(a.partition),
     copy(a.ghost),
     copy(a.exchanger))
 end
 
 function PRange(
   ngids::Integer,
-  lids::PData{<:IndexSet},
+  partition::PData{<:IndexSet},
   ghost::Bool=true)
 
-  exchanger =  ghost ? Exchanger(lids) : empty_exchanger(lids)
-  PRange(ngids,lids,ghost,exchanger)
+  exchanger =  ghost ? Exchanger(partition) : empty_exchanger(partition)
+  PRange(ngids,partition,ghost,exchanger)
 end
 
 Base.first(a::PRange) = 1
 Base.last(a::PRange) = a.ngids
 
 num_gids(a::PRange) = a.ngids
-num_parts(a::PRange) = num_parts(a.lids)
+num_parts(a::PRange) = num_parts(a.partition)
 
 function PRange(parts::PData{<:Integer},ngids::Integer)
   np = num_parts(parts)
-  lids = map_parts(parts) do part
+  partition = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
     lid_to_gid = collect(gids)
     lid_to_part = fill(part,length(gids))
@@ -910,7 +910,7 @@ function PRange(parts::PData{<:Integer},ngids::Integer)
       hid_to_lid)
   end
   ghost = false
-  PRange(ngids,lids,ghost)
+  PRange(ngids,partition,ghost)
 end
 
 function PRange(
@@ -922,7 +922,7 @@ end
 function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
   ngids = reduce(+,noids,init=0)
   firstgids = xscan_all(+,noids,init=1)
-  lids = map_parts(parts,noids,firstgids) do part,noids,firstgids
+  partition = map_parts(parts,noids,firstgids) do part,noids,firstgids
     lid_to_gid = collect(Int,(1:noids) .+ (firstgids[part]-1))
     lid_to_part = fill(part,length(lid_to_gid))
     gid_to_part = GidToPart(ngids,firstgids)
@@ -938,7 +938,7 @@ function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
       hid_to_lid)
   end
   ghost = false
-  PRange(ngids,lids,ghost)
+  PRange(ngids,partition,ghost)
 end
 
 function PRange(
@@ -946,7 +946,7 @@ function PRange(
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
-  lids = map_parts(parts) do part
+  partition = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
     lid_to_gid = gids
     lid_to_part = fill(part,length(gids))
@@ -964,7 +964,7 @@ function PRange(
       hid_to_lid)
   end
   ghost = false
-  PRange(prod(ngids),lids,ghost)
+  PRange(prod(ngids),partition,ghost)
 end
 
 function PCartesianIndices(
@@ -993,7 +993,7 @@ function PRange(
   ::WithGhost) where N
 
   np = size(parts)
-  lids = map_parts(parts) do part
+  partition = map_parts(parts) do part
     cp = Tuple(CartesianIndices(np)[part])
     d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
     lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
@@ -1013,7 +1013,7 @@ function PRange(
       hid_to_lid)
   end
   ghost = true
-  PRange(prod(ngids),lids,ghost)
+  PRange(prod(ngids),partition,ghost)
 end
 
 function PRange(
@@ -1208,54 +1208,54 @@ function _find_part_from_gid(
 end
 
 function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  map_parts(a.lids,gids) do lids,gids
+  map_parts(a.partition,gids) do partition,gids
     for gid in gids
-      add_gid!(lids,gid)
+      add_gid!(partition,gid)
     end
   end
-  a.exchanger = Exchanger(a.lids)
+  a.exchanger = Exchanger(a.partition)
   a.ghost = true
   a
 end
 
 function add_gid(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  lids = map_parts(copy,a.lids)
-  b = PRange(a.ngids,lids)
+  partition = map_parts(copy,a.partition)
+  b = PRange(a.ngids,partition)
   add_gid!(b,gids)
   b
 end
 
 function to_lid!(ids::PData{<:AbstractArray{<:Integer}},a::PRange)
-  map_parts(to_lid!,ids,a.lids)
+  map_parts(to_lid!,ids,a.partition)
 end
 
 function to_gid!(ids::PData{<:AbstractArray{<:Integer}},a::PRange)
-  map_parts(to_gid!,ids,a.lids)
+  map_parts(to_gid!,ids,a.partition)
 end
 
 function oids_are_equal(a::PRange,b::PRange)
-  if a.lids === b.lids
+  if a.partition === b.partition
     true
   else
-    c = map_parts(oids_are_equal,a.lids,b.lids)
+    c = map_parts(oids_are_equal,a.partition,b.partition)
     reduce(&,c,init=true)
   end
 end
 
 function hids_are_equal(a::PRange,b::PRange)
-  if a.lids === b.lids
+  if a.partition === b.partition
     true
   else
-    c = map_parts(hids_are_equal,a.lids,b.lids)
+    c = map_parts(hids_are_equal,a.partition,b.partition)
     reduce(&,c,init=true)
   end
 end
 
 function lids_are_equal(a::PRange,b::PRange)
-  if a.lids === b.lids
+  if a.partition === b.partition
     true
   else
-    c = map_parts(lids_are_equal,a.lids,b.lids)
+    c = map_parts(lids_are_equal,a.partition,b.partition)
     reduce(&,c,init=true)
   end
 end
@@ -1275,11 +1275,11 @@ end
 
 function Base.getproperty(x::PVector, sym::Symbol)
   if sym == :owned_values
-    map_parts(x.values,x.rows.lids) do v,r
+    map_parts(x.values,x.rows.partition) do v,r
       view(v,r.oid_to_lid)
     end
   elseif sym == :ghost_values
-    map_parts(x.values,x.rows.lids) do v,r
+    map_parts(x.values,x.rows.partition) do v,r
       view(v,r.hid_to_lid)
     end
   else
@@ -1313,8 +1313,8 @@ end
 
 function Base.similar(a::PVector,::Type{T},axes::Tuple{<:PRange}) where T
   rows = axes[1]
-  values = map_parts(a.values,rows.lids) do values, lids
-    similar(values,T,num_lids(lids))
+  values = map_parts(a.values,rows.partition) do values, partition
+    similar(values,T,num_lids(partition))
   end
   PVector(values,rows)
 end
@@ -1327,8 +1327,8 @@ end
 function Base.similar(
   ::Type{<:PVector{T,<:PData{A}}},axes::Tuple{<:PRange}) where {T,A}
   rows = axes[1]
-  values = map_parts(rows.lids) do lids
-    similar(A,num_lids(lids))
+  values = map_parts(rows.partition) do partition
+    similar(A,num_lids(partition))
   end
   PVector(values,rows)
 end
@@ -1439,8 +1439,8 @@ function PVector{T}(
   ::UndefInitializer,
   rows::PRange) where T
 
-  values = map_parts(rows.lids) do lids
-    nlids = num_lids(lids)
+  values = map_parts(rows.partition) do partition
+    nlids = num_lids(partition)
     Vector{T}(undef,nlids)
   end
   PVector(values,rows)
@@ -1465,8 +1465,8 @@ function PVector(
     to_lid!(I,rows)
   end
 
-  values = map_parts(rows.lids,I,V) do lids,I,V
-    values = init(num_lids(lids))
+  values = map_parts(rows.partition,I,V) do partition,I,V
+    values = init(num_lids(partition))
     fill!(values,zero(eltype(values)))
     for i in 1:length(I)
       lid = I[i]
@@ -1536,8 +1536,8 @@ function Base.fill!(a::PVector,v)
 end
 
 function Base.reduce(op,a::PVector;init)
-  b = map_parts(a.values,a.rows.lids) do values,lids
-    owned_values = view(values,lids.oid_to_lid)
+  b = map_parts(a.values,a.rows.partition) do values,partition
+    owned_values = view(values,partition.oid_to_lid)
     reduce(op,owned_values,init=init)
   end
   reduce(op,b,init=init)
@@ -1548,7 +1548,7 @@ function Base.sum(a::PVector)
 end
 
 function LinearAlgebra.dot(a::PVector,b::PVector)
-  c = map_parts(a.values,b.values,a.rows.lids,b.rows.lids) do a,b,alids,blids
+  c = map_parts(a.values,b.values,a.rows.partition,b.rows.partition) do a,b,alids,blids
     a_owned = view(a,alids.oid_to_lid)
     b_owned = view(b,blids.oid_to_lid)
     dot(a_owned,b_owned)
@@ -1561,8 +1561,8 @@ function local_view(a::PVector)
 end
 
 function global_view(a::PVector)
-  map_parts(a.values,a.rows.lids) do values, lids
-    GlobalView(values,(lids.gid_to_lid,),(lids.ngids,))
+  map_parts(a.values,a.rows.partition) do values, partition
+    GlobalView(values,(partition.gid_to_lid,),(partition.ngids,))
   end
 end
 
@@ -1613,10 +1613,10 @@ function async_assemble!(
   exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
   t1 = async_exchange!(combine_op,a.values,exchanger_snd,t0)
-  map_parts(t1,a.values,a.rows.lids) do t1,values,lids
+  map_parts(t1,a.values,a.rows.partition) do t1,values,partition
     @task begin
       wait(schedule(t1))
-      values[lids.hid_to_lid] .= zero(eltype(values))
+      values[partition.hid_to_lid] .= zero(eltype(values))
     end
   end
 end
@@ -1662,37 +1662,37 @@ function PSparseMatrix(
   cols::PRange) where T
 
   if rows.ghost
-    exchanger = matrix_exchanger(values,rows.exchanger,rows.lids,cols.lids)
+    exchanger = matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
   else
-    exchanger = empty_exchanger(rows.lids)
+    exchanger = empty_exchanger(rows.partition)
   end
   PSparseMatrix(values,rows,cols,exchanger)
 end
 
 function Base.getproperty(x::PSparseMatrix, sym::Symbol)
   if sym == :owned_owned_values
-    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+    map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.oid_to_lid,c.oid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (1,1)
       SubSparseMatrix(v,indices,inv_indices,flag)
     end
   elseif sym == :owned_ghost_values
-    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+    map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.oid_to_lid,c.hid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (1,-1)
       SubSparseMatrix(v,indices,inv_indices,flag)
     end
   elseif sym == :ghost_owned_values
-    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+    map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.hid_to_lid,c.oid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (-1,1)
       SubSparseMatrix(v,indices,inv_indices,flag)
     end
   elseif sym == :ghost_ghost_values
-    map_parts(x.values,x.rows.lids,x.cols.lids) do v,r,c
+    map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.hid_to_lid,c.hid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (-1,-1)
@@ -1736,7 +1736,7 @@ function PSparseMatrix(
     to_lid!(J,cols)
   end
 
-  values = map_parts(I,J,V,rows.lids,cols.lids) do I,J,V,rlids,clids
+  values = map_parts(I,J,V,rows.partition,cols.partition) do I,J,V,rlids,clids
     init(I,J,V,num_lids(rlids),num_lids(clids))
   end
 
@@ -1877,7 +1877,7 @@ function local_view(a::PSparseMatrix)
 end
 
 function global_view(a::PSparseMatrix)
-  map_parts(a.values,a.rows.lids,a.cols.lids) do values,rlids,clids
+  map_parts(a.values,a.rows.partition,a.cols.partition) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
   end
 end
@@ -2054,7 +2054,7 @@ function async_assemble!(
 
   map_parts(wait∘schedule,t0)
 
-  part = get_part_ids(rows.lids)
+  part = get_part_ids(rows.partition)
   parts_rcv = rows.exchanger.parts_rcv
   parts_snd = rows.exchanger.parts_snd
 
@@ -2098,7 +2098,7 @@ function async_assemble!(
     gi_rcv, gj_rcv, v_rcv 
   end
   
-  gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.lids,coo_values)
+  gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.partition,coo_values)
 
   gi_snd, t1 = async_exchange(gi_rcv,parts_snd,parts_rcv)
   gj_snd, t2 = async_exchange(gj_rcv,parts_snd,parts_rcv)
@@ -2123,7 +2123,7 @@ function async_assemble!(
     end
   end
 
-  t4 = map_parts(setup_snd,t1,t2,t3,part,rows.lids,gi_snd,gj_snd,v_snd,coo_values)
+  t4 = map_parts(setup_snd,t1,t2,t3,part,rows.partition,gi_snd,gj_snd,v_snd,coo_values)
 
   t4
 end
@@ -2178,7 +2178,7 @@ struct Jacobi{T,A,B,C}
 end
 
 function Jacobi(a::PSparseMatrix)
-  diaginv = map_parts(a.values,a.rows.lids,a.cols.lids) do values, rlids, clids
+  diaginv = map_parts(a.values,a.rows.partition,a.cols.partition) do values, rlids, clids
     @assert num_oids(rlids) == num_oids(clids)
     @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
     ldiag = collect(diag(values))

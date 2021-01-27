@@ -152,7 +152,7 @@ function test_interfaces(parts)
 
   n = 10
 
-  lids = map_parts(parts) do part
+  partition = map_parts(parts) do part
     if part == 1
       IndexSet(part,n,[1,2,3,5,7,8],[1,1,1,2,3,3])
     elseif part == 2
@@ -164,7 +164,7 @@ function test_interfaces(parts)
     end
   end
 
-  exchanger = Exchanger(lids)
+  exchanger = Exchanger(partition)
 
   map_parts(parts,exchanger.parts_snd,exchanger.lids_snd) do part, parts_snd, lids_snd
     if part == 1
@@ -184,10 +184,10 @@ function test_interfaces(parts)
     @test ids == lids_snd
   end
 
-  values = map_parts(parts,lids) do part, lids
-    values = fill(0.0,num_lids(lids))
-    for lid in 1:length(lids.lid_to_part)
-      owner = lids.lid_to_part[lid]
+  values = map_parts(parts,partition) do part, partition
+    values = fill(0.0,num_lids(partition))
+    for lid in 1:length(partition.lid_to_part)
+      owner = partition.lid_to_part[lid]
       if owner == part
         values[lid] = 10*part
       end
@@ -197,17 +197,17 @@ function test_interfaces(parts)
 
   exchange!(values,exchanger)
 
-  map_parts(values,lids) do values, lids
-    for lid in 1:length(lids.lid_to_part)
-      owner = lids.lid_to_part[lid]
+  map_parts(values,partition) do values, partition
+    for lid in 1:length(partition.lid_to_part)
+      owner = partition.lid_to_part[lid]
       @test values[lid] == 10*owner
     end
   end
 
-  values = map_parts(parts,lids) do part, lids
-    values = [ zeros(Int,3) for lid in 1:num_lids(lids)]
-    for lid in lids.oid_to_lid
-      gid = lids.lid_to_gid[lid]
+  values = map_parts(parts,partition) do part, partition
+    values = [ zeros(Int,3) for lid in 1:num_lids(partition)]
+    for lid in partition.oid_to_lid
+      gid = partition.lid_to_gid[lid]
       for i in 1:3
         values[lid][i] = 100*part + 10*gid + i
       end
@@ -217,10 +217,10 @@ function test_interfaces(parts)
 
   exchange!(values,exchanger)
 
-  map_parts(parts,lids,values) do part, lids, values
-    for lid in 1:num_lids(lids)
-      gid = lids.lid_to_gid[lid]
-      owner = lids.lid_to_part[lid]
+  map_parts(parts,partition,values) do part, partition, values
+    for lid in 1:num_lids(partition)
+      gid = partition.lid_to_gid[lid]
+      owner = partition.lid_to_part[lid]
       for i in 1:3
         @test values[lid][i] == 100*owner + 10*gid + i
       end
@@ -230,9 +230,9 @@ function test_interfaces(parts)
   exchanger_rcv = exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
 
-  values = map_parts(parts,lids) do part, lids
-    values = fill(0.0,num_lids(lids))
-    for lid in 1:length(lids.lid_to_part)
+  values = map_parts(parts,partition) do part, partition
+    values = fill(0.0,num_lids(partition))
+    for lid in 1:length(partition.lid_to_part)
       values[lid] = 10*part
     end
     values
@@ -240,23 +240,23 @@ function test_interfaces(parts)
   exchange!(+,values,exchanger_snd)
   exchange!(values,exchanger_rcv)
 
-  ids = PRange(n,lids)
+  ids = PRange(n,partition)
   ids2 = copy(ids)
 
   @test ids !== ids2
-  @test ids.lids !== ids2.lids
+  @test ids.partition !== ids2.partition
   @test ids.exchanger !== ids2.exchanger
 
-  map_parts(ids.lids) do lids
-    @test lids.ngids == n
-    @test get_part(lids) == lids.part
-    @test get_lid_to_gid(lids) == lids.lid_to_gid
-    @test get_lid_to_part(lids) == lids.lid_to_part
-    @test get_gid_to_part(lids) == lids.gid_to_part
-    @test get_oid_to_lid(lids) == lids.oid_to_lid
-    @test get_hid_to_lid(lids) == lids.hid_to_lid
-    @test get_lid_to_ohid(lids) == lids.lid_to_ohid
-    @test get_gid_to_lid(lids) == lids.gid_to_lid
+  map_parts(ids.partition) do partition
+    @test partition.ngids == n
+    @test get_part(partition) == partition.part
+    @test get_lid_to_gid(partition) == partition.lid_to_gid
+    @test get_lid_to_part(partition) == partition.lid_to_part
+    @test get_gid_to_part(partition) == partition.gid_to_part
+    @test get_oid_to_lid(partition) == partition.oid_to_lid
+    @test get_hid_to_lid(partition) == partition.hid_to_lid
+    @test get_lid_to_ohid(partition) == partition.lid_to_ohid
+    @test get_gid_to_lid(partition) == partition.gid_to_lid
   end
   @test num_parts(ids) == nparts
   @test num_gids(ids) == n
@@ -293,7 +293,7 @@ function test_interfaces(parts)
     end
   end
   ids5 = PRange(parts,a)
-  map_parts(parts,ids5.lids) do part, ids5
+  map_parts(parts,ids5.partition) do part, ids5
     if part == 1
       @test ids5.lid_to_gid == [1, 2, 3, 4]
     elseif part == 2
@@ -311,7 +311,7 @@ function test_interfaces(parts)
     ids4 = PRange(parts,(5,4))
     @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
-    map_parts(parts,ids4.lids) do part, ids4
+    map_parts(parts,ids4.partition) do part, ids4
       if part == 1
         @test ids4.lid_to_gid == [1, 2, 6, 7]
       elseif part == 2
@@ -353,7 +353,7 @@ function test_interfaces(parts)
 
     ids4 = PRange(parts,(5,4),no_ghost)
     ids4 = PRange(parts,(5,4),with_ghost)
-    map_parts(parts,ids4.lids) do part, ids4
+    map_parts(parts,ids4.partition) do part, ids4
       if part == 1
         @test ids4.lid_to_gid == [1, 2, 3, 6, 7, 8, 11, 12, 13]
       elseif part == 2
@@ -451,18 +451,18 @@ function test_interfaces(parts)
   fill!(v,1.0)
 
   v = PVector{Float64}(undef,ids)
-  map_parts(parts,v.values,v.rows.lids) do part, values, lids
-    for lid in 1:length(lids.lid_to_part)
-      owner = lids.lid_to_part[lid]
+  map_parts(parts,v.values,v.rows.partition) do part, values, partition
+    for lid in 1:length(partition.lid_to_part)
+      owner = partition.lid_to_part[lid]
       if owner == part
         values[lid] = 10*part
       end
     end
   end
   exchange!(v)
-  map_parts(parts,v.values,v.rows.lids) do part, values, lids
-    for lid in 1:length(lids.lid_to_part)
-      owner = lids.lid_to_part[lid]
+  map_parts(parts,v.values,v.rows.partition) do part, values, partition
+    for lid in 1:length(partition.lid_to_part)
+      owner = partition.lid_to_part[lid]
       @test values[lid] == 10*owner
     end
   end
@@ -472,7 +472,7 @@ function test_interfaces(parts)
   cols = ids
   rows = cols
 
-  values = map_parts(rows.lids,cols.lids) do rows, cols
+  values = map_parts(rows.partition,cols.partition) do rows, cols
     i = collect(1:num_lids(rows))
     j = i
     v = fill(2.0,length(i))
