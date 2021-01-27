@@ -2,6 +2,7 @@ module PartitionedArrays
 
 using SparseArrays
 using LinearAlgebra
+using Printf
 import MPI
 import IterativeSolvers
 
@@ -77,6 +78,10 @@ export PSparseMatrix
 export nzindex
 export nziterator
 export Jacobi
+export PTimer
+export tic!
+export toc!
+export print_timer
 
 export SequentialBackend
 export sequential
@@ -87,6 +92,8 @@ export mpi
 include("Helpers.jl")
 
 include("Interfaces.jl")
+
+include("PTimers.jl")
 
 include("SequentialBackend.jl")
 
