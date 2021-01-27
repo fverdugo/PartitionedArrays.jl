@@ -10,4 +10,6 @@ using Test
 
 @testset "FEMSA" begin include("FEMSATests.jl") end
 
+@testset "PTimers" begin include("PTimersTests.jl") end
+
 end # module
