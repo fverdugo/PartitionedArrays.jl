@@ -237,17 +237,18 @@ function bench(parts,n,title)
   b = PArrays.PVector(0.0,rows)
   PArrays.toc!(t,"b (allocate)")
 
-  # Fill rhs
-  PArrays.map_parts(
-    b.values,dof_values.values,rows.partition,first_gdof) do b1, b2, p1, first_gdof
-    offset = first_gdof - 1
-    for i in 1:length(b1)
-      gdof = p1.lid_to_gid[i]
-      ldof = gdof-offset
-      b1[i] = b2[ldof]
-    end
-  end
-  PArrays.toc!(t,"b (fill)")
+  # TODO not yet working
+  ## Fill rhs
+  #PArrays.map_parts(
+  #  b.values,dof_values.values,rows.partition,first_gdof) do b1, b2, p1, first_gdof
+  #  offset = first_gdof - 1
+  #  for i in 1:length(b1)
+  #    gdof = p1.lid_to_gid[i]
+  #    ldof = gdof-offset
+  #    b1[i] = b2[ldof]
+  #  end
+  #end
+  #PArrays.toc!(t,"b (fill)")
 
   # Import and add remote contributions
   PArrays.assemble!(b)
