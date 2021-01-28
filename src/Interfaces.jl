@@ -922,6 +922,35 @@ end
 function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
   ngids = reduce(+,noids,init=0)
   firstgids = xscan_all(+,noids,init=1)
+  PRange(parts,ngids,noids,firstgids)
+end
+
+function PRange(parts::PData{<:Integer},ngids::Integer,noids::PData{<:Integer},firstgids::PData{<:Integer})
+  partition = map_parts(parts,noids,firstgids) do part,noids,firstgids
+    lid_to_gid = collect(Int,(1:noids) .+ (firstgids-1))
+    lid_to_part = fill(part,length(lid_to_gid))
+    gid_to_part = nothing
+    oid_to_lid = Int32(1):Int32(length(lid_to_gid))
+    hid_to_lid = collect(Int32(1):Int32(0))
+    IndexSet(
+      part,
+      ngids,
+      lid_to_gid,
+      lid_to_part,
+      gid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+  end
+  ghost = false
+  PRange(ngids,partition,ghost)
+end
+
+function PRange(
+  parts::PData{<:Integer},
+  ngids::Integer,
+  noids::PData{<:Integer},
+  firstgids::PData{<:AbstractVector{<:Integer}})
+
   partition = map_parts(parts,noids,firstgids) do part,noids,firstgids
     lid_to_gid = collect(Int,(1:noids) .+ (firstgids[part]-1))
     lid_to_part = fill(part,length(lid_to_gid))
