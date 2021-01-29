@@ -441,25 +441,25 @@ function test_interfaces(parts)
   w .= v .- u
   w .= v .- 1 .- u
 
-  map_parts(parts,local_view(v)) do part,v
+  map_parts(parts,local_view(v,v.rows)) do part,v
     if part == 3
       v[1] = 6
     end
   end
 
-  map_parts(parts,local_view(v)) do part,v
+  map_parts(parts,local_view(v,v.rows)) do part,v
     if part == 3
       @test v[1] == 6
     end
   end
 
-  map_parts(parts,global_view(v)) do part,v
+  map_parts(parts,global_view(v,v.rows)) do part,v
     if part == 4
       v[9] = 6
     end
   end
 
-  map_parts(parts,global_view(v)) do part,v
+  map_parts(parts,global_view(v,v.rows)) do part,v
     if part == 4
       @test v[9] == 6
     end
@@ -529,8 +529,8 @@ function test_interfaces(parts)
     end
   end
   A = PSparseMatrix(I,J,V,n,n;ids=:global)
-  local_view(A)
-  global_view(A)
+  local_view(A,A.rows,A.cols)
+  global_view(A,A.rows,A.cols)
 
   x = PVector{Float64}(undef,A.cols)
   fill!(x,1.0)

@@ -1641,11 +1641,13 @@ function LinearAlgebra.dot(a::PVector,b::PVector)
   sum(c)
 end
 
-function local_view(a::PVector)
+function local_view(a::PVector,rows::PRange)
+  @notimplementedif a.rows !== rows
   a.values
 end
 
-function global_view(a::PVector)
+function global_view(a::PVector,rows::PRange)
+  @notimplementedif a.rows !== rows
   map_parts(a.values,a.rows.partition) do values, partition
     GlobalView(values,(partition.gid_to_lid,),(partition.ngids,))
   end
@@ -1965,11 +1967,15 @@ function LinearAlgebra.mul!(
   C
 end
 
-function local_view(a::PSparseMatrix)
+function local_view(a::PSparseMatrix,rows::PRange,cols::PRange)
+  @notimplementedif a.rows !== rows
+  @notimplementedif a.cols !== cols
   a.values
 end
 
-function global_view(a::PSparseMatrix)
+function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)
+  @notimplementedif a.rows !== rows
+  @notimplementedif a.cols !== cols
   map_parts(a.values,a.rows.partition,a.cols.partition) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
   end
