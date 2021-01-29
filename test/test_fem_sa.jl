@@ -83,7 +83,7 @@ function test_fem_sa(parts)
   # we use `global_view` in order to be able to index
   # b with global ids from within the parts.
   # Note that we touch non owned rows.
-  map_parts(global_view(b),cells.partition) do b, cells
+  map_parts(global_view(b,b.rows),cells.partition) do b, cells
     for ocell in cells.oid_to_lid
       gcell = cells.lid_to_gid[ocell]
       ci_gcell = cis_gcells[gcell]

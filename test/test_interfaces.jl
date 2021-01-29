@@ -170,13 +170,13 @@ function test_interfaces(parts)
 
   partition = map_parts(parts) do part
     if part == 1
-      IndexSet(part,n,[1,2,3,5,7,8],[1,1,1,2,3,3])
+      IndexSet(part,n,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
     elseif part == 2
-      IndexSet(part,n,[2,4,5,10],[1,2,2,4])
+      IndexSet(part,n,[2,4,5,10],Int32[1,2,2,4])
     elseif part == 3
-      IndexSet(part,n,[6,7,8,5,4,10],[3,3,3,2,2,4])
+      IndexSet(part,n,[6,7,8,5,4,10],Int32[3,3,3,2,2,4])
     else
-      IndexSet(part,n,[1,3,7,9,10],[1,1,3,4,4])
+      IndexSet(part,n,[1,3,7,9,10],Int32[1,1,3,4,4])
     end
   end
 
@@ -322,7 +322,6 @@ function test_interfaces(parts)
     @test ids5.gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
   end
   ids5 = PRange(parts,reduce(+,a,init=0),a)
-  ids5 = PRange(parts,reduce(+,a,init=0),a,xscan(+,a,init=1))
 
   if ndims(parts) > 1
 

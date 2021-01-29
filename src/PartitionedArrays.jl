@@ -9,6 +9,8 @@ import IterativeSolvers
 export Backend
 export distributed_run
 export PData
+export SequentialData
+export MPIData
 export num_parts
 export i_am_main
 export map_parts
@@ -41,7 +43,10 @@ export get_ptrs
 export length_to_ptrs!
 export rewind_ptrs!
 export discover_parts_snd
+export AbstractIndexSet
 export IndexSet
+export ExtendedIndexRange
+export IndexRange
 export num_gids
 export num_lids
 export num_oids
@@ -92,6 +97,8 @@ export mpi
 include("Helpers.jl")
 
 include("Interfaces.jl")
+
+include("IndexSets.jl")
 
 include("PTimers.jl")
 
