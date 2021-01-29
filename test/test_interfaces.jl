@@ -93,6 +93,14 @@ function test_interfaces(parts)
       @test b == 15
     end
   end
+  b, n = iscan(+,reduce,a,init=0)
+  @test n == 15
+  b, n = iscan_all(+,reduce,a,init=0)
+  @test n == 15
+  map_parts(b) do b
+    @test b == [4,6,12,15]
+  end
+
   b = xscan(+,a,init=1)
   map_parts(parts,b) do part,b
     if part == 1
@@ -104,6 +112,14 @@ function test_interfaces(parts)
     else
       @test b == 13
     end
+  end
+
+  b, n = xscan(+,reduce,a,init=1)
+  @test n == 15+1
+  b, n = xscan_all(+,reduce,a,init=1)
+  @test n == 15+1
+  map_parts(b) do b
+    @test b == [1,5,7,13]
   end
 
   data_rcv, t = async_exchange(
@@ -305,6 +321,8 @@ function test_interfaces(parts)
     end
     @test ids5.gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
   end
+  ids5 = PRange(parts,reduce(+,a,init=0),a)
+  ids5 = PRange(parts,reduce(+,a,init=0),a,xscan(+,a,init=1))
 
   if ndims(parts) > 1
 

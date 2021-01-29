@@ -182,21 +182,46 @@ function iscan(op,a::PData;init)
   scatter(b)
 end
 
+function iscan(op,::typeof(reduce),a::PData;init)
+  b,n = iscan_main(op,reduce,a,init=init)
+  scatter(b), get_main_part(n)
+end
+
 function iscan_all(op,a::PData;init)
   b = iscan_main(op,a,init=init)
   emit(b)
 end
 
+function iscan_all(op,::typeof(reduce),a::PData;init)
+  b,n = iscan_main(op,reduce,a,init=init)
+  emit(b), get_main_part(n)
+end
+
 function iscan_main(op,a;init)
   b = gather(a)
-  parts = get_part_ids(a)
-  map_parts(parts,b) do part, b
-    if part == MAIN
-      b[1] = op(init,b[1])
-      @inbounds for i in 1:(length(b)-1)
-        b[i+1] = op(b[i],b[i+1])
-      end
-    end
+  map_parts(b) do b
+    _iscan_local!(op,b,init)
+  end
+  b
+end
+
+function iscan_main(op,::typeof(reduce),a;init)
+  b = gather(a)
+  n = map_parts(b) do b
+    reduce(op,b,init=init)
+  end
+  map_parts(b) do b
+    _iscan_local!(op,b,init)
+  end
+  b,n
+end
+
+function _iscan_local!(op,b,init)
+  if length(b)!=0
+    b[1] = op(init,b[1])
+  end
+  @inbounds for i in 1:(length(b)-1)
+    b[i+1] = op(b[i],b[i+1])
   end
   b
 end
@@ -207,26 +232,50 @@ function xscan(op,a::PData;init)
   scatter(b)
 end
 
+function xscan(op,::typeof(reduce),a::PData;init)
+  b,n = xscan_main(op,reduce,a,init=init)
+  scatter(b), get_main_part(n)
+end
+
 function xscan_all(op,a::PData;init)
   b = xscan_main(op,a,init=init)
   emit(b)
 end
 
+function xscan_all(op,::typeof(reduce),a::PData;init)
+  b,n = xscan_main(op,reduce,a,init=init)
+  emit(b), get_main_part(n)
+end
+
 function xscan_main(op,a::PData;init)
   b = gather(a)
-  parts = get_part_ids(a)
-  map_parts(parts,b) do part, b
-    if part == MAIN
-      @inbounds for i in (length(b)-1):-1:1
-        b[i+1] = b[i]
-      end
-      b[1] = init
-      @inbounds for i in 1:(length(b)-1)
-        b[i+1] = op(b[i],b[i+1])
-      end
-    end
+  map_parts(b) do b
+    _xscan_local!(op,b,init)
   end
   b
+end
+
+function xscan_main(op,::typeof(reduce),a::PData;init)
+  b = gather(a)
+  n = map_parts(b) do b
+    reduce(op,b,init=init)
+  end
+  map_parts(b) do b
+    _xscan_local!(op,b,init)
+  end
+  b,n
+end
+
+function _xscan_local!(op,b,init)
+  @inbounds for i in (length(b)-1):-1:1
+    b[i+1] = b[i]
+  end
+  if length(b) != 0
+    b[1] = init
+  end
+  @inbounds for i in 1:(length(b)-1)
+    b[i+1] = op(b[i],b[i+1])
+  end
 end
 
 # TODO improve the mechanism for waiting
@@ -919,12 +968,6 @@ function PRange(
   PRange(parts,prod(ngids))
 end
 
-function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
-  ngids = reduce(+,noids,init=0)
-  firstgids = xscan_all(+,noids,init=1)
-  PRange(parts,ngids,noids,firstgids)
-end
-
 function PRange(parts::PData{<:Integer},ngids::Integer,noids::PData{<:Integer},firstgids::PData{<:Integer})
   partition = map_parts(parts,noids,firstgids) do part,noids,firstgids
     lid_to_gid = collect(Int,(1:noids) .+ (firstgids-1))
@@ -943,6 +986,19 @@ function PRange(parts::PData{<:Integer},ngids::Integer,noids::PData{<:Integer},f
   end
   ghost = false
   PRange(ngids,partition,ghost)
+end
+
+function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
+  ngids = reduce(+,noids,init=0)
+  PRange(parts,ngids,noids)
+end
+
+function PRange(
+  parts::PData{<:Integer},
+  ngids::Integer,
+  noids::PData{<:Integer})
+  firstgids = xscan_all(+,noids,init=1)
+  PRange(parts,ngids,noids,firstgids)
 end
 
 function PRange(
