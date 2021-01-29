@@ -15,4 +15,6 @@ function runbench(;
   end
 end
 
-runbench(nc=(10,10,10),np=(2,2,2),nr=1)
+runbench(nc=(100,100,100),np=(2,2,2),nr=1)
+#runbench(nc=(10,10,10),np=(2,2,2),nr=1)
+#runbench(nc=(4,4),np=(2,2),nr=1)

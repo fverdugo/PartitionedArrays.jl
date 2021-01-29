@@ -66,6 +66,8 @@ function bench(parts,n,title)
       ldofs = getindex!(cache,cell_to_ldofs,cell)
       for ldof in ldofs
         if ldof>0
+          #TODO this simple approach concentrates dofs
+          # in the last part and creates inbalances
           ldof_to_part[ldof] = max(owner,ldof_to_part[ldof])
         end
       end
@@ -76,6 +78,7 @@ function bench(parts,n,title)
   PArrays.toc!(t,"ldof_to_part, nodofs")
 
   # Find the global range of owned dofs
+  # TODO do an xscan_all and modify PRange so that it can compute ngdofs without an extra gather
   first_gdof = PArrays.xscan(+,nodofs,init=1)
   PArrays.toc!(t,"first_gdof")
 
@@ -168,9 +171,9 @@ function bench(parts,n,title)
 
   # Integrate the coo vectors
   I,J,C,vec = PArrays.map_parts(Ω,dΩ,U,V,ldof_to_gdof) do Ω,dΩ,U,V,ldof_to_gdof
-    v = get_cell_shapefuns(V)
-    u = get_cell_shapefuns_trial(U)
-    cellmat = ∫( ∇(u)⋅∇(v) )dΩ
+    dv = get_cell_shapefuns(V)
+    du = get_cell_shapefuns_trial(U)
+    cellmat = ∫( ∇(du)⋅∇(dv) )dΩ
     cellvec = 0
     uhd = zero(U)
     matvecdata = collect_cell_matrix_and_vector(cellmat,cellvec,uhd)
@@ -181,13 +184,17 @@ function bench(parts,n,title)
     C = zeros(Float64,ncoo)
     vec = zeros(Float64,num_free_dofs(V))
     fill_matrix_and_vector_coo_numeric!(I,J,C,vec,assem,matvecdata)
+    I,J,C,vec
+  end
+  PArrays.toc!(t,"I,J,C,vec")
+
+  PArrays.map_parts(I,J,ldof_to_gdof) do I,J,ldof_to_gdof
     for i in 1:length(I)
       I[i] = ldof_to_gdof[I[i]]
       J[i] = ldof_to_gdof[J[i]]
     end
-    I,J,C,vec
   end
-  PArrays.toc!(t,"I,J,C,vec")
+  PArrays.toc!(t,"I,J (global)")
 
   # Create the range for rows
   rows = PArrays.PRange(parts,nodofs)
@@ -199,7 +206,7 @@ function bench(parts,n,title)
 
   # Move values to the owner part
   # since we have integrated only over owned cells
-  assemble!(I,J,C,rows)
+  PArrays.assemble!(I,J,C,rows)
   PArrays.toc!(t,"I,J,C (assemble!)")
 
   # Create the range for rows
@@ -220,7 +227,7 @@ function bench(parts,n,title)
   PArrays.toc!(t,"ngdofs")
 
   # Setup dof partition
-  dof_partition = map_parts(parts,ldof_to_gdof,ldof_to_part) do part,ldof_to_gdof,ldof_to_part
+  dof_partition = PArrays.map_parts(parts,ldof_to_gdof,ldof_to_part) do part,ldof_to_gdof,ldof_to_part
     PArrays.IndexSet(part,ngdofs,ldof_to_gdof,ldof_to_part)
   end
   PArrays.toc!(t,"dof_partition")
@@ -237,35 +244,91 @@ function bench(parts,n,title)
   b = PArrays.PVector(0.0,rows)
   PArrays.toc!(t,"b (allocate)")
 
-  # TODO not yet working
-  ## Fill rhs
-  #PArrays.map_parts(
-  #  b.values,dof_values.values,rows.partition,first_gdof) do b1, b2, p1, first_gdof
-  #  offset = first_gdof - 1
-  #  for i in 1:length(b1)
-  #    gdof = p1.lid_to_gid[i]
-  #    ldof = gdof-offset
-  #    b1[i] = b2[ldof]
-  #  end
-  #end
-  #PArrays.toc!(t,"b (fill)")
+  # Fill rhs
+  # TODO this can be hidden
+  PArrays.map_parts(
+    b.values,dof_values.values,rows.partition,dofs.partition,first_gdof) do b1, b2, p1, p2, first_gdof
+    offset = first_gdof - 1
+    for i in p1.oid_to_lid
+      gdof = p1.lid_to_gid[i]
+      odof = gdof-offset
+      ldof = p2.oid_to_lid[odof]
+      b1[i] = b2[ldof]
+    end
+    for i in p1.hid_to_lid
+      gdof = p1.lid_to_gid[i]
+      ldof = p2.gid_to_lid[gdof]
+      b1[i] = b2[ldof]
+    end
+  end
+  PArrays.toc!(t,"b (fill)")
 
   # Import and add remote contributions
   PArrays.assemble!(b)
   PArrays.toc!(t,"b (assemble!)")
 
+  # Interpolate exact solution
+  # (this is aligned with the FESpace)
+  PArrays.map_parts(dof_values.values,U) do dof_values,U
+    interpolate!(u,dof_values,U)
+  end
+
+  # Allocate solution
+  # aligned with the matrix
   x = PArrays.PVector(0.0,cols)
-  PArrays.toc!(t,"x")
+  PArrays.toc!(t,"x (allocate)")
 
-  c = similar(b)
-  PArrays.toc!(t,"c")
+  # Fill
+  # only needed to fill owned values
+  # since A*x will do the exchange
+  # TODO x .= dof_values should be as efficient as this
+  # TODO this can be hidden
+  PArrays.map_parts(
+    x.values,dof_values.values,cols.partition,dofs.partition,first_gdof) do b1, b2, p1, p2, first_gdof
+    offset = first_gdof - 1
+    for i in p1.oid_to_lid
+      gdof = p1.lid_to_gid[i]
+      odof = gdof-offset
+      ldof = p2.oid_to_lid[odof]
+      b1[i] = b2[ldof]
+    end
+  end
+  PArrays.toc!(t,"x (fill)")
 
-  mul!(c,A,x)
-  PArrays.toc!(t,"A*x")
+  r = similar(b)
+  PArrays.toc!(t,"r (allocate)")
+
+  mul!(r,A,x)
+  PArrays.toc!(t,"r (A*x)")
+
+  r .= r .- b
+  PArrays.toc!(t,"r (-b)")
+
+  @show errnorm = norm(r)
+  PArrays.toc!(t,"norm(r)")
+
+  # Move the owned valued computed by the linear solver
+  # to the dof_values vector aligned with the FESpace
+  # TODO this can be hidden
+  PArrays.map_parts(
+    x.values,dof_values.values,cols.partition,dofs.partition,first_gdof) do b1, b2, p1, p2, first_gdof
+    offset = first_gdof - 1
+    for i in p1.oid_to_lid
+      gdof = p1.lid_to_gid[i]
+      odof = gdof-offset
+      ldof = p2.oid_to_lid[odof]
+      b2[ldof] = b1[i] 
+    end
+  end
+  PArrays.toc!(t,"x (fill)")
 
   PArrays.exchange!(x)
   PArrays.toc!(t,"x (exchange!)")
 
   display(t)
+
+  # TODO allow to append
   PArrays.print_timer(title,t)
+
+  # TODO print errnorm
 end
