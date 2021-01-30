@@ -182,21 +182,46 @@ function iscan(op,a::PData;init)
   scatter(b)
 end
 
+function iscan(op,::typeof(reduce),a::PData;init)
+  b,n = iscan_main(op,reduce,a,init=init)
+  scatter(b), get_main_part(n)
+end
+
 function iscan_all(op,a::PData;init)
   b = iscan_main(op,a,init=init)
   emit(b)
 end
 
+function iscan_all(op,::typeof(reduce),a::PData;init)
+  b,n = iscan_main(op,reduce,a,init=init)
+  emit(b), get_main_part(n)
+end
+
 function iscan_main(op,a;init)
   b = gather(a)
-  parts = get_part_ids(a)
-  map_parts(parts,b) do part, b
-    if part == MAIN
-      b[1] = op(init,b[1])
-      @inbounds for i in 1:(length(b)-1)
-        b[i+1] = op(b[i],b[i+1])
-      end
-    end
+  map_parts(b) do b
+    _iscan_local!(op,b,init)
+  end
+  b
+end
+
+function iscan_main(op,::typeof(reduce),a;init)
+  b = gather(a)
+  n = map_parts(b) do b
+    reduce(op,b,init=init)
+  end
+  map_parts(b) do b
+    _iscan_local!(op,b,init)
+  end
+  b,n
+end
+
+function _iscan_local!(op,b,init)
+  if length(b)!=0
+    b[1] = op(init,b[1])
+  end
+  @inbounds for i in 1:(length(b)-1)
+    b[i+1] = op(b[i],b[i+1])
   end
   b
 end
@@ -207,26 +232,50 @@ function xscan(op,a::PData;init)
   scatter(b)
 end
 
+function xscan(op,::typeof(reduce),a::PData;init)
+  b,n = xscan_main(op,reduce,a,init=init)
+  scatter(b), get_main_part(n)
+end
+
 function xscan_all(op,a::PData;init)
   b = xscan_main(op,a,init=init)
   emit(b)
 end
 
+function xscan_all(op,::typeof(reduce),a::PData;init)
+  b,n = xscan_main(op,reduce,a,init=init)
+  emit(b), get_main_part(n)
+end
+
 function xscan_main(op,a::PData;init)
   b = gather(a)
-  parts = get_part_ids(a)
-  map_parts(parts,b) do part, b
-    if part == MAIN
-      @inbounds for i in (length(b)-1):-1:1
-        b[i+1] = b[i]
-      end
-      b[1] = init
-      @inbounds for i in 1:(length(b)-1)
-        b[i+1] = op(b[i],b[i+1])
-      end
-    end
+  map_parts(b) do b
+    _xscan_local!(op,b,init)
   end
   b
+end
+
+function xscan_main(op,::typeof(reduce),a::PData;init)
+  b = gather(a)
+  n = map_parts(b) do b
+    reduce(op,b,init=init)
+  end
+  map_parts(b) do b
+    _xscan_local!(op,b,init)
+  end
+  b,n
+end
+
+function _xscan_local!(op,b,init)
+  @inbounds for i in (length(b)-1):-1:1
+    b[i+1] = b[i]
+  end
+  if length(b) != 0
+    b[1] = init
+  end
+  @inbounds for i in 1:(length(b)-1)
+    b[i+1] = op(b[i],b[i+1])
+  end
 end
 
 # TODO improve the mechanism for waiting
@@ -424,156 +473,28 @@ function discover_parts_snd(parts_rcv::PData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
-# TODO simplify type signature
-# Arbitrary set of global indices stored in a part
-# gid_to_part can be omitted with nothing since only for some particular parallel
-# data layouts (e.g. uniform partitions) it is efficient to recover this information. 
-# oid: owned id
-# hig: ghost (aka halo) id
-# gid: global id
-# lid: local id (ie union of owned + ghost)
-struct IndexSet{A,B,C,D,E,F,G}
-  part::Int
-  ngids::Int
-  lid_to_gid::A
-  lid_to_part::B
-  gid_to_part::C
-  oid_to_lid::D
-  hid_to_lid::E
-  lid_to_ohid::F
-  gid_to_lid::G
-  function IndexSet(
-    part::Integer,
-    ngids::Integer,
-    lid_to_gid::AbstractVector,
-    lid_to_part::AbstractVector,
-    gid_to_part::Union{AbstractVector,Nothing},
-    oid_to_lid::Union{AbstractVector,AbstractRange},
-    hid_to_lid::Union{AbstractVector,AbstractRange},
-    lid_to_ohid::AbstractVector,
-    gid_to_lid::AbstractDict)
-    A = typeof(lid_to_gid)
-    B = typeof(lid_to_part)
-    C = typeof(gid_to_part)
-    D = typeof(oid_to_lid)
-    E = typeof(hid_to_lid)
-    F = typeof(lid_to_ohid)
-    G = typeof(gid_to_lid)
-    new{A,B,C,D,E,F,G}(
-      part,
-      ngids,
-      lid_to_gid,
-      lid_to_part,
-      gid_to_part,
-      oid_to_lid,
-      hid_to_lid,
-      lid_to_ohid,
-      gid_to_lid)
-  end
-end
+abstract type AbstractIndexSet end
 
-function Base.copy(a::IndexSet)
-  IndexSet(
-    copy(a.part),
-    copy(a.ngids),
-    copy(a.lid_to_gid),
-    copy(a.lid_to_part),
-    a.gid_to_part === nothing ? nothing : copy(a.gid_to_part),
-    copy(a.oid_to_lid),
-    copy(a.hid_to_lid),
-    copy(a.lid_to_ohid),
-    copy(a.gid_to_lid))
-end
+num_gids(a::AbstractIndexSet) = a.ngids
+num_lids(a::AbstractIndexSet) = length(a.lid_to_part)
+num_oids(a::AbstractIndexSet) = length(a.oid_to_lid)
+num_hids(a::AbstractIndexSet) = length(a.hid_to_lid)
+get_part(a::AbstractIndexSet) = a.part
+get_lid_to_gid(a::AbstractIndexSet) = a.lid_to_gid
+get_lid_to_part(a::AbstractIndexSet) = a.lid_to_part
+get_gid_to_part(a::AbstractIndexSet) = a.gid_to_part
+get_oid_to_lid(a::AbstractIndexSet) = a.oid_to_lid
+get_hid_to_lid(a::AbstractIndexSet) = a.hid_to_lid
+get_lid_to_ohid(a::AbstractIndexSet) = a.lid_to_ohid
+get_gid_to_lid(a::AbstractIndexSet) = a.gid_to_lid
 
-num_gids(a::IndexSet) = a.ngids
-num_lids(a::IndexSet) = length(a.lid_to_part)
-num_oids(a::IndexSet) = length(a.oid_to_lid)
-num_hids(a::IndexSet) = length(a.hid_to_lid)
-get_part(a::IndexSet) = a.part
-get_lid_to_gid(a::IndexSet) = a.lid_to_gid
-get_lid_to_part(a::IndexSet) = a.lid_to_part
-get_gid_to_part(a::IndexSet) = a.gid_to_part
-get_oid_to_lid(a::IndexSet) = a.oid_to_lid
-get_hid_to_lid(a::IndexSet) = a.hid_to_lid
-get_lid_to_ohid(a::IndexSet) = a.lid_to_ohid
-get_gid_to_lid(a::IndexSet) = a.gid_to_lid
+#function AbstractIndexSet(a::AbstractIndexSet,xid_to_lid::AbstractVector)
+#  xid_to_gid = a.lid_to_gid[xid_to_lid]
+#  xid_to_part = a.lid_to_part[xid_to_lid]
+#  AbstractIndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
+#end
 
-function IndexSet(
-  part::Integer,
-  ngids::Integer,
-  lid_to_gid::AbstractVector,
-  lid_to_part::AbstractVector,
-  gid_to_part::Union{AbstractVector,Nothing},
-  oid_to_lid::Union{AbstractVector,AbstractRange},
-  hid_to_lid::Union{AbstractVector,AbstractRange},
-  lid_to_ohid::AbstractVector)
-
-  gid_to_lid = Dict{Int,Int32}()
-  for (lid,gid) in enumerate(lid_to_gid)
-    gid_to_lid[gid] = lid
-  end
-  IndexSet(
-    part,
-    ngids,
-    lid_to_gid,
-    lid_to_part,
-    gid_to_part,
-    oid_to_lid,
-    hid_to_lid,
-    lid_to_ohid,
-    gid_to_lid)
-end
-
-function IndexSet(
-  part::Integer,
-  ngids::Integer,
-  lid_to_gid::AbstractVector,
-  lid_to_part::AbstractVector,
-  gid_to_part::Union{AbstractVector,Nothing},
-  oid_to_lid::Union{AbstractVector,AbstractRange},
-  hid_to_lid::Union{AbstractVector,AbstractRange})
-
-  lid_to_ohid = zeros(Int32,length(lid_to_gid))
-  lid_to_ohid[oid_to_lid] = 1:length(oid_to_lid)
-  lid_to_ohid[hid_to_lid] = -(1:length(hid_to_lid))
-
-  IndexSet(
-    part,
-    ngids,
-    lid_to_gid,
-    lid_to_part,
-    gid_to_part,
-    oid_to_lid,
-    hid_to_lid,
-    lid_to_ohid)
-end
-
-function IndexSet(
-  part::Integer,
-  ngids::Integer,
-  lid_to_gid::AbstractVector,
-  lid_to_part::AbstractVector,
-  gid_to_part::Union{AbstractVector,Nothing}=nothing)
-
-  oid_to_lid = findall(owner->owner==part,lid_to_part)
-  hid_to_lid = findall(owner->owner!=part,lid_to_part)
-  IndexSet(
-    part,
-    ngids,
-    lid_to_gid,
-    lid_to_part,
-    gid_to_part,
-    oid_to_lid,
-    hid_to_lid)
-end
-
-function IndexSet(a::IndexSet,xid_to_lid::AbstractVector)
-  xid_to_gid = a.lid_to_gid[xid_to_lid]
-  xid_to_part = a.lid_to_part[xid_to_lid]
-  IndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
-end
-
-function add_gid!(a::IndexSet,gid::Integer)
+function add_gid!(a::AbstractIndexSet,gid::Integer)
   if !haskey(a.gid_to_lid,gid)
     part = a.gid_to_part[gid]
     lid = Int32(num_lids(a)+1)
@@ -587,7 +508,7 @@ function add_gid!(a::IndexSet,gid::Integer)
   a
 end
 
-function to_lid!(ids::AbstractArray{<:Integer},a::IndexSet)
+function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     gid = ids[i]
     lid = a.gid_to_lid[gid]
@@ -596,7 +517,7 @@ function to_lid!(ids::AbstractArray{<:Integer},a::IndexSet)
   ids
 end
 
-function to_gid!(ids::AbstractArray{<:Integer},a::IndexSet)
+function to_gid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     lid = ids[i]
     gid = a.lid_to_gid[lid]
@@ -605,15 +526,15 @@ function to_gid!(ids::AbstractArray{<:Integer},a::IndexSet)
   ids
 end
 
-function oids_are_equal(a::IndexSet,b::IndexSet)
+function oids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   view(a.lid_to_gid,a.oid_to_lid) == view(b.lid_to_gid,b.oid_to_lid)
 end
 
-function hids_are_equal(a::IndexSet,b::IndexSet)
+function hids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   view(a.lid_to_gid,a.hid_to_lid) == view(b.lid_to_gid,b.hid_to_lid)
 end
 
-function lids_are_equal(a::IndexSet,b::IndexSet)
+function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   a.lid_to_gid == b.lid_to_gid
 end
 
@@ -642,7 +563,7 @@ function Base.copy(a::Exchanger)
     copy(a.lids_snd))
 end
 
-function Exchanger(ids::PData{<:IndexSet},neighbors=nothing)
+function Exchanger(ids::PData{<:AbstractIndexSet},neighbors=nothing)
 
   parts = get_part_ids(ids)
 
@@ -700,8 +621,8 @@ function Exchanger(ids::PData{<:IndexSet},neighbors=nothing)
 end
 
 function empty_exchanger(a::PData)
-  parts_rcv = map_parts(i->Int[],a)
-  parts_snd = map_parts(i->Int[],a)
+  parts_rcv = map_parts(i->Int32[],a)
+  parts_snd = map_parts(i->Int32[],a)
   lids_rcv = map_parts(i->Table(Vector{Int32}[]),a)
   lids_snd = map_parts(i->Table(Vector{Int32}[]),a)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
@@ -853,7 +774,7 @@ mutable struct PRange{A,B} <: AbstractUnitRange{Int}
   exchanger::B
   function PRange(
     ngids::Integer,
-    partition::PData{<:IndexSet},
+    partition::PData{<:AbstractIndexSet},
     ghost::Bool,
     exchanger::Exchanger)
   
@@ -877,7 +798,7 @@ end
 
 function PRange(
   ngids::Integer,
-  partition::PData{<:IndexSet},
+  partition::PData{<:AbstractIndexSet},
   ghost::Bool=true)
 
   exchanger =  ghost ? Exchanger(partition) : empty_exchanger(partition)
@@ -893,21 +814,13 @@ num_parts(a::PRange) = num_parts(a.partition)
 function PRange(parts::PData{<:Integer},ngids::Integer)
   np = num_parts(parts)
   partition = map_parts(parts) do part
-    gids = _oid_to_gid(ngids,np,part)
-    lid_to_gid = collect(gids)
-    lid_to_part = fill(part,length(gids))
-    part_to_gid = _part_to_gid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_gid)
-    oid_to_lid = Int32(1):Int32(length(gids))
-    hid_to_lid = collect(Int32(1):Int32(0))
-    IndexSet(
+    oid_to_gid = _oid_to_gid(ngids,np,part)
+    noids = length(oid_to_gid)
+    part_to_firstgid = _part_to_firstgid(ngids,np)
+    IndexRange(
       part,
       ngids,
-      lid_to_gid,
-      lid_to_part,
-      gid_to_part,
-      oid_to_lid,
-      hid_to_lid)
+      part_to_firstgid)
   end
   ghost = false
   PRange(ngids,partition,ghost)
@@ -921,21 +834,28 @@ end
 
 function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
   ngids = reduce(+,noids,init=0)
+  PRange(parts,ngids,noids)
+end
+
+function PRange(
+  parts::PData{<:Integer},
+  ngids::Integer,
+  noids::PData{<:Integer})
   firstgids = xscan_all(+,noids,init=1)
-  partition = map_parts(parts,noids,firstgids) do part,noids,firstgids
-    lid_to_gid = collect(Int,(1:noids) .+ (firstgids[part]-1))
-    lid_to_part = fill(part,length(lid_to_gid))
-    gid_to_part = GidToPart(ngids,firstgids)
-    oid_to_lid = Int32(1):Int32(length(lid_to_gid))
-    hid_to_lid = collect(Int32(1):Int32(0))
-    IndexSet(
+  PRange(parts,ngids,noids,firstgids)
+end
+
+function PRange(
+  parts::PData{<:Integer},
+  ngids::Integer,
+  noids::PData{<:Integer},
+  firstgids::PData{<:AbstractVector{<:Integer}})
+
+  partition = map_parts(parts,noids,firstgids) do part,noids,part_to_firstgid
+    IndexRange(
       part,
       ngids,
-      lid_to_gid,
-      lid_to_part,
-      gid_to_part,
-      oid_to_lid,
-      hid_to_lid)
+      part_to_firstgid)
   end
   ghost = false
   PRange(ngids,partition,ghost)
@@ -949,11 +869,11 @@ function PRange(
   partition = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
     lid_to_gid = gids
-    lid_to_part = fill(part,length(gids))
-    oid_to_lid = Int32(1):Int32(length(gids))
+    lid_to_part = fill(Int32(part),length(gids))
+    oid_to_lid = collect(Int32(1):Int32(length(gids)))
     hid_to_lid = collect(Int32(1):Int32(0))
-    part_to_gid = _part_to_gid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_gid)
+    part_to_firstgid = _part_to_firstgid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_firstgid)
     IndexSet(
       part,
       prod(ngids),
@@ -1001,8 +921,8 @@ function PRange(
     lid_to_part = _lid_to_part(d_to_nldids,np,cp)
     oid_to_lid = collect(Int32,findall(lid_to_part .== part))
     hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
-    part_to_gid = _part_to_gid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_gid)
+    part_to_firstgid = _part_to_firstgid(ngids,np)
+    gid_to_part = GidToPart(ngids,part_to_firstgid)
     IndexSet(
       part,
       prod(ngids),
@@ -1126,7 +1046,7 @@ function _lid_to_part(nlids::Tuple,np::Tuple,p::Tuple)
   D = length(np)
   @assert length(nlids) == D
   d_to_ldid_to_dpart = map(_lid_to_part,nlids,np,p)
-  _id_tensor_product(Int,d_to_ldid_to_dpart,np)
+  _id_tensor_product(Int32,d_to_ldid_to_dpart,np)
 end
 
 function _id_tensor_product(::Type{T},d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tuple) where T
@@ -1149,62 +1069,12 @@ function _id_tensor_product(::Type{T},d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tupl
   lid_to_gid
 end
 
-#function _part_tensor_product(d_to_dlid_to_dpart::Tuple,d_to_ndparts::Tuple)
-#  d_to_nldids = map(length,d_to_dlid_to_dpart)
-#  lcis = CartesianIndices(d_to_nldids)
-#  llis = LinearIndices(d_to_nldids)
-#  plis = LinearIndices(d_to_ndparts)
-#  lid_to_part = zeros(Int32,length(lcis))
-#  D = length(d_to_ndparts)
-#  pci = zeros(Int32,D)
-#  for lci in lcis
-#    for d in 1:D
-#      ldid = lci[d]
-#      dpart = d_to_dlid_to_dpart[d][ldid]
-#      pci[d] = dpart
-#    end
-#    lid = llis[lci]
-#    lid_to_part[lid] = plis[CartesianIndex(Tuple(pci))]
-#  end
-#  lid_to_part
-#end
-
-function _part_to_gid(ngids::Integer,np::Integer)
+function _part_to_firstgid(ngids::Integer,np::Integer)
   [first(_oid_to_gid(ngids,np,p)) for p in 1:np]
 end
 
-function _part_to_gid(ngids::Tuple,np::Tuple)
-  map(_part_to_gid,ngids,np)
-end
-
-struct GidToPart{A,B} <: AbstractVector{Int}
-  ngids::A
-  part_to_gid::B
-end
-
-Base.size(a::GidToPart) = (prod(a.ngids),)
-Base.IndexStyle(::Type{<:GidToPart}) = IndexLinear()
-
-function Base.getindex(a::GidToPart,gid::Integer)
-  @boundscheck begin
-    if !( 1<=gid && gid<=length(a) )
-      throw(BoundsError(a,gid))
-    end
-  end
-  _find_part_from_gid(a.ngids,a.part_to_gid,gid)
-end
-
-function _find_part_from_gid(ngids::Int,part_to_gid::Vector{Int},gid::Integer)
-  searchsortedlast(part_to_gid,gid)
-end
-
-function _find_part_from_gid(
-  ngids::NTuple{N,Int},part_to_gid::NTuple{N,Vector{Int}},gid::Integer) where N
-  cgid = Tuple(CartesianIndices(ngids)[gid])
-  cpart = map(searchsortedlast,part_to_gid,cgid)
-  nparts = map(length,part_to_gid)
-  part = LinearIndices(nparts)[CartesianIndex(cpart)]
-  part
+function _part_to_firstgid(ngids::Tuple,np::Tuple)
+  map(_part_to_firstgid,ngids,np)
 end
 
 function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
@@ -1556,11 +1426,13 @@ function LinearAlgebra.dot(a::PVector,b::PVector)
   sum(c)
 end
 
-function local_view(a::PVector)
+function local_view(a::PVector,rows::PRange)
+  @notimplementedif a.rows !== rows
   a.values
 end
 
-function global_view(a::PVector)
+function global_view(a::PVector,rows::PRange)
+  @notimplementedif a.rows !== rows
   map_parts(a.values,a.rows.partition) do values, partition
     GlobalView(values,(partition.gid_to_lid,),(partition.ngids,))
   end
@@ -1659,14 +1531,19 @@ end
 function PSparseMatrix(
   values::PData{<:AbstractSparseMatrix{T}},
   rows::PRange,
-  cols::PRange) where T
+  cols::PRange;
+  exchanger::Bool=true) where T
 
-  if rows.ghost
-    exchanger = matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
+  if exchanger == false
+    _exchanger = empty_exchanger(rows.partition)
   else
-    exchanger = empty_exchanger(rows.partition)
+    if rows.ghost
+      _exchanger = matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
+    else
+      _exchanger = empty_exchanger(rows.partition)
+    end
   end
-  PSparseMatrix(values,rows,cols,exchanger)
+  PSparseMatrix(values,rows,cols,_exchanger)
 end
 
 function Base.getproperty(x::PSparseMatrix, sym::Symbol)
@@ -1728,7 +1605,8 @@ function PSparseMatrix(
   V::PData{<:AbstractArray},
   rows::PRange,
   cols::PRange;
-  ids::Symbol)
+  ids::Symbol,
+  exchanger::Bool=true)
 
   @assert ids in (:global,:local)
   if ids == :global
@@ -1740,7 +1618,7 @@ function PSparseMatrix(
     init(I,J,V,num_lids(rlids),num_lids(clids))
   end
 
-  PSparseMatrix(values,rows,cols)
+  PSparseMatrix(values,rows,cols;exchanger=exchanger)
 end
 
 function PSparseMatrix(
@@ -1750,7 +1628,8 @@ function PSparseMatrix(
   V::PData{<:AbstractArray},
   nrows::Integer,
   ncols::Integer;
-  ids::Symbol)
+  ids::Symbol,
+  exchanger::Bool=true)
 
   @assert ids == :global
   parts = get_part_ids(I)
@@ -1758,18 +1637,19 @@ function PSparseMatrix(
   cols = PRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
-  PSparseMatrix(init,I,J,V,rows,cols;ids=ids)
+  PSparseMatrix(init,I,J,V,rows,cols;ids=ids,exchanger=exchanger)
 end
 
+# Using sparse as default
 function PSparseMatrix(
   I::PData{<:AbstractArray{<:Integer}},
   J::PData{<:AbstractArray{<:Integer}},
   V::PData{<:AbstractArray},
   rows,
   cols;
-  ids::Symbol)
+  kwargs...)
 
-  PSparseMatrix(sparse,I,J,V,rows,cols;ids=ids)
+  PSparseMatrix(sparse,I,J,V,rows,cols;kwargs...)
 end
 
 function LinearAlgebra.mul!(
@@ -1872,11 +1752,15 @@ function LinearAlgebra.mul!(
   C
 end
 
-function local_view(a::PSparseMatrix)
+function local_view(a::PSparseMatrix,rows::PRange,cols::PRange)
+  @notimplementedif a.rows !== rows
+  @notimplementedif a.cols !== cols
   a.values
 end
 
-function global_view(a::PSparseMatrix)
+function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)
+  @notimplementedif a.rows !== rows
+  @notimplementedif a.cols !== cols
   map_parts(a.values,a.rows.partition,a.cols.partition) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
   end

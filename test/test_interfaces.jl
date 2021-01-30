@@ -93,6 +93,14 @@ function test_interfaces(parts)
       @test b == 15
     end
   end
+  b, n = iscan(+,reduce,a,init=0)
+  @test n == 15
+  b, n = iscan_all(+,reduce,a,init=0)
+  @test n == 15
+  map_parts(b) do b
+    @test b == [4,6,12,15]
+  end
+
   b = xscan(+,a,init=1)
   map_parts(parts,b) do part,b
     if part == 1
@@ -104,6 +112,14 @@ function test_interfaces(parts)
     else
       @test b == 13
     end
+  end
+
+  b, n = xscan(+,reduce,a,init=1)
+  @test n == 15+1
+  b, n = xscan_all(+,reduce,a,init=1)
+  @test n == 15+1
+  map_parts(b) do b
+    @test b == [1,5,7,13]
   end
 
   data_rcv, t = async_exchange(
@@ -154,13 +170,13 @@ function test_interfaces(parts)
 
   partition = map_parts(parts) do part
     if part == 1
-      IndexSet(part,n,[1,2,3,5,7,8],[1,1,1,2,3,3])
+      IndexSet(part,n,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
     elseif part == 2
-      IndexSet(part,n,[2,4,5,10],[1,2,2,4])
+      IndexSet(part,n,[2,4,5,10],Int32[1,2,2,4])
     elseif part == 3
-      IndexSet(part,n,[6,7,8,5,4,10],[3,3,3,2,2,4])
+      IndexSet(part,n,[6,7,8,5,4,10],Int32[3,3,3,2,2,4])
     else
-      IndexSet(part,n,[1,3,7,9,10],[1,1,3,4,4])
+      IndexSet(part,n,[1,3,7,9,10],Int32[1,1,3,4,4])
     end
   end
 
@@ -305,6 +321,7 @@ function test_interfaces(parts)
     end
     @test ids5.gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
   end
+  ids5 = PRange(parts,reduce(+,a,init=0),a)
 
   if ndims(parts) > 1
 
@@ -423,25 +440,25 @@ function test_interfaces(parts)
   w .= v .- u
   w .= v .- 1 .- u
 
-  map_parts(parts,local_view(v)) do part,v
+  map_parts(parts,local_view(v,v.rows)) do part,v
     if part == 3
       v[1] = 6
     end
   end
 
-  map_parts(parts,local_view(v)) do part,v
+  map_parts(parts,local_view(v,v.rows)) do part,v
     if part == 3
       @test v[1] == 6
     end
   end
 
-  map_parts(parts,global_view(v)) do part,v
+  map_parts(parts,global_view(v,v.rows)) do part,v
     if part == 4
       v[9] = 6
     end
   end
 
-  map_parts(parts,global_view(v)) do part,v
+  map_parts(parts,global_view(v,v.rows)) do part,v
     if part == 4
       @test v[9] == 6
     end
@@ -511,8 +528,8 @@ function test_interfaces(parts)
     end
   end
   A = PSparseMatrix(I,J,V,n,n;ids=:global)
-  local_view(A)
-  global_view(A)
+  local_view(A,A.rows,A.cols)
+  global_view(A,A.rows,A.cols)
 
   x = PVector{Float64}(undef,A.cols)
   fill!(x,1.0)
