@@ -762,25 +762,25 @@ end
 mutable struct PRange{A,B,C} <: AbstractUnitRange{Int}
   ngids::Int
   partition::A
-  gid_to_part::B
+  exchanger::B
+  gid_to_part::C
   ghost::Bool
-  exchanger::C
   function PRange(
     ngids::Integer,
     partition::AbstractPData{<:AbstractIndexSet},
-    gid_to_part::Union{AbstractPData{<:AbstractArray{<:Integer}},Nothing},
-    ghost::Bool,
-    exchanger::Exchanger)
+    exchanger::Exchanger,
+    gid_to_part::Union{AbstractPData{<:AbstractArray{<:Integer}},Nothing}=nothing,
+    ghost::Bool=true)
   
     A = typeof(partition)
-    B = typeof(gid_to_part)
-    C = typeof(exchanger)
+    B = typeof(exchanger)
+    C = typeof(gid_to_part)
     new{A,B,C}(
       ngids,
       partition,
+      exchanger,
       gid_to_part,
-      ghost,
-      exchanger)
+      ghost)
   end
 end
 
@@ -788,9 +788,9 @@ function Base.copy(a::PRange)
   PRange(
     copy(a.ngids),
     copy(a.partition),
+    copy(a.exchanger),
     a.gid_to_part===nothing ? nothing : copy(a.gid_to_part),
-    copy(a.ghost),
-    copy(a.exchanger))
+    copy(a.ghost))
 end
 
 function PRange(
@@ -800,7 +800,7 @@ function PRange(
   ghost::Bool=true)
 
   exchanger =  ghost ? Exchanger(partition) : empty_exchanger(partition)
-  PRange(ngids,partition,gid_to_part,ghost,exchanger)
+  PRange(ngids,partition,exchanger,gid_to_part,ghost)
 end
 
 Base.first(a::PRange) = 1
