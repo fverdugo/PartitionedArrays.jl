@@ -1252,7 +1252,7 @@ end
   map_parts(a.owned_values,b.owned_values) do dest, x
     Base.materialize!(dest,x)
   end
-  if b.ghost_values !== nothing
+  if b.ghost_values !== nothing && a.rows === b.rows
     map_parts(a.ghost_values,b.ghost_values) do dest, x
       Base.materialize!(dest,x)
     end

@@ -417,6 +417,10 @@ function test_interfaces(parts)
 
   w .= v .- u
   w .= v .- 1 .- u
+  w .= u
+  map_parts(w.values,u.values) do w,u
+    @test w == u
+  end
 
   u = PVector(1.0,ids2)
   w = PVector(3.0,ids3)
@@ -437,6 +441,10 @@ function test_interfaces(parts)
 
   w .= v .- u
   w .= v .- 1 .- u
+  w .= u
+  map_parts(w.owned_values,u.owned_values) do w,u
+    @test w == u
+  end
 
   map_parts(parts,local_view(v,v.rows)) do part,v
     if part == 3
