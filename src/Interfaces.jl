@@ -1,17 +1,17 @@
 
-abstract type Backend end
+abstract type AbstractBackend end
 
 # Should return a AbstractPData{Int}
-function get_part_ids(b::Backend,nparts::Integer)
+function get_part_ids(b::AbstractBackend,nparts::Integer)
   @abstractmethod
 end
 
-function get_part_ids(b::Backend,nparts::Tuple)
+function get_part_ids(b::AbstractBackend,nparts::Tuple)
   get_part_ids(b,prod(nparts))
 end
 
 # This can be overwritten to add a finally clause
-function distributed_run(driver::Function,b::Backend,nparts)
+function distributed_run(driver::Function,b::AbstractBackend,nparts)
   part = get_part_ids(b,nparts)
   driver(part)
 end

@@ -1,5 +1,5 @@
 
-struct SequentialBackend <: Backend end
+struct SequentialBackend <: AbstractBackend end
 
 const sequential = SequentialBackend()
 

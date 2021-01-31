@@ -2,7 +2,7 @@
 get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
 
-struct MPIBackend <: Backend end
+struct MPIBackend <: AbstractBackend end
 
 const mpi = MPIBackend()
 

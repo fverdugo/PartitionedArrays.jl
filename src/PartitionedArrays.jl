@@ -6,7 +6,7 @@ using Printf
 import MPI
 import IterativeSolvers
 
-export Backend
+export AbstractBackend
 export distributed_run
 export AbstractPData
 export SequentialData
