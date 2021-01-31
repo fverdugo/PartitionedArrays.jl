@@ -7,7 +7,7 @@ import MPI
 import IterativeSolvers
 
 export AbstractBackend
-export distributed_run
+export prun
 export AbstractPData
 export SequentialData
 export MPIData

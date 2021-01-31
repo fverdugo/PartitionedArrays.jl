@@ -18,7 +18,7 @@ function get_part_ids(b::MPIBackend,nparts::Tuple)
   MPIData(get_part_id(comm),comm,nparts)
 end
 
-function distributed_run(driver::Function,b::MPIBackend,nparts)
+function prun(driver::Function,b::MPIBackend,nparts)
   MPI.Init()
   #try 
     part = get_part_ids(b,nparts)

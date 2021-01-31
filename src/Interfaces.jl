@@ -11,7 +11,7 @@ function get_part_ids(b::AbstractBackend,nparts::Tuple)
 end
 
 # This can be overwritten to add a finally clause
-function distributed_run(driver::Function,b::AbstractBackend,nparts)
+function prun(driver::Function,b::AbstractBackend,nparts)
   part = get_part_ids(b,nparts)
   driver(part)
 end
