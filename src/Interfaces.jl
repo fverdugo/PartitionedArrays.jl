@@ -1518,7 +1518,7 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     values::AbstractPData{<:AbstractSparseMatrix{T}},
     rows::PRange,
     cols::PRange,
-    exchanger::Exchanger) where T
+    exchanger::Exchanger=matrix_exchanger(values,rows,cols)) where T
 
     A = typeof(values)
     B = typeof(rows)
@@ -1534,24 +1534,6 @@ function Base.copy(a::PSparseMatrix)
     copy(a.rows),
     copy(a.cols),
     copy(a.exchanger))
-end
-
-function PSparseMatrix(
-  values::AbstractPData{<:AbstractSparseMatrix{T}},
-  rows::PRange,
-  cols::PRange;
-  exchanger::Bool=true) where T
-
-  if exchanger == false
-    _exchanger = empty_exchanger(rows.partition)
-  else
-    if rows.ghost
-      _exchanger = matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
-    else
-      _exchanger = empty_exchanger(rows.partition)
-    end
-  end
-  PSparseMatrix(values,rows,cols,_exchanger)
 end
 
 function Base.getproperty(x::PSparseMatrix, sym::Symbol)
@@ -1612,9 +1594,9 @@ function PSparseMatrix(
   J::AbstractPData{<:AbstractArray{<:Integer}},
   V::AbstractPData{<:AbstractArray},
   rows::PRange,
-  cols::PRange;
-  ids::Symbol,
-  exchanger::Bool=true)
+  cols::PRange,
+  args...;
+  ids::Symbol)
 
   @assert ids in (:global,:local)
   if ids == :global
@@ -1626,7 +1608,7 @@ function PSparseMatrix(
     init(I,J,V,num_lids(rlids),num_lids(clids))
   end
 
-  PSparseMatrix(values,rows,cols;exchanger=exchanger)
+  PSparseMatrix(values,rows,cols,args...)
 end
 
 function PSparseMatrix(
@@ -1635,9 +1617,9 @@ function PSparseMatrix(
   J::AbstractPData{<:AbstractArray{<:Integer}},
   V::AbstractPData{<:AbstractArray},
   nrows::Integer,
-  ncols::Integer;
-  ids::Symbol,
-  exchanger::Bool=true)
+  ncols::Integer,
+  args...;
+  ids::Symbol)
 
   @assert ids == :global
   parts = get_part_ids(I)
@@ -1645,7 +1627,7 @@ function PSparseMatrix(
   cols = PRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
-  PSparseMatrix(init,I,J,V,rows,cols;ids=ids,exchanger=exchanger)
+  PSparseMatrix(init,I,J,V,rows,cols,args...;ids=ids)
 end
 
 # Using sparse as default
@@ -1653,11 +1635,9 @@ function PSparseMatrix(
   I::AbstractPData{<:AbstractArray{<:Integer}},
   J::AbstractPData{<:AbstractArray{<:Integer}},
   V::AbstractPData{<:AbstractArray},
-  rows,
-  cols;
-  kwargs...)
+  args...; kwargs...)
 
-  PSparseMatrix(sparse,I,J,V,rows,cols;kwargs...)
+  PSparseMatrix(sparse,I,J,V,args...;kwargs...)
 end
 
 function LinearAlgebra.mul!(
@@ -1773,6 +1753,18 @@ function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)
   ncols = length(cols)
   map_parts(a.values,a.rows.partition,a.cols.partition) do values,rlids,clids
     GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(nrows,ncols))
+  end
+end
+
+function matrix_exchanger(
+  values::AbstractPData{<:AbstractSparseMatrix},
+  rows::PRange,
+  cols::PRange)
+
+  if rows.ghost
+    matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
+  else
+    empty_exchanger(rows.partition)
   end
 end
 

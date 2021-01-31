@@ -61,6 +61,7 @@ export get_hid_to_lid
 export get_lid_to_ohid
 export get_gid_to_lid
 export Exchanger
+export empty_exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
 export PRange
@@ -79,6 +80,7 @@ export global_view
 export async_assemble!
 export assemble!
 export PSparseMatrix
+export matrix_exchanger
 export nzindex
 export nziterator
 export PTimer

@@ -508,6 +508,7 @@ function test_interfaces(parts)
 
 
   A = PSparseMatrix(values,rows,cols)
+  A = PSparseMatrix(values,rows,cols,A.exchanger)
   mul!(b,A,x)
 
   map_parts(b.owned_values) do values
