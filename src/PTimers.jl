@@ -83,7 +83,7 @@ function _print_on_main(io,data,linechars,format)
     _print_footer(io,longest_name,w,linechars)
   elseif format == :csv
      for (name,d) in data
-       str = "\"$name\"; $(_nice_time(d.max)); $(_nice_time(d.min)); $(_nice_time(d.avg))"
+       str = "\"$name\"; $(d.max); $(d.min); $(d.avg)"
        println(io,str)
      end
   else

@@ -413,7 +413,7 @@ function discover_parts_snd(parts_rcv::AbstractPData, neighbors::AbstractPData)
 
   # Tell the neighbors whether I want to receive data from them
   data_snd = map_parts(parts,neighbors,parts_rcv) do part, neighbors, parts_rcv
-    dict_snd = Dict(( n=>-1 for n in neighbors))
+    dict_snd = Dict(( n=>Int32(-1) for n in neighbors))
     for i in parts_rcv
       dict_snd[i] = part
     end
