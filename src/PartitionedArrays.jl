@@ -6,9 +6,9 @@ using Printf
 import MPI
 import IterativeSolvers
 
-export Backend
-export distributed_run
-export PData
+export AbstractBackend
+export prun
+export AbstractPData
 export SequentialData
 export MPIData
 export num_parts
@@ -56,12 +56,12 @@ export hids_are_equal
 export lids_are_equal
 export get_lid_to_gid
 export get_lid_to_part
-export get_gid_to_part
 export get_oid_to_lid
 export get_hid_to_lid
 export get_lid_to_ohid
 export get_gid_to_lid
 export Exchanger
+export empty_exchanger
 export allocate_rcv_buffer
 export allocate_snd_buffer
 export PRange
@@ -80,9 +80,9 @@ export global_view
 export async_assemble!
 export assemble!
 export PSparseMatrix
+export matrix_exchanger
 export nzindex
 export nziterator
-export Jacobi
 export PTimer
 export tic!
 export toc!

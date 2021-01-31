@@ -3,12 +3,11 @@ module IndexSetsTests
 using PartitionedArrays
 using Test
 
-ngids = 70
-part_to_firstgid = [1,11,31,61]
 part = 2
-ids = IndexRange(part,ngids,part_to_firstgid)
+noids = 20
+firstgid = 11
+ids = IndexRange(part,noids,firstgid)
 @test ids.part == part
-@test ids.ngids == ngids
 @test ids.lid_to_gid == 11:30
 push!(ids.lid_to_gid,48)
 push!(ids.lid_to_gid,49)
@@ -17,7 +16,6 @@ push!(ids.lid_to_gid,49)
 push!(ids.lid_to_part,3)
 push!(ids.lid_to_part,3)
 @test ids.lid_to_part == vcat(fill(part,20),[3,3])
-@test length(collect(ids.gid_to_part)) == 70
 @test ids.oid_to_lid == 1:20
 @test ids.hid_to_lid == Int32[]
 push!(ids.hid_to_lid,21)
@@ -42,12 +40,10 @@ ids.gid_to_lid[49] = 22
 
 lid_to_gid = collect(ids.lid_to_gid)
 lid_to_part = collect(ids.lid_to_part)
-ids = ExtendedIndexRange(part,ngids,lid_to_gid,lid_to_part,part_to_firstgid)
+ids = ExtendedIndexRange(part,lid_to_gid,lid_to_part,firstgid)
 @test ids.part == part
-@test ids.ngids == ngids
 @test ids.lid_to_gid == vcat(collect(11:30),[48,49])
 @test ids.lid_to_part == vcat(fill(part,20),[3,3])
-@test length(collect(ids.gid_to_part)) == 70
 @test ids.hid_to_lid == Int32[21,22]
 @test ids.lid_to_ohid == vcat(collect(1:20),[-1,-2])
 @test haskey(ids.gid_to_lid,49)
@@ -70,7 +66,6 @@ ids.gid_to_lid[62] = 23
 ids.gid_to_lid[63] = 24
 @test ids.lid_to_gid == vcat(collect(11:30),[48,49,62,63])
 @test ids.lid_to_part == vcat(fill(part,20),[3,3,4,4])
-@test length(collect(ids.gid_to_part)) == 70
 @test ids.hid_to_lid == Int32[21,22,23,24]
 @test ids.lid_to_ohid == vcat(collect(1:20),[-1,-2,-3,-4])
 @test haskey(ids.gid_to_lid,62)
@@ -78,7 +73,5 @@ ids.gid_to_lid[63] = 24
 @test !haskey(ids.gid_to_lid,64)
 @test !haskey(ids.gid_to_lid,61)
 @test length(collect(ids.gid_to_lid)) == 24
-
-
 
 end # module

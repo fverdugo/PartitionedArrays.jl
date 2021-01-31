@@ -1,73 +1,73 @@
 
-abstract type Backend end
+abstract type AbstractBackend end
 
-# Should return a PData{Int}
-function get_part_ids(b::Backend,nparts::Integer)
+# Should return a AbstractPData{Int}
+function get_part_ids(b::AbstractBackend,nparts::Integer)
   @abstractmethod
 end
 
-function get_part_ids(b::Backend,nparts::Tuple)
+function get_part_ids(b::AbstractBackend,nparts::Tuple)
   get_part_ids(b,prod(nparts))
 end
 
 # This can be overwritten to add a finally clause
-function distributed_run(driver::Function,b::Backend,nparts)
+function prun(driver::Function,b::AbstractBackend,nparts)
   part = get_part_ids(b,nparts)
   driver(part)
 end
 
 # Data distributed in parts of type T
-abstract type PData{T,N} end
+abstract type AbstractPData{T,N} end
 
-Base.size(a::PData) = @abstractmethod
+Base.size(a::AbstractPData) = @abstractmethod
 
-Base.length(a::PData) = prod(size(a))
+Base.length(a::AbstractPData) = prod(size(a))
 
-num_parts(a::PData) = length(a)
+num_parts(a::AbstractPData) = length(a)
 
-get_backend(a::PData) = @abstractmethod
+get_backend(a::AbstractPData) = @abstractmethod
 
-Base.iterate(a::PData)  = @abstractmethod
+Base.iterate(a::AbstractPData)  = @abstractmethod
 
-Base.iterate(a::PData,state)  = @abstractmethod
+Base.iterate(a::AbstractPData,state)  = @abstractmethod
 
-get_part_ids(a::PData) = get_part_ids(get_backend(a),size(a))
+get_part_ids(a::AbstractPData) = get_part_ids(get_backend(a),size(a))
 
-map_parts(task,a::PData...) = @abstractmethod
+map_parts(task,a::AbstractPData...) = @abstractmethod
 
-i_am_main(::PData) = @abstractmethod
+i_am_main(::AbstractPData) = @abstractmethod
 
-Base.eltype(a::PData{T}) where T = T
-Base.eltype(::Type{<:PData{T}}) where T = T
+Base.eltype(a::AbstractPData{T}) where T = T
+Base.eltype(::Type{<:AbstractPData{T}}) where T = T
 
-Base.ndims(a::PData{T,N}) where {T,N} = N
-Base.ndims(::Type{<:PData{T,N}}) where {T,N} = N
+Base.ndims(a::AbstractPData{T,N}) where {T,N} = N
+Base.ndims(::Type{<:AbstractPData{T,N}}) where {T,N} = N
 
-Base.copy(a::PData) = map_parts(copy,a)
+Base.copy(a::AbstractPData) = map_parts(copy,a)
 
 #function map_parts(task,a...)
-#  map_parts(task,map(PData,a)...)
+#  map_parts(task,map(AbstractPData,a)...)
 #end
 #
-#PData(a::PData) = a
+#AbstractPData(a::AbstractPData) = a
 
 const MAIN = 1
 
 # import the main part to the main scope
 # in MPI this will broadcast the main part to all procs
-get_main_part(a::PData) = get_part(a,MAIN)
+get_main_part(a::AbstractPData) = get_part(a,MAIN)
 
 # This one is safe to use only when all parts contain the same value, e.g. the result of a gather_all call.
-get_part(a::PData) = @abstractmethod
+get_part(a::AbstractPData) = @abstractmethod
 
-get_part(a::PData,part::Integer) = @abstractmethod
+get_part(a::AbstractPData,part::Integer) = @abstractmethod
 
 # rcv can contain vectors or tables
-gather!(rcv::PData,snd::PData) = @abstractmethod
+gather!(rcv::AbstractPData,snd::AbstractPData) = @abstractmethod
 
-gather_all!(rcv::PData,snd::PData) = @abstractmethod
+gather_all!(rcv::AbstractPData,snd::AbstractPData) = @abstractmethod
 
-function allocate_gather(snd::PData)
+function allocate_gather(snd::AbstractPData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   rcv = map_parts(parts,snd) do part, snd
@@ -81,7 +81,7 @@ function allocate_gather(snd::PData)
   rcv
 end
 
-function allocate_gather(snd::PData{<:AbstractVector})
+function allocate_gather(snd::AbstractPData{<:AbstractVector})
   l = map_parts(length,snd)
   l_main = gather(l)
   parts = get_part_ids(snd)
@@ -100,13 +100,13 @@ function allocate_gather(snd::PData{<:AbstractVector})
   rcv
 end
 
-function gather(snd::PData)
+function gather(snd::AbstractPData)
   rcv = allocate_gather(snd)
   gather!(rcv,snd)
   rcv
 end
 
-function allocate_gather_all(snd::PData)
+function allocate_gather_all(snd::AbstractPData)
   np = num_parts(snd)
   rcv = map_parts(snd) do snd
     T = typeof(snd)
@@ -115,7 +115,7 @@ function allocate_gather_all(snd::PData)
   rcv
 end
 
-function allocate_gather_all(snd::PData{<:AbstractVector})
+function allocate_gather_all(snd::AbstractPData{<:AbstractVector})
   l = map_parts(length,snd)
   l_all = gather_all(l)
   parts = get_part_ids(snd)
@@ -128,20 +128,20 @@ function allocate_gather_all(snd::PData{<:AbstractVector})
   rcv
 end
 
-function gather_all(snd::PData)
+function gather_all(snd::AbstractPData)
   rcv = allocate_gather_all(snd)
   gather_all!(rcv,snd)
   rcv
 end
 
 # The back-end need to support these cases:
-# i.e. PData{AbstractVector{<:Number}} and PData{AbstractVector{<:AbstractVector{<:Number}}}
-function scatter(snd::PData)
+# i.e. AbstractPData{AbstractVector{<:Number}} and AbstractPData{AbstractVector{<:AbstractVector{<:Number}}}
+function scatter(snd::AbstractPData)
   @abstractmethod
 end
 
 # AKA broadcast
-function emit(snd::PData)
+function emit(snd::AbstractPData)
   np = num_parts(snd)
   parts = get_part_ids(snd)
   snd2 = map_parts(parts,snd) do part, snd
@@ -157,7 +157,7 @@ function emit(snd::PData)
   scatter(snd2)
 end
 
-function reduce_main(op,snd::PData;init)
+function reduce_main(op,snd::AbstractPData;init)
   a = gather(snd)
   map_parts(i->reduce(op,i;init=init),a)
 end
@@ -167,32 +167,32 @@ function reduce_all(args...;kwargs...)
   emit(b)
 end
 
-function Base.reduce(op,a::PData;init)
+function Base.reduce(op,a::AbstractPData;init)
   b = reduce_main(op,a;init=init)
   get_main_part(b)
 end
 
-function Base.sum(a::PData)
+function Base.sum(a::AbstractPData)
   reduce(+,a,init=zero(eltype(a)))
 end
 
 # inclusive prefix reduction
-function iscan(op,a::PData;init)
+function iscan(op,a::AbstractPData;init)
   b = iscan_main(op,a,init=init)
   scatter(b)
 end
 
-function iscan(op,::typeof(reduce),a::PData;init)
+function iscan(op,::typeof(reduce),a::AbstractPData;init)
   b,n = iscan_main(op,reduce,a,init=init)
   scatter(b), get_main_part(n)
 end
 
-function iscan_all(op,a::PData;init)
+function iscan_all(op,a::AbstractPData;init)
   b = iscan_main(op,a,init=init)
   emit(b)
 end
 
-function iscan_all(op,::typeof(reduce),a::PData;init)
+function iscan_all(op,::typeof(reduce),a::AbstractPData;init)
   b,n = iscan_main(op,reduce,a,init=init)
   emit(b), get_main_part(n)
 end
@@ -227,27 +227,27 @@ function _iscan_local!(op,b,init)
 end
 
 # exclusive prefix reduction
-function xscan(op,a::PData;init)
+function xscan(op,a::AbstractPData;init)
   b = xscan_main(op,a,init=init)
   scatter(b)
 end
 
-function xscan(op,::typeof(reduce),a::PData;init)
+function xscan(op,::typeof(reduce),a::AbstractPData;init)
   b,n = xscan_main(op,reduce,a,init=init)
   scatter(b), get_main_part(n)
 end
 
-function xscan_all(op,a::PData;init)
+function xscan_all(op,a::AbstractPData;init)
   b = xscan_main(op,a,init=init)
   emit(b)
 end
 
-function xscan_all(op,::typeof(reduce),a::PData;init)
+function xscan_all(op,::typeof(reduce),a::AbstractPData;init)
   b,n = xscan_main(op,reduce,a,init=init)
   emit(b), get_main_part(n)
 end
 
-function xscan_main(op,a::PData;init)
+function xscan_main(op,a::AbstractPData;init)
   b = gather(a)
   map_parts(b) do b
     _xscan_local!(op,b,init)
@@ -255,7 +255,7 @@ function xscan_main(op,a::PData;init)
   b
 end
 
-function xscan_main(op,::typeof(reduce),a::PData;init)
+function xscan_main(op,::typeof(reduce),a::AbstractPData;init)
   b = gather(a)
   n = map_parts(b) do b
     reduce(op,b,init=init)
@@ -282,24 +282,24 @@ end
 # Non-blocking in-place exchange
 # In this version, sending a number per part is enough
 # We have another version below to send a vector of numbers per part (compressed in a Table)
-# Starts a non-blocking exchange. It returns a PData of Julia Tasks. Calling schedule and wait on these
+# Starts a non-blocking exchange. It returns a AbstractPData of Julia Tasks. Calling schedule and wait on these
 # tasks will wait until the exchange is done in the corresponding part
 # (i.e., at this point it is save to read/write the buffers again).
 function async_exchange!(
-  data_rcv::PData,
-  data_snd::PData,
-  parts_rcv::PData,
-  parts_snd::PData,
-  t_in::PData)
+  data_rcv::AbstractPData,
+  data_snd::AbstractPData,
+  parts_rcv::AbstractPData,
+  parts_snd::AbstractPData,
+  t_in::AbstractPData)
 
   @abstractmethod
 end
 
 function async_exchange!(
-  data_rcv::PData,
-  data_snd::PData,
-  parts_rcv::PData,
-  parts_snd::PData)
+  data_rcv::AbstractPData,
+  data_snd::AbstractPData,
+  parts_rcv::AbstractPData,
+  parts_snd::AbstractPData)
 
   t_in = _empty_tasks(parts_rcv)
   async_exchange!(data_rcv,data_snd,parts_rcv,parts_snd,t_in)
@@ -314,10 +314,10 @@ end
 # Non-blocking allocating exchange
 # the returned data_rcv cannot be consumed in a part until the corresponding task in t is done.
 function async_exchange(
-  data_snd::PData,
-  parts_rcv::PData,
-  parts_snd::PData,
-  t_in::PData=_empty_tasks(parts_rcv))
+  data_snd::AbstractPData,
+  parts_rcv::AbstractPData,
+  parts_snd::AbstractPData,
+  t_in::AbstractPData=_empty_tasks(parts_rcv))
 
   data_rcv = map_parts(data_snd,parts_rcv) do data_snd, parts_rcv
     similar(data_snd,eltype(data_snd),length(parts_rcv))
@@ -330,21 +330,21 @@ end
 
 # Non-blocking in-place exchange variable length (compressed in a Table)
 function async_exchange!(
-  data_rcv::PData{<:Table},
-  data_snd::PData{<:Table},
-  parts_rcv::PData,
-  parts_snd::PData,
-  t_in::PData)
+  data_rcv::AbstractPData{<:Table},
+  data_snd::AbstractPData{<:Table},
+  parts_rcv::AbstractPData,
+  parts_snd::AbstractPData,
+  t_in::AbstractPData)
 
   @abstractmethod
 end
 
 # Non-blocking allocating exchange variable length (compressed in a Table)
 function async_exchange(
-  data_snd::PData{<:Table},
-  parts_rcv::PData,
-  parts_snd::PData,
-  t_in::PData)
+  data_snd::AbstractPData{<:Table},
+  parts_rcv::AbstractPData,
+  parts_snd::AbstractPData,
+  t_in::AbstractPData)
 
   # Allocate empty data
   data_rcv = map_parts(empty_table,data_snd)
@@ -406,7 +406,7 @@ end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
 # Assumes that neighbors is a symmetric communication graph
-function discover_parts_snd(parts_rcv::PData, neighbors::PData)
+function discover_parts_snd(parts_rcv::AbstractPData, neighbors::AbstractPData)
   @assert num_parts(parts_rcv) == num_parts(neighbors)
 
   parts = get_part_ids(parts_rcv)
@@ -431,7 +431,7 @@ function discover_parts_snd(parts_rcv::PData, neighbors::PData)
 end
 
 # If neighbors not provided, we need to gather in main
-function discover_parts_snd(parts_rcv::PData)
+function discover_parts_snd(parts_rcv::AbstractPData)
   parts_rcv_main = gather(parts_rcv)
   parts_snd_main = map_parts(_parts_rcv_to_parts_snd,parts_rcv_main)
   parts_snd = scatter(parts_snd_main)
@@ -469,34 +469,26 @@ function _parts_rcv_to_parts_snd(parts_rcv::Table)
   parts_snd = Table(data,ptrs)
 end
 
-function discover_parts_snd(parts_rcv::PData,::Nothing)
+function discover_parts_snd(parts_rcv::AbstractPData,::Nothing)
   discover_parts_snd(parts_rcv)
 end
 
 abstract type AbstractIndexSet end
 
-num_gids(a::AbstractIndexSet) = a.ngids
 num_lids(a::AbstractIndexSet) = length(a.lid_to_part)
 num_oids(a::AbstractIndexSet) = length(a.oid_to_lid)
 num_hids(a::AbstractIndexSet) = length(a.hid_to_lid)
 get_part(a::AbstractIndexSet) = a.part
 get_lid_to_gid(a::AbstractIndexSet) = a.lid_to_gid
 get_lid_to_part(a::AbstractIndexSet) = a.lid_to_part
-get_gid_to_part(a::AbstractIndexSet) = a.gid_to_part
 get_oid_to_lid(a::AbstractIndexSet) = a.oid_to_lid
 get_hid_to_lid(a::AbstractIndexSet) = a.hid_to_lid
 get_lid_to_ohid(a::AbstractIndexSet) = a.lid_to_ohid
 get_gid_to_lid(a::AbstractIndexSet) = a.gid_to_lid
 
-#function AbstractIndexSet(a::AbstractIndexSet,xid_to_lid::AbstractVector)
-#  xid_to_gid = a.lid_to_gid[xid_to_lid]
-#  xid_to_part = a.lid_to_part[xid_to_lid]
-#  AbstractIndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
-#end
-
-function add_gid!(a::AbstractIndexSet,gid::Integer)
+function add_gid!(a::AbstractIndexSet,gid_to_part::AbstractArray,gid::Integer)
   if !haskey(a.gid_to_lid,gid)
-    part = a.gid_to_part[gid]
+    part = gid_to_part[gid]
     lid = Int32(num_lids(a)+1)
     hid = Int32(num_hids(a)+1)
     push!(a.lid_to_gid,gid)
@@ -544,10 +536,10 @@ struct Exchanger{B,C}
   lids_rcv::C
   lids_snd::C
   function Exchanger(
-    parts_rcv::PData{<:AbstractVector{<:Integer}},
-    parts_snd::PData{<:AbstractVector{<:Integer}},
-    lids_rcv::PData{<:Table{<:Integer}},
-    lids_snd::PData{<:Table{<:Integer}})
+    parts_rcv::AbstractPData{<:AbstractVector{<:Integer}},
+    parts_snd::AbstractPData{<:AbstractVector{<:Integer}},
+    lids_rcv::AbstractPData{<:Table{<:Integer}},
+    lids_snd::AbstractPData{<:Table{<:Integer}})
 
     B = typeof(parts_rcv)
     C = typeof(lids_rcv)
@@ -563,7 +555,7 @@ function Base.copy(a::Exchanger)
     copy(a.lids_snd))
 end
 
-function Exchanger(ids::PData{<:AbstractIndexSet},neighbors=nothing)
+function Exchanger(ids::AbstractPData{<:AbstractIndexSet},neighbors=nothing)
 
   parts = get_part_ids(ids)
 
@@ -620,7 +612,7 @@ function Exchanger(ids::PData{<:AbstractIndexSet},neighbors=nothing)
   Exchanger(parts_rcv,parts_snd,lids_rcv,lids_snd)
 end
 
-function empty_exchanger(a::PData)
+function empty_exchanger(a::AbstractPData)
   parts_rcv = map_parts(i->Int32[],a)
   parts_snd = map_parts(i->Int32[],a)
   lids_rcv = map_parts(i->Table(Vector{Int32}[]),a)
@@ -651,9 +643,9 @@ function allocate_snd_buffer(::Type{T},a::Exchanger) where T
 end
 
 function async_exchange!(
-  values::PData{<:AbstractVector{T}},
+  values::AbstractPData{<:AbstractVector{T}},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv)) where T
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where T
 
   async_exchange!(_replace,values,exchanger,t0)
 end
@@ -662,9 +654,9 @@ _replace(x,y) = y
 
 function async_exchange!(
   combine_op,
-  values::PData{<:AbstractVector{T}},
+  values::AbstractPData{<:AbstractVector{T}},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv)) where T
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where T
 
   # Allocate buffers
   data_rcv = allocate_rcv_buffer(T,exchanger)
@@ -705,18 +697,18 @@ function async_exchange!(
 end
 
 function async_exchange!(
-  values::PData{<:Table},
+  values::AbstractPData{<:Table},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv))
 
   async_exchange!(_replace,values,exchanger,t0)
 end
 
 function async_exchange!(
   combine_op,
-  values::PData{<:Table},
+  values::AbstractPData{<:Table},
   exchanger::Exchanger,
-  t0::PData=_empty_tasks(exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv))
 
   data, ptrs = map_parts(t->(t.data,t.ptrs),values)
   t_exchanger = _table_exchanger(exchanger,ptrs)
@@ -767,24 +759,28 @@ function _table_lids_snd(lids_snd,tptrs)
 end
 
 # mutable is needed to correctly implement add_gid!
-mutable struct PRange{A,B} <: AbstractUnitRange{Int}
+mutable struct PRange{A,B,C} <: AbstractUnitRange{Int}
   ngids::Int
   partition::A
-  ghost::Bool
   exchanger::B
+  gid_to_part::C
+  ghost::Bool
   function PRange(
     ngids::Integer,
-    partition::PData{<:AbstractIndexSet},
-    ghost::Bool,
-    exchanger::Exchanger)
+    partition::AbstractPData{<:AbstractIndexSet},
+    exchanger::Exchanger,
+    gid_to_part::Union{AbstractPData{<:AbstractArray{<:Integer}},Nothing}=nothing,
+    ghost::Bool=true)
   
     A = typeof(partition)
     B = typeof(exchanger)
-    new{A,B}(
+    C = typeof(gid_to_part)
+    new{A,B,C}(
       ngids,
       partition,
-      ghost,
-      exchanger)
+      exchanger,
+      gid_to_part,
+      ghost)
   end
 end
 
@@ -792,17 +788,19 @@ function Base.copy(a::PRange)
   PRange(
     copy(a.ngids),
     copy(a.partition),
-    copy(a.ghost),
-    copy(a.exchanger))
+    copy(a.exchanger),
+    a.gid_to_part===nothing ? nothing : copy(a.gid_to_part),
+    copy(a.ghost))
 end
 
 function PRange(
   ngids::Integer,
-  partition::PData{<:AbstractIndexSet},
+  partition::AbstractPData{<:AbstractIndexSet},
+  gid_to_part::Union{AbstractPData{<:AbstractArray{<:Integer}},Nothing}=nothing,
   ghost::Bool=true)
 
   exchanger =  ghost ? Exchanger(partition) : empty_exchanger(partition)
-  PRange(ngids,partition,ghost,exchanger)
+  PRange(ngids,partition,exchanger,gid_to_part,ghost)
 end
 
 Base.first(a::PRange) = 1
@@ -811,84 +809,89 @@ Base.last(a::PRange) = a.ngids
 num_gids(a::PRange) = a.ngids
 num_parts(a::PRange) = num_parts(a.partition)
 
-function PRange(parts::PData{<:Integer},ngids::Integer)
+function PRange(parts::AbstractPData{<:Integer},ngids::Integer)
   np = num_parts(parts)
-  partition = map_parts(parts) do part
+  partition, gid_to_part = map_parts(parts) do part
     oid_to_gid = _oid_to_gid(ngids,np,part)
     noids = length(oid_to_gid)
     part_to_firstgid = _part_to_firstgid(ngids,np)
-    IndexRange(
+    firstgid = first(oid_to_gid)
+    partition = IndexRange(
       part,
-      ngids,
-      part_to_firstgid)
+      noids,
+      firstgid)
+    gid_to_part = LinearGidToPart(ngids,part_to_firstgid)
+    partition, gid_to_part
   end
   ghost = false
-  PRange(ngids,partition,ghost)
+  PRange(ngids,partition,gid_to_part,ghost)
 end
 
 function PRange(
-  parts::PData{<:Integer,1},
+  parts::AbstractPData{<:Integer,1},
   ngids::NTuple{N,<:Integer}) where N
   PRange(parts,prod(ngids))
 end
 
-function PRange(parts::PData{<:Integer},noids::PData{<:Integer})
+function PRange(parts::AbstractPData{<:Integer},noids::AbstractPData{<:Integer})
   ngids = reduce(+,noids,init=0)
   PRange(parts,ngids,noids)
 end
 
 function PRange(
-  parts::PData{<:Integer},
+  parts::AbstractPData{<:Integer},
   ngids::Integer,
-  noids::PData{<:Integer})
-  firstgids = xscan_all(+,noids,init=1)
-  PRange(parts,ngids,noids,firstgids)
+  noids::AbstractPData{<:Integer})
+  part_to_firstgid = xscan_all(+,noids,init=1)
+  PRange(parts,ngids,noids,part_to_firstgid)
 end
 
 function PRange(
-  parts::PData{<:Integer},
+  parts::AbstractPData{<:Integer},
   ngids::Integer,
-  noids::PData{<:Integer},
-  firstgids::PData{<:AbstractVector{<:Integer}})
+  noids::AbstractPData{<:Integer},
+  part_to_firstgid::AbstractPData{<:AbstractVector{<:Integer}})
 
-  partition = map_parts(parts,noids,firstgids) do part,noids,part_to_firstgid
-    IndexRange(
+  partition, gid_to_part = map_parts(parts,noids,part_to_firstgid) do part,noids,part_to_firstgid
+    firstgid = part_to_firstgid[part]
+    partition = IndexRange(
       part,
-      ngids,
-      part_to_firstgid)
+      noids,
+      firstgid)
+    gid_to_part = LinearGidToPart(ngids,part_to_firstgid)
+    partition, gid_to_part
   end
   ghost = false
-  PRange(ngids,partition,ghost)
+  PRange(ngids,partition,gid_to_part,ghost)
 end
 
 function PRange(
-  parts::PData{<:Integer,N},
+  parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
-  partition = map_parts(parts) do part
+  partition, gid_to_part = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
     lid_to_gid = gids
     lid_to_part = fill(Int32(part),length(gids))
     oid_to_lid = collect(Int32(1):Int32(length(gids)))
     hid_to_lid = collect(Int32(1):Int32(0))
     part_to_firstgid = _part_to_firstgid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_firstgid)
-    IndexSet(
+    gid_to_part = CartesianGidToPart(ngids,part_to_firstgid)
+    partition = IndexSet(
       part,
-      prod(ngids),
       lid_to_gid,
       lid_to_part,
-      gid_to_part,
       oid_to_lid,
       hid_to_lid)
+    partition, gid_to_part
   end
   ghost = false
-  PRange(prod(ngids),partition,ghost)
+  PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
 function PCartesianIndices(
-  parts::PData{<:Integer,N},
+  parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
@@ -908,12 +911,12 @@ struct NoGhost end
 no_ghost = NoGhost()
 
 function PRange(
-  parts::PData{<:Integer,N},
+  parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer},
   ::WithGhost) where N
 
   np = size(parts)
-  partition = map_parts(parts) do part
+  partition, gid_to_part = map_parts(parts) do part
     cp = Tuple(CartesianIndices(np)[part])
     d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
     lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
@@ -922,22 +925,21 @@ function PRange(
     oid_to_lid = collect(Int32,findall(lid_to_part .== part))
     hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
     part_to_firstgid = _part_to_firstgid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_firstgid)
-    IndexSet(
+    gid_to_part = CartesianGidToPart(ngids,part_to_firstgid)
+    partition = IndexSet(
       part,
-      prod(ngids),
       lid_to_gid,
       lid_to_part,
-      gid_to_part,
       oid_to_lid,
       hid_to_lid)
+    partition, gid_to_part
   end
   ghost = true
-  PRange(prod(ngids),partition,ghost)
+  PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
 function PRange(
-  parts::PData{<:Integer,N},
+  parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer},
   ::NoGhost) where N
 
@@ -945,7 +947,7 @@ function PRange(
 end
 
 function PCartesianIndices(
-  parts::PData{<:Integer,N},
+  parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer},
   ::WithGhost) where N
 
@@ -960,7 +962,7 @@ function PCartesianIndices(
 end
 
 function PCartesianIndices(
-  parts::PData{<:Integer,N},
+  parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer},
   ::NoGhost) where N
 
@@ -1055,16 +1057,16 @@ function _id_tensor_product(::Type{T},d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tupl
   llis = LinearIndices(d_to_nldids)
   glis = LinearIndices(d_to_ngdids)
   D = length(d_to_ngdids)
-  gci = zeros(T,D)
+  d = ntuple(identity,Val{D}())
   lid_to_gid = zeros(T,length(lcis))
   for lci in lcis
-    for d in 1:D
+    gci = map(d) do d
       ldid = lci[d]
       gdid = d_to_dlid_to_gdid[d][ldid]
-      gci[d] = gdid
+      gdid
     end
     lid = llis[lci]
-    lid_to_gid[lid] = glis[CartesianIndex(Tuple(gci))]
+    lid_to_gid[lid] = glis[CartesianIndex(gci)]
   end
   lid_to_gid
 end
@@ -1077,10 +1079,16 @@ function _part_to_firstgid(ngids::Tuple,np::Tuple)
   map(_part_to_firstgid,ngids,np)
 end
 
-function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  map_parts(a.partition,gids) do partition,gids
+function add_gid!(a::PRange,gids::AbstractPData{<:AbstractArray{<:Integer}})
+  if a.gid_to_part === nothing
+    msg = """ The given PRange object has not enough information to perform this operation.
+    Make sure that you have built the PRange object with a suitable `gid_to_part`.
+    """
+    throw(DomainError(a,msg))
+  end
+  map_parts(a.partition,a.gid_to_part,gids) do partition,gid_to_part,gids
     for gid in gids
-      add_gid!(partition,gid)
+      add_gid!(partition,gid_to_part,gid)
     end
   end
   a.exchanger = Exchanger(a.partition)
@@ -1088,18 +1096,17 @@ function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
   a
 end
 
-function add_gid(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  partition = map_parts(copy,a.partition)
-  b = PRange(a.ngids,partition)
+function add_gid(a::PRange,gids::AbstractPData{<:AbstractArray{<:Integer}})
+  b = copy(a)
   add_gid!(b,gids)
   b
 end
 
-function to_lid!(ids::PData{<:AbstractArray{<:Integer}},a::PRange)
+function to_lid!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
   map_parts(to_lid!,ids,a.partition)
 end
 
-function to_gid!(ids::PData{<:AbstractArray{<:Integer}},a::PRange)
+function to_gid!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
   map_parts(to_gid!,ids,a.partition)
 end
 
@@ -1134,7 +1141,7 @@ struct PVector{T,A,B} <: AbstractVector{T}
   values::A
   rows::B
   function PVector(
-    values::PData{<:AbstractVector{T}},
+    values::AbstractPData{<:AbstractVector{T}},
     rows::PRange) where T
 
     A = typeof(values)
@@ -1190,12 +1197,12 @@ function Base.similar(a::PVector,::Type{T},axes::Tuple{<:PRange}) where T
 end
 
 function Base.similar(
-  ::Type{<:PVector{T,<:PData{A}}},axes::Tuple{Int}) where {T,A}
+  ::Type{<:PVector{T,<:AbstractPData{A}}},axes::Tuple{Int}) where {T,A}
   @notimplemented
 end
 
 function Base.similar(
-  ::Type{<:PVector{T,<:PData{A}}},axes::Tuple{<:PRange}) where {T,A}
+  ::Type{<:PVector{T,<:AbstractPData{A}}},axes::Tuple{<:PRange}) where {T,A}
   rows = axes[1]
   values = map_parts(rows.partition) do partition
     similar(A,num_lids(partition))
@@ -1245,7 +1252,7 @@ end
   map_parts(a.owned_values,b.owned_values) do dest, x
     Base.materialize!(dest,x)
   end
-  if b.ghost_values !== nothing
+  if b.ghost_values !== nothing && a.rows === b.rows
     map_parts(a.ghost_values,b.ghost_values) do dest, x
       Base.materialize!(dest,x)
     end
@@ -1325,8 +1332,8 @@ end
 # If one chooses ids=:global the ids are translated in-place in I.
 function PVector(
   init,
-  I::PData{<:AbstractArray{<:Integer}},
-  V::PData{<:AbstractArray},
+  I::AbstractPData{<:AbstractArray{<:Integer}},
+  V::AbstractPData{<:AbstractArray},
   rows::PRange;
   ids::Symbol)
 
@@ -1349,8 +1356,8 @@ function PVector(
 end
 
 function PVector(
-  I::PData{<:AbstractArray{<:Integer}},
-  V::PData{<:AbstractArray{T}},
+  I::AbstractPData{<:AbstractArray{<:Integer}},
+  V::AbstractPData{<:AbstractArray{T}},
   rows;
   ids::Symbol) where T
   PVector(n->zeros(T,n),I,V,rows;ids=ids)
@@ -1358,8 +1365,8 @@ end
 
 function PVector(
   init,
-  I::PData{<:AbstractArray{<:Integer}},
-  V::PData{<:AbstractArray},
+  I::AbstractPData{<:AbstractArray{<:Integer}},
+  V::AbstractPData{<:AbstractArray},
   n::Integer;
   ids::Symbol)
 
@@ -1433,8 +1440,9 @@ end
 
 function global_view(a::PVector,rows::PRange)
   @notimplementedif a.rows !== rows
+  n = length(rows)
   map_parts(a.values,a.rows.partition) do values, partition
-    GlobalView(values,(partition.gid_to_lid,),(partition.ngids,))
+    GlobalView(values,(partition.gid_to_lid,),(n,))
   end
 end
 
@@ -1466,21 +1474,21 @@ end
 
 function async_exchange!(
   a::PVector,
-  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(a.rows.exchanger.parts_rcv))
   async_exchange!(a.values,a.rows.exchanger,t0)
 end
 
 # Non-blocking assembly
 function async_assemble!(
   a::PVector,
-  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(a.rows.exchanger.parts_rcv))
   async_assemble!(+,a,t0)
 end
 
 function async_assemble!(
   combine_op,
   a::PVector,
-  t0::PData=_empty_tasks(a.rows.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(a.rows.exchanger.parts_rcv))
 
   exchanger_rcv = a.rows.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
@@ -1507,10 +1515,10 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   cols::C
   exchanger::D
   function PSparseMatrix(
-    values::PData{<:AbstractSparseMatrix{T}},
+    values::AbstractPData{<:AbstractSparseMatrix{T}},
     rows::PRange,
     cols::PRange,
-    exchanger::Exchanger) where T
+    exchanger::Exchanger=matrix_exchanger(values,rows,cols)) where T
 
     A = typeof(values)
     B = typeof(rows)
@@ -1526,24 +1534,6 @@ function Base.copy(a::PSparseMatrix)
     copy(a.rows),
     copy(a.cols),
     copy(a.exchanger))
-end
-
-function PSparseMatrix(
-  values::PData{<:AbstractSparseMatrix{T}},
-  rows::PRange,
-  cols::PRange;
-  exchanger::Bool=true) where T
-
-  if exchanger == false
-    _exchanger = empty_exchanger(rows.partition)
-  else
-    if rows.ghost
-      _exchanger = matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
-    else
-      _exchanger = empty_exchanger(rows.partition)
-    end
-  end
-  PSparseMatrix(values,rows,cols,_exchanger)
 end
 
 function Base.getproperty(x::PSparseMatrix, sym::Symbol)
@@ -1600,13 +1590,13 @@ end
 # If one chooses ids=:global the ids are translated in-place in I and J
 function PSparseMatrix(
   init,
-  I::PData{<:AbstractArray{<:Integer}},
-  J::PData{<:AbstractArray{<:Integer}},
-  V::PData{<:AbstractArray},
+  I::AbstractPData{<:AbstractArray{<:Integer}},
+  J::AbstractPData{<:AbstractArray{<:Integer}},
+  V::AbstractPData{<:AbstractArray},
   rows::PRange,
-  cols::PRange;
-  ids::Symbol,
-  exchanger::Bool=true)
+  cols::PRange,
+  args...;
+  ids::Symbol)
 
   @assert ids in (:global,:local)
   if ids == :global
@@ -1618,18 +1608,18 @@ function PSparseMatrix(
     init(I,J,V,num_lids(rlids),num_lids(clids))
   end
 
-  PSparseMatrix(values,rows,cols;exchanger=exchanger)
+  PSparseMatrix(values,rows,cols,args...)
 end
 
 function PSparseMatrix(
   init,
-  I::PData{<:AbstractArray{<:Integer}},
-  J::PData{<:AbstractArray{<:Integer}},
-  V::PData{<:AbstractArray},
+  I::AbstractPData{<:AbstractArray{<:Integer}},
+  J::AbstractPData{<:AbstractArray{<:Integer}},
+  V::AbstractPData{<:AbstractArray},
   nrows::Integer,
-  ncols::Integer;
-  ids::Symbol,
-  exchanger::Bool=true)
+  ncols::Integer,
+  args...;
+  ids::Symbol)
 
   @assert ids == :global
   parts = get_part_ids(I)
@@ -1637,19 +1627,17 @@ function PSparseMatrix(
   cols = PRange(parts,ncols)
   add_gid!(rows,I)
   add_gid!(cols,J)
-  PSparseMatrix(init,I,J,V,rows,cols;ids=ids,exchanger=exchanger)
+  PSparseMatrix(init,I,J,V,rows,cols,args...;ids=ids)
 end
 
 # Using sparse as default
 function PSparseMatrix(
-  I::PData{<:AbstractArray{<:Integer}},
-  J::PData{<:AbstractArray{<:Integer}},
-  V::PData{<:AbstractArray},
-  rows,
-  cols;
-  kwargs...)
+  I::AbstractPData{<:AbstractArray{<:Integer}},
+  J::AbstractPData{<:AbstractArray{<:Integer}},
+  V::AbstractPData{<:AbstractArray},
+  args...; kwargs...)
 
-  PSparseMatrix(sparse,I,J,V,rows,cols;kwargs...)
+  PSparseMatrix(sparse,I,J,V,args...;kwargs...)
 end
 
 function LinearAlgebra.mul!(
@@ -1761,8 +1749,22 @@ end
 function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)
   @notimplementedif a.rows !== rows
   @notimplementedif a.cols !== cols
+  nrows = length(rows)
+  ncols = length(cols)
   map_parts(a.values,a.rows.partition,a.cols.partition) do values,rlids,clids
-    GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
+    GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(nrows,ncols))
+  end
+end
+
+function matrix_exchanger(
+  values::AbstractPData{<:AbstractSparseMatrix},
+  rows::PRange,
+  cols::PRange)
+
+  if rows.ghost
+    matrix_exchanger(values,rows.exchanger,rows.partition,cols.partition)
+  else
+    empty_exchanger(rows.partition)
   end
 end
 
@@ -1900,7 +1902,7 @@ end
 # Non-blocking exchange
 function async_exchange!(
   a::PSparseMatrix,
-  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(a.exchanger.parts_rcv))
   nzval = map_parts(nonzeros,a.values)
   async_exchange!(nzval,a.exchanger,t0)
 end
@@ -1908,14 +1910,14 @@ end
 # Non-blocking assembly
 function async_assemble!(
   a::PSparseMatrix,
-  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(a.exchanger.parts_rcv))
   async_assemble!(+,a,t0)
 end
 
 function async_assemble!(
   combine_op,
   a::PSparseMatrix,
-  t0::PData=_empty_tasks(a.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(a.exchanger.parts_rcv))
 
   exchanger_rcv = a.exchanger # receives data at ghost ids from remote parts
   exchanger_snd = reverse(exchanger_rcv) # sends data at ghost ids to remote parts
@@ -1930,11 +1932,11 @@ function async_assemble!(
 end
 
 function async_assemble!(
-  I::PData{<:AbstractVector{<:Integer}},
-  J::PData{<:AbstractVector{<:Integer}},
-  V::PData{<:AbstractVector},
+  I::AbstractPData{<:AbstractVector{<:Integer}},
+  J::AbstractPData{<:AbstractVector{<:Integer}},
+  V::AbstractPData{<:AbstractVector},
   rows::PRange,
-  t0::PData=_empty_tasks(rows.exchanger.parts_rcv))
+  t0::AbstractPData=_empty_tasks(rows.exchanger.parts_rcv))
 
   map_parts(wait∘schedule,t0)
 
@@ -2041,63 +2043,6 @@ for op in (:+,:-)
     end
 
   end
-end
-
-# This structs implements the same methods as the Identity preconditioner
-# in the IterativeSolvers package.
-struct Jacobi{T,A,B,C}
-  diaginv::A
-  rows::B
-  cols::C
-  function Jacobi(
-    diaginv::PData{<:AbstractVector{T}},
-    rows::PRange,
-    cols::PRange) where T
-
-    A = typeof(diaginv)
-    B = typeof(rows)
-    C = typeof(cols)
-    new{T,A,B,C}(diaginv,rows,cols)
-  end
-end
-
-function Jacobi(a::PSparseMatrix)
-  diaginv = map_parts(a.values,a.rows.partition,a.cols.partition) do values, rlids, clids
-    @assert num_oids(rlids) == num_oids(clids)
-    @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
-    ldiag = collect(diag(values))
-    odiag = ldiag[rlids.oid_to_lid]
-    diaginv = inv.(odiag)
-  end
-  Jacobi(diaginv,a.rows,a.cols)
-end
-
-function LinearAlgebra.ldiv!(
-  c::PVector,
-  a::Jacobi,
-  b::PVector)
-
-  @check oids_are_equal(c.rows,a.cols)
-  @check oids_are_equal(b.rows,a.rows)
-  map_parts(c.owned_values,a.diaginv,b.owned_values) do c,diaginv,b
-    for oid in 1:length(b)
-      c[oid] = diaginv[oid]*b[oid]
-    end
-  end
-  c
-end
-
-function LinearAlgebra.ldiv!(
-  a::Jacobi,
-  b::PVector)
-  ldiv!(b,a,b)
-end
-
-function Base.:\(a::Jacobi{Ta},b::PVector{Tb}) where {Ta,Tb}
-  T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = PVector{T}(undef,a.cols)
-  ldiv!(c,a,b)
-  c
 end
 
 # Misc functions that could be removed if IterativeSolvers was implemented in terms

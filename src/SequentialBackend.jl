@@ -1,5 +1,5 @@
 
-struct SequentialBackend <: Backend end
+struct SequentialBackend <: AbstractBackend end
 
 const sequential = SequentialBackend()
 
@@ -13,7 +13,7 @@ function get_part_ids(b::SequentialBackend,nparts::Tuple)
   SequentialData(parts)
 end
 
-struct SequentialData{T,N} <: PData{T,N}
+struct SequentialData{T,N} <: AbstractPData{T,N}
   parts::Array{T,N}
 end
 
@@ -124,7 +124,7 @@ function async_exchange!(
   data_snd::SequentialData,
   parts_rcv::SequentialData,
   parts_snd::SequentialData,
-  t_in::PData)
+  t_in::AbstractPData)
 
   @check num_parts(parts_rcv) == num_parts(data_rcv)
   @check num_parts(parts_rcv) == num_parts(data_snd)

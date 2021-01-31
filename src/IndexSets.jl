@@ -171,46 +171,51 @@ function Base.iterate(a::GidToLid,(itr,state))
   item[1]=>item[2], (itr,state)
 end
 
-struct GidToPart{A,B} <: AbstractVector{Int}
-  ngids::A
-  part_to_firstgid::B
+struct LinearGidToPart <:AbstractVector{Int}
+  ngids::Int
+  part_to_firstgid::Vector{Int}
 end
 
-function Base.copy(a::GidToPart)
-  GidToPart(a.ngids,map(copy,a.part_to_firstgid))
+function Base.copy(a::LinearGidToPart)
+  LinearGidToPart(a.ngids,copy(a.part_to_firstgid))
 end
 
-Base.size(a::GidToPart) = (prod(a.ngids),)
-Base.IndexStyle(::Type{<:GidToPart}) = IndexLinear()
+Base.size(a::LinearGidToPart) = (a.ngids,)
+Base.IndexStyle(::Type{<:LinearGidToPart}) = IndexLinear()
 
-function Base.getindex(a::GidToPart,gid::Integer)
+function Base.getindex(a::LinearGidToPart,gid::Integer)
   @boundscheck begin
     if !( 1<=gid && gid<=length(a) )
       throw(BoundsError(a,gid))
     end
   end
-  _find_part_from_gid(a.ngids,a.part_to_firstgid,gid)
+  searchsortedlast(a.part_to_firstgid,gid)
 end
 
-function _find_part_from_gid(ngids::Int,part_to_firstgid::Vector{Int},gid::Integer)
-  searchsortedlast(part_to_firstgid,gid)
+struct CartesianGidToPart{N} <: AbstractVector{Int}
+  ngids::NTuple{N,Int}
+  part_to_firstgid::NTuple{N,Vector{Int}}
 end
 
-function _find_part_from_gid(
-  ngids::NTuple{N,Int},part_to_firstgid::NTuple{N,Vector{Int}},gid::Integer) where N
-  cgid = Tuple(CartesianIndices(ngids)[gid])
-  cpart = map(searchsortedlast,part_to_firstgid,cgid)
-  nparts = map(length,part_to_firstgid)
+function Base.copy(a::CartesianGidToPart)
+  CartesianGidToPart(a.ngids,map(copy,a.part_to_firstgid))
+end
+
+Base.size(a::CartesianGidToPart) = (prod(a.ngids),)
+Base.IndexStyle(::Type{<:CartesianGidToPart}) = IndexLinear()
+
+function Base.getindex(a::CartesianGidToPart,gid::Integer)
+  cgid = Tuple(CartesianIndices(a.ngids)[gid])
+  cpart = map(searchsortedlast,a.part_to_firstgid,cgid)
+  nparts = map(length,a.part_to_firstgid)
   part = LinearIndices(nparts)[CartesianIndex(cpart)]
   part
 end
 
-struct IndexSet{T<:Union{AbstractVector,Nothing}} <: AbstractIndexSet
+struct IndexSet <: AbstractIndexSet
   part::Int
-  ngids::Int
   lid_to_gid::Vector{Int}
   lid_to_part::Vector{Int32}
-  gid_to_part::T
   oid_to_lid::Vector{Int32}
   hid_to_lid::Vector{Int32}
   lid_to_ohid::Vector{Int32}
@@ -219,10 +224,8 @@ end
 
 function IndexSet(
   part::Int,
-  ngids::Int,
   lid_to_gid::Vector{Int},
   lid_to_part::Vector{Int32},
-  gid_to_part::Union{AbstractVector,Nothing},
   oid_to_lid::Vector{Int32},
   hid_to_lid::Vector{Int32},
   lid_to_ohid::Vector{Int32})
@@ -233,10 +236,8 @@ function IndexSet(
   end
   IndexSet(
     part,
-    ngids,
     lid_to_gid,
     lid_to_part,
-    gid_to_part,
     oid_to_lid,
     hid_to_lid,
     lid_to_ohid,
@@ -245,10 +246,8 @@ end
 
 function IndexSet(
   part::Int,
-  ngids::Int,
   lid_to_gid::Vector{Int},
   lid_to_part::Vector{Int32},
-  gid_to_part::Union{AbstractVector,Nothing},
   oid_to_lid::Vector{Int32},
   hid_to_lid::Vector{Int32})
 
@@ -258,10 +257,8 @@ function IndexSet(
 
   IndexSet(
     part,
-    ngids,
     lid_to_gid,
     lid_to_part,
-    gid_to_part,
     oid_to_lid,
     hid_to_lid,
     lid_to_ohid)
@@ -269,19 +266,15 @@ end
 
 function IndexSet(
   part::Int,
-  ngids::Int,
   lid_to_gid::Vector{Int},
-  lid_to_part::Vector{Int32},
-  gid_to_part::Union{AbstractVector,Nothing}=nothing)
+  lid_to_part::Vector{Int32})
 
   oid_to_lid = collect(Int32,findall(owner->owner==part,lid_to_part))
   hid_to_lid = collect(Int32,findall(owner->owner!=part,lid_to_part))
   IndexSet(
     part,
-    ngids,
     lid_to_gid,
     lid_to_part,
-    gid_to_part,
     oid_to_lid,
     hid_to_lid)
 end
@@ -289,10 +282,8 @@ end
 function Base.copy(a::IndexSet)
   IndexSet(
     copy(a.part),
-    copy(a.ngids),
     copy(a.lid_to_gid),
     copy(a.lid_to_part),
-    a.gid_to_part === nothing ? nothing : copy(a.gid_to_part),
     copy(a.oid_to_lid),
     copy(a.hid_to_lid),
     copy(a.lid_to_ohid),
@@ -301,10 +292,8 @@ end
 
 struct ExtendedIndexRange <: AbstractIndexSet
   part::Int
-  ngids::Int
   lid_to_gid::Vector{Int}
   lid_to_part::Vector{Int32}
-  gid_to_part::GidToPart{Int,Vector{Int}}
   oid_to_lid::Vector{Int32}
   hid_to_lid::Vector{Int32}
   lid_to_ohid::Vector{Int32}
@@ -313,19 +302,17 @@ end
 
 function ExtendedIndexRange(
   part::Integer,
-  ngids::Integer,
   lid_to_gid::Vector{Int},
   lid_to_part::Vector{Int32},
-  part_to_firstgid::Vector{Int})
+  firstgid::Integer)
 
-  gid_to_part = GidToPart(Int(ngids),part_to_firstgid)
   oid_to_lid = collect(Int32,findall(owner->owner==part,lid_to_part))
   hid_to_lid = collect(Int32,findall(owner->owner!=part,lid_to_part))
   noids = length(oid_to_lid)
   lid_to_ohid = zeros(Int32,length(lid_to_gid))
   lid_to_ohid[oid_to_lid] = 1:length(oid_to_lid)
   lid_to_ohid[hid_to_lid] = -(1:length(hid_to_lid))
-  offset = part_to_firstgid[part]-1
+  offset = firstgid-1
   oid_to_gid = Int(1+offset):Int(noids+offset)
   gid_to_lid_for_ghost = Dict{Int,Int32}()
   for lid in hid_to_lid
@@ -334,10 +321,8 @@ function ExtendedIndexRange(
   gid_to_lid = GidToLid(oid_to_gid,oid_to_lid,gid_to_lid_for_ghost)
   ExtendedIndexRange(
     part,
-    ngids,
     lid_to_gid,
     lid_to_part,
-    gid_to_part,
     oid_to_lid,
     hid_to_lid,
     lid_to_ohid,
@@ -347,10 +332,8 @@ end
 function Base.copy(a::ExtendedIndexRange)
   ExtendedIndexRange(
     copy(a.part),
-    copy(a.ngids),
     copy(a.lid_to_gid),
     copy(a.lid_to_part),
-    copy(a.gid_to_part),
     copy(a.oid_to_lid),
     copy(a.hid_to_lid),
     copy(a.lid_to_ohid),
@@ -359,10 +342,8 @@ end
 
 struct IndexRange <: AbstractIndexSet
   part::Int
-  ngids::Int
   lid_to_gid::LidToGid
   lid_to_part::LidToPart
-  gid_to_part::GidToPart{Int,Vector{Int}}
   oid_to_lid::UnitRange{Int32}
   hid_to_lid::Vector{Int32}
   lid_to_ohid::LidToOHId
@@ -372,10 +353,8 @@ end
 function Base.copy(a::IndexRange)
   IndexRange(
     copy(a.part),
-    copy(a.ngids),
     copy(a.lid_to_gid),
     copy(a.lid_to_part),
-    copy(a.gid_to_part),
     copy(a.oid_to_lid),
     copy(a.hid_to_lid),
     copy(a.lid_to_ohid),
@@ -384,22 +363,15 @@ end
 
 function IndexRange(
   part::Integer,
-  ngids::Integer,
-  part_to_firstgid::Vector{Int})
+  noids::Integer,
+  firstgid::Integer)
 
-  if part == length(part_to_firstgid)
-    gnext = ngids+1
-  else
-    gnext = part_to_firstgid[part+1]
-  end
-  noids = gnext - part_to_firstgid[part]
-  offset = part_to_firstgid[part]-1
+  offset = firstgid-1
   oid_to_gid = Int(1+offset):Int(noids+offset)
   hid_to_gid = Int[]
   lid_to_gid = LidToGid(oid_to_gid,hid_to_gid)
   hid_to_part = Int32[]
   lid_to_part = LidToPart(noids,part,hid_to_part)
-  gid_to_part = GidToPart(Int(ngids),part_to_firstgid)
   oid_to_lid = Int32(1):Int32(noids)
   hid_to_lid = Int32[]
   nlids = Int(noids)
@@ -408,10 +380,8 @@ function IndexRange(
   gid_to_lid = GidToLid(oid_to_gid,oid_to_lid,gid_to_lid_for_ghost)
   IndexRange(
     part,
-    ngids,
     lid_to_gid,
     lid_to_part,
-    gid_to_part,
     oid_to_lid,
     hid_to_lid,
     lid_to_ohid,

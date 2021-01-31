@@ -2,7 +2,7 @@
 get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
 
-struct MPIBackend <: Backend end
+struct MPIBackend <: AbstractBackend end
 
 const mpi = MPIBackend()
 
@@ -18,7 +18,7 @@ function get_part_ids(b::MPIBackend,nparts::Tuple)
   MPIData(get_part_id(comm),comm,nparts)
 end
 
-function distributed_run(driver::Function,b::MPIBackend,nparts)
+function prun(driver::Function,b::MPIBackend,nparts)
   MPI.Init()
   #try 
     part = get_part_ids(b,nparts)
@@ -28,7 +28,7 @@ function distributed_run(driver::Function,b::MPIBackend,nparts)
   #end
 end
 
-struct MPIData{T,N} <: PData{T,N}
+struct MPIData{T,N} <: AbstractPData{T,N}
   part::T
   comm::MPI.Comm
   size::NTuple{N,Int}

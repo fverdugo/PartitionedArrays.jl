@@ -12,7 +12,8 @@ This package provides a data-oriented parallel implementation of partitioned vec
 At this moment, a simple FD or FE system can be assembled and solved in parallel with this package together with a Conjugate Gradient method from `IterativeSolvers.jl` . See the files [test_fdm.jl]( https://github.com/fverdugo/PartitionedArrays.jl/blob/master/test/test_fdm.jl) and [test_fem_sa.jl](https://github.com/fverdugo/PartitionedArrays.jl/blob/master/test/test_fem_sa.jl).
 
 These basic types are currently implemented:
-- `PData`: The low level type representing some data partitioned over several chunks or parts. This is the core component of the data-oriented parallel implementation.
+- `AbstractBackend`: Abstract type to be specialized for different execution models. Now, this package provides `SequentialBackend` and `MPIBackend`.
+- `AbstractPData`: The low level abstract type representing some data partitioned over several chunks or parts. This is the core component of the data-oriented parallel implementation. Now, this package provides `SequentialData` and `MPIData`.
 - `PRange`: A specialization of `AbstractUnitRange` that has information about how the ids in the range are partitioned in different chunks. This type is used to describe the parallel data layout of rows and cols in `PVector` and `PSparseMatrix` objects.
 - `PVector`: A vector partitioned in (overlapping or non-overlapping) chunks.
 - `PSparseMatrix`: A sparse matrix partitioned in (overlapping or non-overlapping) chunks of rows.

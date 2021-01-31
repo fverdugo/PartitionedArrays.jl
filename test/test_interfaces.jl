@@ -170,13 +170,13 @@ function test_interfaces(parts)
 
   partition = map_parts(parts) do part
     if part == 1
-      IndexSet(part,n,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
+      IndexSet(part,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
     elseif part == 2
-      IndexSet(part,n,[2,4,5,10],Int32[1,2,2,4])
+      IndexSet(part,[2,4,5,10],Int32[1,2,2,4])
     elseif part == 3
-      IndexSet(part,n,[6,7,8,5,4,10],Int32[3,3,3,2,2,4])
+      IndexSet(part,[6,7,8,5,4,10],Int32[3,3,3,2,2,4])
     else
-      IndexSet(part,n,[1,3,7,9,10],Int32[1,1,3,4,4])
+      IndexSet(part,[1,3,7,9,10],Int32[1,1,3,4,4])
     end
   end
 
@@ -264,11 +264,9 @@ function test_interfaces(parts)
   @test ids.exchanger !== ids2.exchanger
 
   map_parts(ids.partition) do partition
-    @test partition.ngids == n
     @test get_part(partition) == partition.part
     @test get_lid_to_gid(partition) == partition.lid_to_gid
     @test get_lid_to_part(partition) == partition.lid_to_part
-    @test get_gid_to_part(partition) == partition.gid_to_part
     @test get_oid_to_lid(partition) == partition.oid_to_lid
     @test get_hid_to_lid(partition) == partition.hid_to_lid
     @test get_lid_to_ohid(partition) == partition.lid_to_ohid
@@ -309,7 +307,7 @@ function test_interfaces(parts)
     end
   end
   ids5 = PRange(parts,a)
-  map_parts(parts,ids5.partition) do part, ids5
+  map_parts(parts,ids5.partition,ids5.gid_to_part) do part, ids5, gid_to_part
     if part == 1
       @test ids5.lid_to_gid == [1, 2, 3, 4]
     elseif part == 2
@@ -319,7 +317,7 @@ function test_interfaces(parts)
     else
       @test ids5.lid_to_gid == [13, 14, 15]
     end
-    @test ids5.gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
+    @test gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
   end
   ids5 = PRange(parts,reduce(+,a,init=0),a)
 
@@ -328,7 +326,7 @@ function test_interfaces(parts)
     ids4 = PRange(parts,(5,4))
     @test ids4.ghost == false
     @test num_gids(ids4) == 4*5
-    map_parts(parts,ids4.partition) do part, ids4
+    map_parts(parts,ids4.partition,ids4.gid_to_part) do part, ids4, gid_to_part
       if part == 1
         @test ids4.lid_to_gid == [1, 2, 6, 7]
       elseif part == 2
@@ -338,7 +336,7 @@ function test_interfaces(parts)
       else
         @test ids4.lid_to_gid == [13, 14, 15, 18, 19, 20]
       end
-      @test ids4.gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
+      @test gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
     end
 
     pcis = PCartesianIndices(parts,(5,4))
@@ -370,7 +368,7 @@ function test_interfaces(parts)
 
     ids4 = PRange(parts,(5,4),no_ghost)
     ids4 = PRange(parts,(5,4),with_ghost)
-    map_parts(parts,ids4.partition) do part, ids4
+    map_parts(parts,ids4.partition,ids4.gid_to_part) do part, ids4,gid_to_part
       if part == 1
         @test ids4.lid_to_gid == [1, 2, 3, 6, 7, 8, 11, 12, 13]
       elseif part == 2
@@ -380,7 +378,7 @@ function test_interfaces(parts)
       else
         @test ids4.lid_to_gid == [7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20]
       end
-      @test ids4.gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
+      @test gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
     end
     @test ids4.ghost = true
 
@@ -419,6 +417,10 @@ function test_interfaces(parts)
 
   w .= v .- u
   w .= v .- 1 .- u
+  w .= u
+  map_parts(w.values,u.values) do w,u
+    @test w == u
+  end
 
   u = PVector(1.0,ids2)
   w = PVector(3.0,ids3)
@@ -439,6 +441,10 @@ function test_interfaces(parts)
 
   w .= v .- u
   w .= v .- 1 .- u
+  w .= u
+  map_parts(w.owned_values,u.owned_values) do w,u
+    @test w == u
+  end
 
   map_parts(parts,local_view(v,v.rows)) do part,v
     if part == 3
@@ -502,6 +508,7 @@ function test_interfaces(parts)
 
 
   A = PSparseMatrix(values,rows,cols)
+  A = PSparseMatrix(values,rows,cols,A.exchanger)
   mul!(b,A,x)
 
   map_parts(b.owned_values) do values
@@ -536,17 +543,12 @@ function test_interfaces(parts)
   y = A*x
   dy = y - y
 
-  P = Jacobi(A)
-  x = P\y
-
   y = PVector(1.0,A.rows)
   x = IterativeSolvers.cg(A,y)
-  x = IterativeSolvers.cg(A,y,Pl=P)
 
   x = PVector(0.0,A.cols)
   IterativeSolvers.cg!(x,A,y)
   fill!(x,0.0)
-  IterativeSolvers.cg!(x,A,y,Pl=P)
 
 end
 
