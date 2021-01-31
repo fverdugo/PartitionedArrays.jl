@@ -2053,63 +2053,6 @@ for op in (:+,:-)
   end
 end
 
-# This structs implements the same methods as the Identity preconditioner
-# in the IterativeSolvers package.
-struct Jacobi{T,A,B,C}
-  diaginv::A
-  rows::B
-  cols::C
-  function Jacobi(
-    diaginv::AbstractPData{<:AbstractVector{T}},
-    rows::PRange,
-    cols::PRange) where T
-
-    A = typeof(diaginv)
-    B = typeof(rows)
-    C = typeof(cols)
-    new{T,A,B,C}(diaginv,rows,cols)
-  end
-end
-
-function Jacobi(a::PSparseMatrix)
-  diaginv = map_parts(a.values,a.rows.partition,a.cols.partition) do values, rlids, clids
-    @assert num_oids(rlids) == num_oids(clids)
-    @notimplementedif rlids.oid_to_lid != clids.oid_to_lid
-    ldiag = collect(diag(values))
-    odiag = ldiag[rlids.oid_to_lid]
-    diaginv = inv.(odiag)
-  end
-  Jacobi(diaginv,a.rows,a.cols)
-end
-
-function LinearAlgebra.ldiv!(
-  c::PVector,
-  a::Jacobi,
-  b::PVector)
-
-  @check oids_are_equal(c.rows,a.cols)
-  @check oids_are_equal(b.rows,a.rows)
-  map_parts(c.owned_values,a.diaginv,b.owned_values) do c,diaginv,b
-    for oid in 1:length(b)
-      c[oid] = diaginv[oid]*b[oid]
-    end
-  end
-  c
-end
-
-function LinearAlgebra.ldiv!(
-  a::Jacobi,
-  b::PVector)
-  ldiv!(b,a,b)
-end
-
-function Base.:\(a::Jacobi{Ta},b::PVector{Tb}) where {Ta,Tb}
-  T = typeof(zero(Ta)/one(Tb)+zero(Ta)/one(Tb))
-  c = PVector{T}(undef,a.cols)
-  ldiv!(c,a,b)
-  c
-end
-
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)

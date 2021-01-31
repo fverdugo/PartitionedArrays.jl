@@ -81,7 +81,6 @@ export assemble!
 export PSparseMatrix
 export nzindex
 export nziterator
-export Jacobi
 export PTimer
 export tic!
 export toc!

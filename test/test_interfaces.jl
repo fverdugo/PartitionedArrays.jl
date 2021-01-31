@@ -534,17 +534,12 @@ function test_interfaces(parts)
   y = A*x
   dy = y - y
 
-  P = Jacobi(A)
-  x = P\y
-
   y = PVector(1.0,A.rows)
   x = IterativeSolvers.cg(A,y)
-  x = IterativeSolvers.cg(A,y,Pl=P)
 
   x = PVector(0.0,A.cols)
   IterativeSolvers.cg!(x,A,y)
   fill!(x,0.0)
-  IterativeSolvers.cg!(x,A,y,Pl=P)
 
 end
 
