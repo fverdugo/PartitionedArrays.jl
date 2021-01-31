@@ -475,28 +475,20 @@ end
 
 abstract type AbstractIndexSet end
 
-num_gids(a::AbstractIndexSet) = a.ngids
 num_lids(a::AbstractIndexSet) = length(a.lid_to_part)
 num_oids(a::AbstractIndexSet) = length(a.oid_to_lid)
 num_hids(a::AbstractIndexSet) = length(a.hid_to_lid)
 get_part(a::AbstractIndexSet) = a.part
 get_lid_to_gid(a::AbstractIndexSet) = a.lid_to_gid
 get_lid_to_part(a::AbstractIndexSet) = a.lid_to_part
-get_gid_to_part(a::AbstractIndexSet) = a.gid_to_part
 get_oid_to_lid(a::AbstractIndexSet) = a.oid_to_lid
 get_hid_to_lid(a::AbstractIndexSet) = a.hid_to_lid
 get_lid_to_ohid(a::AbstractIndexSet) = a.lid_to_ohid
 get_gid_to_lid(a::AbstractIndexSet) = a.gid_to_lid
 
-#function AbstractIndexSet(a::AbstractIndexSet,xid_to_lid::AbstractVector)
-#  xid_to_gid = a.lid_to_gid[xid_to_lid]
-#  xid_to_part = a.lid_to_part[xid_to_lid]
-#  AbstractIndexSet(a.part,a.ngids,xid_to_gid,xid_to_part,a.gid_to_part)
-#end
-
-function add_gid!(a::AbstractIndexSet,gid::Integer)
+function add_gid!(a::AbstractIndexSet,gid_to_part::AbstractArray,gid::Integer)
   if !haskey(a.gid_to_lid,gid)
-    part = a.gid_to_part[gid]
+    part = gid_to_part[gid]
     lid = Int32(num_lids(a)+1)
     hid = Int32(num_hids(a)+1)
     push!(a.lid_to_gid,gid)
@@ -767,22 +759,26 @@ function _table_lids_snd(lids_snd,tptrs)
 end
 
 # mutable is needed to correctly implement add_gid!
-mutable struct PRange{A,B} <: AbstractUnitRange{Int}
+mutable struct PRange{A,B,C} <: AbstractUnitRange{Int}
   ngids::Int
   partition::A
+  gid_to_part::B
   ghost::Bool
-  exchanger::B
+  exchanger::C
   function PRange(
     ngids::Integer,
     partition::PData{<:AbstractIndexSet},
+    gid_to_part::Union{PData{<:AbstractArray{<:Integer}},Nothing},
     ghost::Bool,
     exchanger::Exchanger)
   
     A = typeof(partition)
-    B = typeof(exchanger)
-    new{A,B}(
+    B = typeof(gid_to_part)
+    C = typeof(exchanger)
+    new{A,B,C}(
       ngids,
       partition,
+      gid_to_part,
       ghost,
       exchanger)
   end
@@ -792,6 +788,7 @@ function Base.copy(a::PRange)
   PRange(
     copy(a.ngids),
     copy(a.partition),
+    a.gid_to_part===nothing ? nothing : copy(a.gid_to_part),
     copy(a.ghost),
     copy(a.exchanger))
 end
@@ -799,10 +796,11 @@ end
 function PRange(
   ngids::Integer,
   partition::PData{<:AbstractIndexSet},
+  gid_to_part::Union{PData{<:AbstractArray{<:Integer}},Nothing}=nothing,
   ghost::Bool=true)
 
   exchanger =  ghost ? Exchanger(partition) : empty_exchanger(partition)
-  PRange(ngids,partition,ghost,exchanger)
+  PRange(ngids,partition,gid_to_part,ghost,exchanger)
 end
 
 Base.first(a::PRange) = 1
@@ -813,17 +811,20 @@ num_parts(a::PRange) = num_parts(a.partition)
 
 function PRange(parts::PData{<:Integer},ngids::Integer)
   np = num_parts(parts)
-  partition = map_parts(parts) do part
+  partition, gid_to_part = map_parts(parts) do part
     oid_to_gid = _oid_to_gid(ngids,np,part)
     noids = length(oid_to_gid)
     part_to_firstgid = _part_to_firstgid(ngids,np)
-    IndexRange(
+    firstgid = first(oid_to_gid)
+    partition = IndexRange(
       part,
-      ngids,
-      part_to_firstgid)
+      noids,
+      firstgid)
+    gid_to_part = LinearGidToPart(ngids,part_to_firstgid)
+    partition, gid_to_part
   end
   ghost = false
-  PRange(ngids,partition,ghost)
+  PRange(ngids,partition,gid_to_part,ghost)
 end
 
 function PRange(
@@ -841,24 +842,27 @@ function PRange(
   parts::PData{<:Integer},
   ngids::Integer,
   noids::PData{<:Integer})
-  firstgids = xscan_all(+,noids,init=1)
-  PRange(parts,ngids,noids,firstgids)
+  part_to_firstgid = xscan_all(+,noids,init=1)
+  PRange(parts,ngids,noids,part_to_firstgid)
 end
 
 function PRange(
   parts::PData{<:Integer},
   ngids::Integer,
   noids::PData{<:Integer},
-  firstgids::PData{<:AbstractVector{<:Integer}})
+  part_to_firstgid::PData{<:AbstractVector{<:Integer}})
 
-  partition = map_parts(parts,noids,firstgids) do part,noids,part_to_firstgid
-    IndexRange(
+  partition, gid_to_part = map_parts(parts,noids,part_to_firstgid) do part,noids,part_to_firstgid
+    firstgid = part_to_firstgid[part]
+    partition = IndexRange(
       part,
-      ngids,
-      part_to_firstgid)
+      noids,
+      firstgid)
+    gid_to_part = LinearGidToPart(ngids,part_to_firstgid)
+    partition, gid_to_part
   end
   ghost = false
-  PRange(ngids,partition,ghost)
+  PRange(ngids,partition,gid_to_part,ghost)
 end
 
 function PRange(
@@ -866,25 +870,24 @@ function PRange(
   ngids::NTuple{N,<:Integer}) where N
 
   np = size(parts)
-  partition = map_parts(parts) do part
+  partition, gid_to_part = map_parts(parts) do part
     gids = _oid_to_gid(ngids,np,part)
     lid_to_gid = gids
     lid_to_part = fill(Int32(part),length(gids))
     oid_to_lid = collect(Int32(1):Int32(length(gids)))
     hid_to_lid = collect(Int32(1):Int32(0))
     part_to_firstgid = _part_to_firstgid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_firstgid)
-    IndexSet(
+    gid_to_part = CartesianGidToPart(ngids,part_to_firstgid)
+    partition = IndexSet(
       part,
-      prod(ngids),
       lid_to_gid,
       lid_to_part,
-      gid_to_part,
       oid_to_lid,
       hid_to_lid)
+    partition, gid_to_part
   end
   ghost = false
-  PRange(prod(ngids),partition,ghost)
+  PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
 function PCartesianIndices(
@@ -913,7 +916,7 @@ function PRange(
   ::WithGhost) where N
 
   np = size(parts)
-  partition = map_parts(parts) do part
+  partition, gid_to_part = map_parts(parts) do part
     cp = Tuple(CartesianIndices(np)[part])
     d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp)
     lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
@@ -922,18 +925,17 @@ function PRange(
     oid_to_lid = collect(Int32,findall(lid_to_part .== part))
     hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
     part_to_firstgid = _part_to_firstgid(ngids,np)
-    gid_to_part = GidToPart(ngids,part_to_firstgid)
-    IndexSet(
+    gid_to_part = CartesianGidToPart(ngids,part_to_firstgid)
+    partition = IndexSet(
       part,
-      prod(ngids),
       lid_to_gid,
       lid_to_part,
-      gid_to_part,
       oid_to_lid,
       hid_to_lid)
+    partition, gid_to_part
   end
   ghost = true
-  PRange(prod(ngids),partition,ghost)
+  PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
 function PRange(
@@ -1078,9 +1080,15 @@ function _part_to_firstgid(ngids::Tuple,np::Tuple)
 end
 
 function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  map_parts(a.partition,gids) do partition,gids
+  if a.gid_to_part === nothing
+    msg = """ The given PRange object has not enough information to perform this operation.
+    Make sure that you have built the PRange object with a suitable `gid_to_part`.
+    """
+    throw(DomainError(a,msg))
+  end
+  map_parts(a.partition,a.gid_to_part,gids) do partition,gid_to_part,gids
     for gid in gids
-      add_gid!(partition,gid)
+      add_gid!(partition,gid_to_part,gid)
     end
   end
   a.exchanger = Exchanger(a.partition)
@@ -1089,8 +1097,7 @@ function add_gid!(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
 end
 
 function add_gid(a::PRange,gids::PData{<:AbstractArray{<:Integer}})
-  partition = map_parts(copy,a.partition)
-  b = PRange(a.ngids,partition)
+  b = copy(a)
   add_gid!(b,gids)
   b
 end
@@ -1433,8 +1440,9 @@ end
 
 function global_view(a::PVector,rows::PRange)
   @notimplementedif a.rows !== rows
+  n = length(rows)
   map_parts(a.values,a.rows.partition) do values, partition
-    GlobalView(values,(partition.gid_to_lid,),(partition.ngids,))
+    GlobalView(values,(partition.gid_to_lid,),(n,))
   end
 end
 
@@ -1761,8 +1769,10 @@ end
 function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)
   @notimplementedif a.rows !== rows
   @notimplementedif a.cols !== cols
+  nrows = length(rows)
+  ncols = length(cols)
   map_parts(a.values,a.rows.partition,a.cols.partition) do values,rlids,clids
-    GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(rlids.ngids,clids.ngids))
+    GlobalView(values,(rlids.gid_to_lid,clids.gid_to_lid),(nrows,ncols))
   end
 end
 
