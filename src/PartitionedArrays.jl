@@ -8,7 +8,7 @@ import IterativeSolvers
 
 export Backend
 export distributed_run
-export PData
+export AbstractPData
 export SequentialData
 export MPIData
 export num_parts

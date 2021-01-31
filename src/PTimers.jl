@@ -16,7 +16,7 @@ mutable struct PTimer{A,B<:Dict}
   current::Timing
 end
 
-function PTimer(parts::PData{<:Integer})
+function PTimer(parts::AbstractPData{<:Integer})
   current = Timing()
   timing = map_parts(p->current,parts)
   T = typeof(timing)
