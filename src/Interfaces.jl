@@ -1057,16 +1057,16 @@ function _id_tensor_product(::Type{T},d_to_dlid_to_gdid::Tuple,d_to_ngdids::Tupl
   llis = LinearIndices(d_to_nldids)
   glis = LinearIndices(d_to_ngdids)
   D = length(d_to_ngdids)
-  gci = zeros(T,D)
+  d = ntuple(identity,Val{D}())
   lid_to_gid = zeros(T,length(lcis))
   for lci in lcis
-    for d in 1:D
+    gci = map(d) do d
       ldid = lci[d]
       gdid = d_to_dlid_to_gdid[d][ldid]
-      gci[d] = gdid
+      gdid
     end
     lid = llis[lci]
-    lid_to_gid[lid] = glis[CartesianIndex(Tuple(gci))]
+    lid_to_gid[lid] = glis[CartesianIndex(gci)]
   end
   lid_to_gid
 end
