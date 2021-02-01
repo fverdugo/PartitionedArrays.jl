@@ -1,16 +1,16 @@
 
-struct LidToOHId <: AbstractVector{Int32}
-  nlids::Base.RefValue{Int}
+mutable struct LidToOHId <: AbstractVector{Int32}
+  nlids::Int
   noids::Int32
 end
 
 function Base.copy(a::LidToOHId)
   LidToOHId(
-    Ref(copy(a.nlids[])),
+    copy(a.nlids),
     copy(a.noids))
 end
 
-Base.size(a::LidToOHId) = (a.nlids[],)
+Base.size(a::LidToOHId) = (a.nlids,)
 Base.IndexStyle(::Type{<:LidToOHId}) = IndexLinear()
 
 @inline function Base.getindex(a::LidToOHId,lid::Integer)
@@ -32,7 +32,7 @@ end
       throw(DomainError(ohid))
     end
   end
-  a.nlids[] += 1
+  a.nlids += 1
   a
 end
 
@@ -375,8 +375,40 @@ function IndexRange(
   oid_to_lid = Int32(1):Int32(noids)
   hid_to_lid = Int32[]
   nlids = Int(noids)
-  lid_to_ohid = LidToOHId(Ref(nlids),Int32(noids))
+  lid_to_ohid = LidToOHId(nlids,Int32(noids))
   gid_to_lid_for_ghost = Dict{Int,Int32}()
+  gid_to_lid = GidToLid(oid_to_gid,oid_to_lid,gid_to_lid_for_ghost)
+  IndexRange(
+    part,
+    lid_to_gid,
+    lid_to_part,
+    oid_to_lid,
+    hid_to_lid,
+    lid_to_ohid,
+    gid_to_lid)
+end
+
+function IndexRange(
+  part::Integer,
+  noids::Integer,
+  firstgid::Integer,
+  hid_to_gid::Vector{Int},
+  hid_to_part::Vector{Int32})
+
+  offset = firstgid-1
+  oid_to_gid = Int(1+offset):Int(noids+offset)
+  lid_to_gid = LidToGid(oid_to_gid,hid_to_gid)
+  lid_to_part = LidToPart(noids,part,hid_to_part)
+  oid_to_lid = Int32(1):Int32(noids)
+  nhids = length(hid_to_part)
+  hid_to_lid = collect(Int32, (1:nhids) .+ noids )
+  gid_to_lid_for_ghost = Dict{Int,Int32}()
+  for (hid,gid) in enumerate(hid_to_gid)
+    lid = hid + noids
+    gid_to_lid_for_ghost[gid] = lid
+  end
+  nlids = Int(noids+nhids)
+  lid_to_ohid = LidToOHId(nlids,Int32(noids))
   gid_to_lid = GidToLid(oid_to_gid,oid_to_lid,gid_to_lid_for_ghost)
   IndexRange(
     part,
