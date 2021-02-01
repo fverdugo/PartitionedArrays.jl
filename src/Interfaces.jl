@@ -969,8 +969,7 @@ function PRange(
     partition, gid_to_part
   end
   ghost = false
-  exchanger = Exchanger(partition;reuse_parts_rcv=true)
-  PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
+  PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
 
@@ -1019,7 +1018,8 @@ function PRange(
     partition, gid_to_part
   end
   ghost = true
-  PRange(prod(ngids),partition,gid_to_part,ghost)
+  exchanger = Exchanger(partition;reuse_parts_rcv=true)
+  PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
 end
 
 function PRange(
