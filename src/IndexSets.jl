@@ -171,7 +171,7 @@ function Base.iterate(a::GidToLid,(itr,state))
   item[1]=>item[2], (itr,state)
 end
 
-struct LinearGidToPart <:AbstractVector{Int}
+struct LinearGidToPart <:AbstractVector{Int32}
   ngids::Int
   part_to_firstgid::Vector{Int}
 end
@@ -189,10 +189,10 @@ function Base.getindex(a::LinearGidToPart,gid::Integer)
       throw(BoundsError(a,gid))
     end
   end
-  searchsortedlast(a.part_to_firstgid,gid)
+  Int32(searchsortedlast(a.part_to_firstgid,gid))
 end
 
-struct CartesianGidToPart{N} <: AbstractVector{Int}
+struct CartesianGidToPart{N} <: AbstractVector{Int32}
   ngids::NTuple{N,Int}
   part_to_firstgid::NTuple{N,Vector{Int}}
 end
@@ -209,7 +209,7 @@ function Base.getindex(a::CartesianGidToPart,gid::Integer)
   cpart = map(searchsortedlast,a.part_to_firstgid,cgid)
   nparts = map(length,a.part_to_firstgid)
   part = LinearIndices(nparts)[CartesianIndex(cpart)]
-  part
+  Int32(part)
 end
 
 struct IndexSet <: AbstractIndexSet

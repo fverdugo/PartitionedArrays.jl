@@ -38,6 +38,23 @@ ids.gid_to_lid[49] = 22
 @test !haskey(ids.gid_to_lid,31)
 @test length(collect(ids.gid_to_lid)) == 22
 
+hid_to_gid = [48,49]
+hid_to_part = Int32[3,3]
+ids = IndexRange(part,noids,firstgid,hid_to_gid,hid_to_part)
+@test ids.part == part
+@test ids.lid_to_gid == vcat(collect(11:30),[48,49])
+@test ids.lid_to_part == vcat(fill(part,20),[3,3])
+@test ids.hid_to_lid == Int32[21,22]
+@test ids.lid_to_ohid == vcat(collect(1:20),[-1,-2])
+@test haskey(ids.gid_to_lid,49)
+@test haskey(ids.gid_to_lid,48)
+@test haskey(ids.gid_to_lid,12)
+@test haskey(ids.gid_to_lid,30)
+@test haskey(ids.gid_to_lid,11)
+@test !haskey(ids.gid_to_lid,10)
+@test !haskey(ids.gid_to_lid,31)
+@test length(collect(ids.gid_to_lid)) == 22
+
 lid_to_gid = collect(ids.lid_to_gid)
 lid_to_part = collect(ids.lid_to_part)
 ids = ExtendedIndexRange(part,lid_to_gid,lid_to_part,firstgid)

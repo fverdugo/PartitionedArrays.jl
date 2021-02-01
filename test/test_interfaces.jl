@@ -290,7 +290,11 @@ function test_interfaces(parts)
     end
   end
 
-  ids3 = add_gid(ids2,gids)
+  i_to_part = map_parts(getindex,ids2.gid_to_part,gids)
+  ids3 = add_gids(ids2,gids,i_to_part)
+  @test ids3.ghost == true
+
+  ids3 = add_gids(ids2,gids)
   @test ids3.ghost == true
   to_lid!(gids,ids3)
   to_gid!(gids,ids3)
@@ -320,6 +324,12 @@ function test_interfaces(parts)
     @test gid_to_part == [1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4]
   end
   ids5 = PRange(parts,reduce(+,a,init=0),a)
+  ids5 = PRange(parts,reduce(+,a,init=0),a,xscan(+,a,init=1))
+
+  hid_to_gid, hid_to_part = map_parts(parts) do part
+    Int[], Int32[]
+  end
+  ids5 = PRange(parts,reduce(+,a,init=0),a,xscan(+,a,init=1),hid_to_gid,hid_to_part)
 
   if ndims(parts) > 1
 

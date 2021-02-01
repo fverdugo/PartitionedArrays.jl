@@ -69,8 +69,9 @@ export WithGhost
 export with_ghost
 export NoGhost
 export no_ghost
-export add_gid
 export add_gid!
+export add_gids
+export add_gids!
 export to_lid!
 export to_gid!
 export PCartesianIndices

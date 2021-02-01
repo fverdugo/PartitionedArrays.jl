@@ -69,7 +69,7 @@ function test_fem_sa(parts)
   cols = PRange(parts,ns.+1)
 
   # Add remote row gids to the rows ghost layer
-  add_gid!(rows,I)
+  add_gids!(rows,I)
 
   # Start an assembly of the COO Vectors,
   # i.e., send and add the triplets (i,j,v) to the part that owns i.
@@ -104,7 +104,7 @@ function test_fem_sa(parts)
   map_parts(wait∘schedule,t)
 
   # Now we can add off processor col ids to the ghost layer of cols.
-  add_gid!(cols,J)
+  add_gids!(cols,J)
 
   # Compress the coo vectors and build the matrix
   A = PSparseMatrix(I,J,V,rows,cols,ids=:global)

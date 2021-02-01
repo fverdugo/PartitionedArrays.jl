@@ -80,10 +80,10 @@ function test_fdm(parts)
     I,J,V
   end
 
-  # TODO fill b and x̂ while add_gid is communicating values.
+  # TODO fill b and x̂ while add_gids is communicating values.
 
   # Build a PRange taking the owned ids in rows plus ghost ids from the touched cols
-  cols = add_gid(rows,J)
+  cols = add_gids(rows,J)
 
   # Now we can convert J to local numbering, I is already in local numbering.
   to_lid!(J,cols)

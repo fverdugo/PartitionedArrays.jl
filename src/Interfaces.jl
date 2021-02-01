@@ -486,16 +486,52 @@ get_hid_to_lid(a::AbstractIndexSet) = a.hid_to_lid
 get_lid_to_ohid(a::AbstractIndexSet) = a.lid_to_ohid
 get_gid_to_lid(a::AbstractIndexSet) = a.gid_to_lid
 
-function add_gid!(a::AbstractIndexSet,gid_to_part::AbstractArray,gid::Integer)
+function add_gid!(a::AbstractIndexSet,gid::Integer,part::Integer)
+  if (part != a.part) && (!haskey(a.gid_to_lid,gid))
+    _add_gid_ghost!(a,gid,part)
+  end
+  a
+end
+
+function add_gid!(gid_to_part::AbstractArray,a::AbstractIndexSet,gid::Integer)
   if !haskey(a.gid_to_lid,gid)
     part = gid_to_part[gid]
-    lid = Int32(num_lids(a)+1)
-    hid = Int32(num_hids(a)+1)
-    push!(a.lid_to_gid,gid)
-    push!(a.lid_to_part,part)
-    push!(a.hid_to_lid,lid)
-    push!(a.lid_to_ohid,-hid)
-    a.gid_to_lid[gid] = lid
+    _add_gid_ghost!(a,gid,part)
+  end
+  a
+end
+
+@inline function _add_gid_ghost!(a,gid,part)
+  lid = Int32(num_lids(a)+1)
+  hid = Int32(num_hids(a)+1)
+  push!(a.lid_to_gid,gid)
+  push!(a.lid_to_part,part)
+  push!(a.hid_to_lid,lid)
+  push!(a.lid_to_ohid,-hid)
+  a.gid_to_lid[gid] = lid
+end
+
+#TODO use resize + setindex instead of push! when possible
+function add_gids!(
+  a::AbstractIndexSet,
+  i_to_gid::AbstractVector{<:Integer},
+  i_to_part::AbstractVector{<:Integer})
+
+  for i in 1:length(i_to_gid)
+    gid = i_to_gid[i]
+    part = i_to_part[i]
+    add_gid!(a,gid,part)
+  end
+  a
+end
+
+function add_gids!(
+  gid_to_part::AbstractArray,
+  a::AbstractIndexSet,
+  gids::AbstractVector{<:Integer})
+
+  for gid in gids
+    add_gid!(gid_to_part,a,gid)
   end
   a
 end
@@ -555,7 +591,7 @@ function Base.copy(a::Exchanger)
     copy(a.lids_snd))
 end
 
-function Exchanger(ids::AbstractPData{<:AbstractIndexSet},neighbors=nothing)
+function Exchanger(ids::AbstractPData{<:AbstractIndexSet},neighbors=nothing;reuse_parts_rcv=false)
 
   parts = get_part_ids(ids)
 
@@ -595,7 +631,11 @@ function Exchanger(ids::AbstractPData{<:AbstractIndexSet},neighbors=nothing)
     lids_rcv, gids_rcv
   end
 
-  parts_snd = discover_parts_snd(parts_rcv,neighbors)
+  if reuse_parts_rcv
+    parts_snd = parts_rcv
+  else
+    parts_snd = discover_parts_snd(parts_rcv,neighbors)
+  end
 
   gids_snd = exchange(gids_rcv,parts_snd,parts_rcv)
 
@@ -758,7 +798,7 @@ function _table_lids_snd(lids_snd,tptrs)
   k_snd
 end
 
-# mutable is needed to correctly implement add_gid!
+# mutable is needed to correctly implement add_gids!
 mutable struct PRange{A,B,C} <: AbstractUnitRange{Int}
   ngids::Int
   partition::A
@@ -866,6 +906,48 @@ function PRange(
 end
 
 function PRange(
+  parts::AbstractPData{<:Integer},
+  ngids::Integer,
+  noids::AbstractPData{<:Integer},
+  firstgid::AbstractPData{<:Integer})
+
+  partition = map_parts(parts,noids,firstgid) do part,noids,firstgid
+    IndexRange(
+      part,
+      noids,
+      firstgid)
+  end
+  ghost = false
+  gid_to_part = nothing
+  PRange(ngids,partition,gid_to_part,ghost)
+end
+
+function PRange(
+  parts::AbstractPData{<:Integer},
+  ngids::Integer,
+  noids::AbstractPData{<:Integer},
+  firstgid::AbstractPData{<:Integer},
+  hid_to_gid::AbstractPData{Vector{Int}},
+  hid_to_part::AbstractPData{Vector{Int32}},
+  neighbors=nothing;
+  kwargs...)
+
+  partition = map_parts(
+    parts,noids,firstgid,hid_to_gid,hid_to_part) do part,noids,firstgid,hid_to_gid,hid_to_part
+    IndexRange(
+      part,
+      noids,
+      firstgid,
+      hid_to_gid,
+      hid_to_part)
+  end
+  exchanger = Exchanger(partition,neighbors;kwargs...)
+  ghost = true
+  gid_to_part = nothing
+  PRange(ngids,partition,gid_to_part,ghost)
+end
+
+function PRange(
   parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer}) where N
 
@@ -887,8 +969,10 @@ function PRange(
     partition, gid_to_part
   end
   ghost = false
-  PRange(prod(ngids),partition,gid_to_part,ghost)
+  exchanger = Exchanger(partition;reuse_parts_rcv=true)
+  PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
 end
+
 
 function PCartesianIndices(
   parts::AbstractPData{<:Integer,N},
@@ -1079,26 +1163,41 @@ function _part_to_firstgid(ngids::Tuple,np::Tuple)
   map(_part_to_firstgid,ngids,np)
 end
 
-function add_gid!(a::PRange,gids::AbstractPData{<:AbstractArray{<:Integer}})
-  if a.gid_to_part === nothing
-    msg = """ The given PRange object has not enough information to perform this operation.
-    Make sure that you have built the PRange object with a suitable `gid_to_part`.
-    """
-    throw(DomainError(a,msg))
-  end
-  map_parts(a.partition,a.gid_to_part,gids) do partition,gid_to_part,gids
-    for gid in gids
-      add_gid!(partition,gid_to_part,gid)
-    end
-  end
-  a.exchanger = Exchanger(a.partition)
+function add_gids!(
+  a::PRange,
+  i_to_gid::AbstractPData{<:AbstractArray{<:Integer}},
+  i_to_part::AbstractPData{<:AbstractArray{<:Integer}},
+  neighbors=nothing;
+  kwargs...)
+
+  map_parts(add_gids!,a.partition,i_to_gid,i_to_part)
+  a.exchanger = Exchanger(a.partition,neighbors;kwargs...)
   a.ghost = true
   a
 end
 
-function add_gid(a::PRange,gids::AbstractPData{<:AbstractArray{<:Integer}})
+function add_gids!(
+  a::PRange,
+  gids::AbstractPData{<:AbstractArray{<:Integer}},
+  neighbors=nothing;
+  kwargs...)
+
+  if a.gid_to_part === nothing
+    msg = """ The given PRange object has not enough information to perform this operation.
+    Make sure that you have built the PRange object with a suitable `gid_to_part`, or
+    explicitly provide the owner part of the given gids.
+    """
+    throw(DomainError(a,msg))
+  end
+  map_parts(add_gids!,a.gid_to_part,a.partition,gids)
+  a.exchanger = Exchanger(a.partition,neighbors;kwargs...)
+  a.ghost = true
+  a
+end
+
+function add_gids(a::PRange,args...;kwargs...)
   b = copy(a)
-  add_gid!(b,gids)
+  add_gids!(b,args...;kwargs...)
   b
 end
 
@@ -1373,7 +1472,7 @@ function PVector(
   @assert ids == :global
   parts = get_part_ids(I)
   rows = PRange(parts,n)
-  add_gid!(rows,I)
+  add_gids!(rows,I)
   PVector(init,I,V,rows;ids=ids)
 end
 
@@ -1625,8 +1724,8 @@ function PSparseMatrix(
   parts = get_part_ids(I)
   rows = PRange(parts,nrows)
   cols = PRange(parts,ncols)
-  add_gid!(rows,I)
-  add_gid!(cols,J)
+  add_gids!(rows,I)
+  add_gids!(cols,J)
   PSparseMatrix(init,I,J,V,rows,cols,args...;ids=ids)
 end
 
