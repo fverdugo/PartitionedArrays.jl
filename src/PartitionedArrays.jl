@@ -54,6 +54,7 @@ export num_hids
 export oids_are_equal
 export hids_are_equal
 export lids_are_equal
+export touch_hids
 export get_lid_to_gid
 export get_lid_to_part
 export get_oid_to_lid

@@ -536,6 +536,7 @@ function add_gids!(
   a
 end
 
+# TODO Rename to_lids!
 function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     gid = ids[i]
@@ -545,6 +546,7 @@ function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   ids
 end
 
+# TODO Rename to_gids!
 function to_gid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     lid = ids[i]
@@ -564,6 +566,35 @@ end
 
 function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   a.lid_to_gid == b.lid_to_gid
+end
+
+# The given ids are assumed to be a sub-set of the lids
+function touch_hids(a::IndexSet,gids::AbstractVector{<:Integer})
+  i = 0
+  hid_touched = zeros(false,num_hids(a))
+  for gid in gids
+    lid = a.gid_to_lid[gid]
+    ohid = a.lid_to_ohid[lid]
+    hid = - ohid
+    if ohid < 0 && !hid_touched[hid]
+      hid_touched[hid] = true
+      i += 1
+    end
+  end
+  i_to_hid = Vector{Int32}(undef,i)
+  i = 0
+  hid_touched .= false
+  for gid in gids
+    lid = a.gid_to_lid[gid]
+    ohid = a.lid_to_ohid[lid]
+    hid = - ohid
+    if ohid < 0 && !hid_touched[hid]
+      hid_touched[hid] = true
+      i += 1
+      i_to_hid[i] = hid
+    end
+  end
+  i_to_hid
 end
 
 struct Exchanger{B,C}
