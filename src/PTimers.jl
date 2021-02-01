@@ -76,6 +76,7 @@ function _print_on_main(io,data,linechars,format)
   if format == :REPL
     w = length(_nice_time(eps()))
     longest_name = maximum(map(i->length(i[1]),data))
+    longest_name = max(longest_name,length("Section"))
     _print_header(io,longest_name,w,linechars)
     for (name,d) in data
       _print_section(io,longest_name,name,d)
