@@ -89,6 +89,7 @@ export PTimer
 export tic!
 export toc!
 export print_timer
+export print_csv
 
 export SequentialBackend
 export sequential
