@@ -86,7 +86,7 @@ function test_fdm(parts)
   cols = add_gids(rows,J)
 
   # Now we can convert J to local numbering, I is already in local numbering.
-  to_lid!(J,cols)
+  to_lids!(J,cols)
 
   # Build the PSparseMatrix from the coo-vectors (in local numbering)
   # and the data distribution described by rows and cols.

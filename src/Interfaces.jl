@@ -536,8 +536,7 @@ function add_gids!(
   a
 end
 
-# TODO Rename to_lids!
-function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
+function to_lids!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     gid = ids[i]
     lid = a.gid_to_lid[gid]
@@ -546,8 +545,7 @@ function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   ids
 end
 
-# TODO Rename to_gids!
-function to_gid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
+function to_gids!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     lid = ids[i]
     gid = a.lid_to_gid[lid]
@@ -569,7 +567,7 @@ function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
 end
 
 # The given ids are assumed to be a sub-set of the lids
-function touch_hids(a::AbstractIndexSet,gids::AbstractVector{<:Integer})
+function touched_hids(a::AbstractIndexSet,gids::AbstractVector{<:Integer})
   i = 0
   hid_touched = fill(false,num_hids(a))
   for gid in gids
@@ -1003,11 +1001,11 @@ function PRange(
   PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
-function touch_hids(
+function touched_hids(
   a::PRange,
   gids::AbstractPData{<:AbstractVector{<:Integer}})
 
-  map_parts(touch_hids,a.partition,gids)
+  map_parts(touched_hids,a.partition,gids)
 end
 
 function PCartesianIndices(
@@ -1238,12 +1236,12 @@ function add_gids(a::PRange,args...;kwargs...)
   b
 end
 
-function to_lid!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
-  map_parts(to_lid!,ids,a.partition)
+function to_lids!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
+  map_parts(to_lids!,ids,a.partition)
 end
 
-function to_gid!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
-  map_parts(to_gid!,ids,a.partition)
+function to_gids!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
+  map_parts(to_gids!,ids,a.partition)
 end
 
 function oids_are_equal(a::PRange,b::PRange)
@@ -1475,7 +1473,7 @@ function PVector(
 
   @assert ids in (:global,:local)
   if ids == :global
-    to_lid!(I,rows)
+    to_lids!(I,rows)
   end
 
   values = map_parts(rows.partition,I,V) do partition,I,V
@@ -1736,8 +1734,8 @@ function PSparseMatrix(
 
   @assert ids in (:global,:local)
   if ids == :global
-    to_lid!(I,rows)
-    to_lid!(J,cols)
+    to_lids!(I,rows)
+    to_lids!(J,cols)
   end
 
   values = map_parts(I,J,V,rows.partition,cols.partition) do I,J,V,rlids,clids
@@ -2080,7 +2078,7 @@ function async_assemble!(
   parts_rcv = rows.exchanger.parts_rcv
   parts_snd = rows.exchanger.parts_snd
 
-  to_lid!(I,rows)
+  to_lids!(I,rows)
   coo_values = map_parts(tuple,I,J,V)
 
   function setup_rcv(part,parts_rcv,row_lids,coo_values)
@@ -2132,7 +2130,7 @@ function async_assemble!(
       wait(schedule(t2))
       wait(schedule(t3))
       k_li, k_gj, k_v = coo_values
-      to_gid!(k_li,row_lids)
+      to_gids!(k_li,row_lids)
       ptrs = gi_snd.ptrs
       for p in 1:length(gi_snd.data)
         gi = gi_snd.data[p]

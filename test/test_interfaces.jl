@@ -306,15 +306,15 @@ function test_interfaces(parts)
     end
   end
 
-  hids = touch_hids(ids3,gids2)
+  hids = touched_hids(ids3,gids2)
   map_parts(hids,gids2,ids3.partition) do hids, gids, ids3
     @test gids == ids3.lid_to_gid[ids3.hid_to_lid[hids]]
   end
 
   ids3 = add_gids(ids2,gids)
   @test ids3.ghost == true
-  to_lid!(gids,ids3)
-  to_gid!(gids,ids3)
+  to_lids!(gids,ids3)
+  to_gids!(gids,ids3)
 
   a = map_parts(parts) do part
     if part == 1
