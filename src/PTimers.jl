@@ -158,30 +158,19 @@ function _print_footer(io,longest_name,w,linechars)
 end
 
 function print_csv(
-  value::AbstractPData,
-  name::AbstractString,
-  args...;
-  kwargs...)
-
-  parts = get_part_ids(value)
-  map_parts(parts,value) do part, value
-    if part == MAIN
-      open(args...;kwargs...) do io
-       str = "\"$name\"; $value"
-       println(io,str)
-      end
-    end
-  end
-end
-
-function print_csv(
   parts::AbstractPData{<:Integer},
   value,
   name::AbstractString,
   args...;
   kwargs...)
 
-  pdata = map_parts(i->value,parts)
-  print_csv(pdata,name,args...;kwargs...)
+  map_parts(parts) do part
+    if part == MAIN
+      open(args...;kwargs...) do io
+        str = "\"$name\"; $value"
+        println(io,str)
+      end
+    end
+  end
 end
 
