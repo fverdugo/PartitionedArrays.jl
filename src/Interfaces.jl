@@ -501,6 +501,7 @@ function add_gid!(gid_to_part::AbstractArray,a::AbstractIndexSet,gid::Integer)
   a
 end
 
+#TODO use resize + setindex instead of push! when possible
 @inline function _add_gid_ghost!(a,gid,part)
   lid = Int32(num_lids(a)+1)
   hid = Int32(num_hids(a)+1)
@@ -511,7 +512,6 @@ end
   a.gid_to_lid[gid] = lid
 end
 
-#TODO use resize + setindex instead of push! when possible
 function add_gids!(
   a::AbstractIndexSet,
   i_to_gid::AbstractVector{<:Integer},
@@ -536,7 +536,7 @@ function add_gids!(
   a
 end
 
-function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
+function to_lids!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     gid = ids[i]
     lid = a.gid_to_lid[gid]
@@ -545,7 +545,7 @@ function to_lid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   ids
 end
 
-function to_gid!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
+function to_gids!(ids::AbstractArray{<:Integer},a::AbstractIndexSet)
   for i in eachindex(ids)
     lid = ids[i]
     gid = a.lid_to_gid[lid]
@@ -564,6 +564,35 @@ end
 
 function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   a.lid_to_gid == b.lid_to_gid
+end
+
+# The given ids are assumed to be a sub-set of the lids
+function touched_hids(a::AbstractIndexSet,gids::AbstractVector{<:Integer})
+  i = 0
+  hid_touched = fill(false,num_hids(a))
+  for gid in gids
+    lid = a.gid_to_lid[gid]
+    ohid = a.lid_to_ohid[lid]
+    hid = - ohid
+    if ohid < 0 && !hid_touched[hid]
+      hid_touched[hid] = true
+      i += 1
+    end
+  end
+  i_to_hid = Vector{Int32}(undef,i)
+  i = 0
+  hid_touched .= false
+  for gid in gids
+    lid = a.gid_to_lid[gid]
+    ohid = a.lid_to_ohid[lid]
+    hid = - ohid
+    if ohid < 0 && !hid_touched[hid]
+      hid_touched[hid] = true
+      i += 1
+      i_to_hid[i] = hid
+    end
+  end
+  i_to_hid
 end
 
 struct Exchanger{B,C}
@@ -969,10 +998,15 @@ function PRange(
     partition, gid_to_part
   end
   ghost = false
-  exchanger = Exchanger(partition;reuse_parts_rcv=true)
-  PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
+  PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
+function touched_hids(
+  a::PRange,
+  gids::AbstractPData{<:AbstractVector{<:Integer}})
+
+  map_parts(touched_hids,a.partition,gids)
+end
 
 function PCartesianIndices(
   parts::AbstractPData{<:Integer,N},
@@ -1019,7 +1053,8 @@ function PRange(
     partition, gid_to_part
   end
   ghost = true
-  PRange(prod(ngids),partition,gid_to_part,ghost)
+  exchanger = Exchanger(partition;reuse_parts_rcv=true)
+  PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
 end
 
 function PRange(
@@ -1201,12 +1236,12 @@ function add_gids(a::PRange,args...;kwargs...)
   b
 end
 
-function to_lid!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
-  map_parts(to_lid!,ids,a.partition)
+function to_lids!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
+  map_parts(to_lids!,ids,a.partition)
 end
 
-function to_gid!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
-  map_parts(to_gid!,ids,a.partition)
+function to_gids!(ids::AbstractPData{<:AbstractArray{<:Integer}},a::PRange)
+  map_parts(to_gids!,ids,a.partition)
 end
 
 function oids_are_equal(a::PRange,b::PRange)
@@ -1438,7 +1473,7 @@ function PVector(
 
   @assert ids in (:global,:local)
   if ids == :global
-    to_lid!(I,rows)
+    to_lids!(I,rows)
   end
 
   values = map_parts(rows.partition,I,V) do partition,I,V
@@ -1699,8 +1734,8 @@ function PSparseMatrix(
 
   @assert ids in (:global,:local)
   if ids == :global
-    to_lid!(I,rows)
-    to_lid!(J,cols)
+    to_lids!(I,rows)
+    to_lids!(J,cols)
   end
 
   values = map_parts(I,J,V,rows.partition,cols.partition) do I,J,V,rlids,clids
@@ -2043,7 +2078,7 @@ function async_assemble!(
   parts_rcv = rows.exchanger.parts_rcv
   parts_snd = rows.exchanger.parts_snd
 
-  to_lid!(I,rows)
+  to_lids!(I,rows)
   coo_values = map_parts(tuple,I,J,V)
 
   function setup_rcv(part,parts_rcv,row_lids,coo_values)
@@ -2095,15 +2130,20 @@ function async_assemble!(
       wait(schedule(t2))
       wait(schedule(t3))
       k_li, k_gj, k_v = coo_values
-      to_gid!(k_li,row_lids)
+      to_gids!(k_li,row_lids)
       ptrs = gi_snd.ptrs
+      current_n = length(k_li)
+      new_n = current_n + length(gi_snd.data)
+      resize!(k_li,new_n)
+      resize!(k_gj,new_n)
+      resize!(k_v,new_n)
       for p in 1:length(gi_snd.data)
         gi = gi_snd.data[p]
         gj = gj_snd.data[p]
         v = v_snd.data[p]
-        push!(k_li,gi)
-        push!(k_gj,gj)
-        push!(k_v,v)
+        k_li[current_n+p] = gi
+        k_gj[current_n+p] = gj
+        k_v[current_n+p] = v
       end
     end
   end

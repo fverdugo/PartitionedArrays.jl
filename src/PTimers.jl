@@ -41,22 +41,31 @@ function Base.show(io::IO,k::MIME"text/plain",t::PTimer)
 end
 
 function print_timer(
+  t::PTimer,
   filename::String,
-  t::PTimer;
+  args...;
   linechars::Symbol=:unicode,
-  format::Symbol=:csv)
+  format::Symbol=:csv,
+  kwargs...)
 
   data = _setup_data(t)
   map_parts(t.parts,data) do part,data
     if part == MAIN
-      open(filename,"w") do io
+      open(filename,args...;kwargs...) do io
         _print_on_main(io,data,linechars,format)
       end
     end
   end
 end
 
-print_timer(args...;kwargs...) = print_timer(stdout,args...;kwargs...)
+function print_timer(
+  filename::String,
+  t::PTimer;
+  linechars::Symbol=:unicode,
+  format::Symbol=:csv)
+
+  print_timer(t,filename,"w";linechars=linechars,format=format)
+end
 
 function print_timer(
   io::IO,
@@ -71,6 +80,8 @@ function print_timer(
     end
   end
 end
+
+print_timer(t::PTimer; kwargs...) = print_timer(stdout,t;kwargs...)
 
 function _print_on_main(io,data,linechars,format)
   if format == :REPL
@@ -144,5 +155,22 @@ function _print_footer(io,longest_name,w,linechars)
   rule = linechars == :unicode ? "─" : "-"
   header_w = longest_name+3*w
   println(io,rule^header_w)
+end
+
+function print_csv(
+  parts::AbstractPData{<:Integer},
+  value,
+  name::AbstractString,
+  args...;
+  kwargs...)
+
+  map_parts(parts) do part
+    if part == MAIN
+      open(args...;kwargs...) do io
+        str = "\"$name\"; $value"
+        println(io,str)
+      end
+    end
+  end
 end
 

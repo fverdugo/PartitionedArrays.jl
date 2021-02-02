@@ -280,13 +280,13 @@ function test_interfaces(parts)
 
   gids = map_parts(parts) do part
     if part == 1
-      gids = [1,4,6]
+      [1,4,6]
     elseif part == 2
-      gids = [3,1,2,8]
+      [3,1,2,8]
     elseif part == 3
-      gids = [1,9,6]
+      [1,9,6]
     else
-      gids = [3,2,8,10]
+      [3,2,8,10]
     end
   end
 
@@ -294,10 +294,27 @@ function test_interfaces(parts)
   ids3 = add_gids(ids2,gids,i_to_part)
   @test ids3.ghost == true
 
+  gids2 = map_parts(parts) do part
+    if part == 1
+      [4,6]
+    elseif part == 2
+      [1,2]
+    elseif part == 3
+      [1,9]
+    else
+      [3]
+    end
+  end
+
+  hids = touched_hids(ids3,gids2)
+  map_parts(hids,gids2,ids3.partition) do hids, gids, ids3
+    @test gids == ids3.lid_to_gid[ids3.hid_to_lid[hids]]
+  end
+
   ids3 = add_gids(ids2,gids)
   @test ids3.ghost == true
-  to_lid!(gids,ids3)
-  to_gid!(gids,ids3)
+  to_lids!(gids,ids3)
+  to_gids!(gids,ids3)
 
   a = map_parts(parts) do part
     if part == 1

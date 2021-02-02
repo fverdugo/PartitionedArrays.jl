@@ -54,6 +54,7 @@ export num_hids
 export oids_are_equal
 export hids_are_equal
 export lids_are_equal
+export touched_hids
 export get_lid_to_gid
 export get_lid_to_part
 export get_oid_to_lid
@@ -72,8 +73,8 @@ export no_ghost
 export add_gid!
 export add_gids
 export add_gids!
-export to_lid!
-export to_gid!
+export to_lids!
+export to_gids!
 export PCartesianIndices
 export PVector
 export local_view
@@ -88,6 +89,7 @@ export PTimer
 export tic!
 export toc!
 export print_timer
+export print_csv
 
 export SequentialBackend
 export sequential
