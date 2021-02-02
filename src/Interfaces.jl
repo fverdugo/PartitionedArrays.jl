@@ -569,9 +569,9 @@ function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
 end
 
 # The given ids are assumed to be a sub-set of the lids
-function touch_hids(a::IndexSet,gids::AbstractVector{<:Integer})
+function touch_hids(a::AbstractIndexSet,gids::AbstractVector{<:Integer})
   i = 0
-  hid_touched = zeros(false,num_hids(a))
+  hid_touched = fill(false,num_hids(a))
   for gid in gids
     lid = a.gid_to_lid[gid]
     ohid = a.lid_to_ohid[lid]
@@ -1003,6 +1003,12 @@ function PRange(
   PRange(prod(ngids),partition,gid_to_part,ghost)
 end
 
+function touch_hids(
+  a::PRange,
+  gids::AbstractPData{<:AbstractVector{<:Integer}})
+
+  map_parts(touch_hids,a.partition,gids)
+end
 
 function PCartesianIndices(
   parts::AbstractPData{<:Integer,N},
