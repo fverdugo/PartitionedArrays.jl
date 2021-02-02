@@ -501,6 +501,7 @@ function add_gid!(gid_to_part::AbstractArray,a::AbstractIndexSet,gid::Integer)
   a
 end
 
+#TODO use resize + setindex instead of push! when possible
 @inline function _add_gid_ghost!(a,gid,part)
   lid = Int32(num_lids(a)+1)
   hid = Int32(num_hids(a)+1)
@@ -511,7 +512,6 @@ end
   a.gid_to_lid[gid] = lid
 end
 
-#TODO use resize + setindex instead of push! when possible
 function add_gids!(
   a::AbstractIndexSet,
   i_to_gid::AbstractVector{<:Integer},
@@ -2132,13 +2132,18 @@ function async_assemble!(
       k_li, k_gj, k_v = coo_values
       to_gids!(k_li,row_lids)
       ptrs = gi_snd.ptrs
+      current_n = length(k_li)
+      new_n = current_n + length(gi_snd.data)
+      resize!(k_li,new_n)
+      resize!(k_gj,new_n)
+      resize!(k_v,new_n)
       for p in 1:length(gi_snd.data)
         gi = gi_snd.data[p]
         gj = gj_snd.data[p]
         v = v_snd.data[p]
-        push!(k_li,gi)
-        push!(k_gj,gj)
-        push!(k_v,v)
+        k_li[current_n+p] = gi
+        k_gj[current_n+p] = gj
+        k_v[current_n+p] = v
       end
     end
   end
