@@ -1,7 +1,7 @@
 name = "PartitionedArrays"
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 authors = ["Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
