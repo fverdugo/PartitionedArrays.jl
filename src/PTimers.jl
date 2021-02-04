@@ -24,6 +24,31 @@ function PTimer(parts::AbstractPData{<:Integer})
   PTimer(parts,timings,current)
 end
 
+function Base.getproperty(t::PTimer, sym::Symbol)
+  if sym == :data
+    data = map_main(t.parts) do part
+      d = (min=0.0,max=0.0,avg=0.0)
+      T = typeof(d)
+      Dict{String}{T}()
+    end
+    for (name,timing) in t.timings
+      timing_main = gather(timing)
+      map_main(timing_main,data) do part_to_timing,data
+        ns = map(i->Float64(i.ns)/1.0e9,part_to_timing)
+        d = (min=minimum(ns),max=maximum(ns),avg=sum(ns)/length(ns))
+        data[name] = d
+      end
+    end
+    return data
+  else
+    getfield(t, sym)
+  end
+end
+
+function Base.propertynames(x::PTimer, private=false)
+  (fieldnames(typeof(x))...,:data)
+end
+
 function tic!(t::PTimer)
   t.current = Timing()
 end
@@ -41,93 +66,33 @@ function Base.show(io::IO,k::MIME"text/plain",t::PTimer)
 end
 
 function print_timer(
-  t::PTimer,
-  filename::String,
-  args...;
-  linechars::Symbol=:unicode,
-  format::Symbol=:csv,
-  kwargs...)
-
-  data = _setup_data(t)
-  map_parts(t.parts,data) do part,data
-    if part == MAIN
-      open(filename,args...;kwargs...) do io
-        _print_on_main(io,data,linechars,format)
-      end
-    end
-  end
-end
-
-function print_timer(
-  filename::String,
-  t::PTimer;
-  linechars::Symbol=:unicode,
-  format::Symbol=:csv)
-
-  print_timer(t,filename,"w";linechars=linechars,format=format)
-end
-
-function print_timer(
   io::IO,
   t::PTimer;
-  linechars::Symbol=:unicode,
-  format::Symbol=:REPL)
+  linechars::Symbol=:unicode)
 
-  data = _setup_data(t)
-  map_parts(t.parts,data) do part,data
-    if part == MAIN
-      _print_on_main(io,data,linechars,format)
-    end
+  map_main(t.data) do data
+    kv = collect(data)
+    v = map(i->i[2].max,kv)
+    i = reverse(sortperm(v))
+    sorteddata = kv[i]
+    _print_on_main(io,sorteddata,linechars)
   end
 end
 
 print_timer(t::PTimer; kwargs...) = print_timer(stdout,t;kwargs...)
 
-function _print_on_main(io,data,linechars,format)
-  if format == :REPL
-    w = length(_nice_time(eps()))
-    longest_name = maximum(map(i->length(i[1]),data))
-    longest_name = max(longest_name,length("Section"))
-    _print_header(io,longest_name,w,linechars)
-    for (name,d) in data
-      _print_section(io,longest_name,name,d)
-    end
-    _print_footer(io,longest_name,w,linechars)
-  elseif format == :csv
-     for (name,d) in data
-       str = "\"$name\"; $(d.max); $(d.min); $(d.avg)"
-       println(io,str)
-     end
-  else
-    throw(ArgumentError("$format is an unsupported value for the format kw-argument."))
+function _print_on_main(io,data,linechars)
+  w = length(_nice_time(eps()))
+  longest_name = maximum(map(i->length(i[1]),data))
+  longest_name = max(longest_name,length("Section"))
+  _print_header(io,longest_name,w,linechars)
+  for (name,d) in data
+    _print_section(io,longest_name,name,d)
   end
+  _print_footer(io,longest_name,w,linechars)
 end
 
 _nice_time(t) = @sprintf("%12.3e",t)
-
-function _setup_data(t)
-  data = map_parts(t.parts) do part
-    d = (min=0.0,max=0.0,avg=0.0)
-    T = typeof(d)
-    Dict{String}{T}()
-  end
-  for (name,timing) in t.timings
-    timing_main = gather(timing)
-    map_parts(t.parts,timing_main,data) do part, part_to_timing,data
-      if part ==MAIN
-        ns = map(i->Float64(i.ns)/1.0e9,part_to_timing)
-        d = (min=minimum(ns),max=maximum(ns),avg=sum(ns)/length(ns))
-        data[name] = d
-      end
-    end
-  end
-  map_parts(data) do data
-    kv = collect(data)
-    v = map(i->i[2].max,kv)
-    i = reverse(sortperm(v))
-    kv[i]
-  end
-end
 
 function _print_header(io,longest_name,w,linechars)
   rule = linechars == :unicode ? "─" : "-"
@@ -155,22 +120,5 @@ function _print_footer(io,longest_name,w,linechars)
   rule = linechars == :unicode ? "─" : "-"
   header_w = longest_name+3*w
   println(io,rule^header_w)
-end
-
-function print_csv(
-  parts::AbstractPData{<:Integer},
-  value,
-  name::AbstractString,
-  args...;
-  kwargs...)
-
-  map_parts(parts) do part
-    if part == MAIN
-      open(args...;kwargs...) do io
-        str = "\"$name\"; $value"
-        println(io,str)
-      end
-    end
-  end
 end
 

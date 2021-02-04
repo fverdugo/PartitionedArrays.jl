@@ -17,6 +17,7 @@ export map_parts
 export get_part_ids
 export get_backend
 export MAIN
+export map_main
 export get_part
 export get_main_part
 export gather!
@@ -89,7 +90,6 @@ export PTimer
 export tic!
 export toc!
 export print_timer
-export print_csv
 
 export SequentialBackend
 export sequential

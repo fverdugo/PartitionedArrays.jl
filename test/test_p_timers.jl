@@ -13,19 +13,16 @@ function test_p_timers(parts)
   tic!(t)
   sleep(0.4)
   toc!(t,"Matrix Assembly")
+
+  display(t.data)
+
+  map_main(t.data) do data
+    open("times.txt","w") do io
+      println(io,data)
+    end
+  end
   
   display(t)
-  print_timer(t,format=:csv)
-  print_timer("timer.txt",t,format=:REPL)
-  print_timer("timer.txt",t)
-  print_timer(t,"timer.txt","w")
-  print_timer(t,"timer.txt","a")
-  print_timer(t,"timer.txt";write=true,create=false)
-  print_timer(t,"timer.txt";append=true)
-
-  print_csv(parts,2.0,"value","results.txt",write=true)
-  print_csv(parts,3.0,"another value","results.txt",append=true)
-  print_csv(parts,4.0,"still another value","results.txt","a")
 
 end
 

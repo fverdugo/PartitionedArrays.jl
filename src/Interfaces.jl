@@ -53,6 +53,17 @@ Base.copy(a::AbstractPData) = map_parts(copy,a)
 
 const MAIN = 1
 
+function map_main(f,args::AbstractPData...)
+  parts = get_part_ids(first(args))
+  map_parts(parts,args...) do part,args...
+    if part == MAIN
+      f(args...)
+    else
+      nothing
+    end
+  end
+end
+
 # import the main part to the main scope
 # in MPI this will broadcast the main part to all procs
 get_main_part(a::AbstractPData) = get_part(a,MAIN)
