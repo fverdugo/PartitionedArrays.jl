@@ -47,13 +47,20 @@ The `SequentialBackend` is specially handy for developing new code. Since it run
 
 ## Performance
 
-This figure shows a strong scaling test of the total time spent in setting up the main components of a FE simulation using `PartitionedArrays` as the distributed linear algebra backend. The wall time includes
-- generation of a distributed (Cartesian) FE mesh
-- generation of local FE spaces
-- generation of a global dof numbering,
-- assembly of the distribtued sparse linear system
-- interpolation of a manufactured solution
+This figure shows a strong scaling test of the total time spent in setting up the main components of a FE simulation using `PartitionedArrays` as the distributed linear algebra backend. A good scaling is obtained beyond 25 thousand degrees of freedom (DOFs) per cpu core, which is usualy considered the point in which scalability starts to significanlty degrade in FE computations.
+
+![](https://github.com/fverdugo/PartitionedArrays.jl/raw/master/assets/total_scaling.png)
+
+The wall time includes
+- Generation of a distributed Cartesian FE mesh
+- Generation of local FE spaces
+- Generation of a global DOF numbering
+- Assembly of the distribtued sparse linear system
+- Interpolation of a manufactured solution
 - Computation of the residual (incudes a matrix-vector product) and its norm.
+
+The results are obtained with the package [`PartitionedPoisson.jl`](https://github.com/fverdugo/PartitionedPoisson.jl) commit [`cfda8b3`](https://github.com/fverdugo/PartitionedPoisson.jl/tree/cfda8b3bb21b3c6481c05b545aa963747c88cdd6).
+
 
 ## How to collaborate
 
