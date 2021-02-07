@@ -54,7 +54,7 @@ This figure shows a strong scaling test of the total time spent in setting up th
 The wall time includes
 - Generation of a distributed Cartesian FE mesh
 - Generation of local FE spaces
-- Generation of a global DOF numbering,
+- Generation of a global DOF numbering
 - Assembly of the distribtued sparse linear system
 - Interpolation of a manufactured solution
 - Computation of the residual (incudes a matrix-vector product) and its norm.
