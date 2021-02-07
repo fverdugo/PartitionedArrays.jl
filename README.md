@@ -7,7 +7,7 @@
 [![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions)
 [![Coverage](https://codecov.io/gh/fverdugo/PartitionedArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/PartitionedArrays.jl)
 
-This package provides a data-oriented parallel implementation of partitioned vectors and sparse matrices needed in FD, FV, and FE simulations. The long-term goal of this package is to provide (when combined with other Julia packages as `IterativeSolvers.jl`) a Julia alternative to well-known distributed algebra back ends such as `PETSc` or `Trilinos`.
+This package provides a data-oriented parallel implementation of partitioned vectors and sparse matrices needed in FD, FV, and FE simulations. The long-term goal of this package is to provide (when combined with other Julia packages as `IterativeSolvers.jl`) a Julia alternative to well-known distributed algebra back ends such as `PETSc`.
 
 At this moment, a simple FD or FE system can be assembled and solved in parallel with this package together with a Conjugate Gradient method from `IterativeSolvers.jl` . See the files [test_fdm.jl]( https://github.com/fverdugo/PartitionedArrays.jl/blob/master/test/test_fdm.jl) and [test_fem_sa.jl](https://github.com/fverdugo/PartitionedArrays.jl/blob/master/test/test_fem_sa.jl).
 
@@ -45,7 +45,20 @@ This package aims to overcome these limitations. It implements (and allows to im
 
 The `SequentialBackend` is specially handy for developing new code. Since it runs in a standard Julia session, one can use tools like `Revise` and `Debugger` that will certainly do your live easier at the developing stage. Once the code works with the `SequentialBackend`, it can be automatically deployed in a super computer via the `MPIBackend`.  Other back ends like a `ThreadedBacked`, `DistributedBackend`, or `MPIXBackend` can be added in the future.
 
+## Performance
+
+This figure shows a strong scaling test of the total time spent in setting up the main components of a FE simulation using `PartitionedArrays` as the distributed linear algebra backend. The wall time includes
+- generation of a distributed (Cartesian) FE mesh
+- generation of local FE spaces
+- generation of a global dof numbering,
+- assembly of the distribtued sparse linear system
+- interpolation of a manufactured solution
+- Computation of the residual (incudes a matrix-vector product) and its norm.
+
 ## How to collaborate
 
 We have a number of [issues waiting for help](https://github.com/fverdugo/PartitionedArrays.jl/labels/help%20wanted). You can start contributing to `PartitionedArrays.jl` by solving some of those issues. Contact with us to coordinate.
+
+
+
 
