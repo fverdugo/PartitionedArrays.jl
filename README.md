@@ -1,6 +1,8 @@
-# PartitionedArrays
 
-🚧 ⛏️ WIP
+
+
+<img src="https://github.com/fverdugo/PartitionedArrays.jl/raw/master/assets/logo.png" width="300" title="Logo">
+
 
 ## What
 
