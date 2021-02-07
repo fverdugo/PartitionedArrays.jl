@@ -3,11 +3,12 @@
 
 <img src="https://github.com/fverdugo/PartitionedArrays.jl/raw/master/assets/logo.png" width="300" title="Logo">
 
+[![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions)
+[![Coverage](https://codecov.io/gh/fverdugo/PartitionedArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/PartitionedArrays.jl)
 
 ## What
 
-[![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions)
-[![Coverage](https://codecov.io/gh/fverdugo/PartitionedArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/PartitionedArrays.jl)
+
 
 This package provides a data-oriented parallel implementation of partitioned vectors and sparse matrices needed in FD, FV, and FE simulations. The long-term goal of this package is to provide (when combined with other Julia packages as `IterativeSolvers.jl`) a Julia alternative to well-known distributed algebra back ends such as `PETSc`.
 
