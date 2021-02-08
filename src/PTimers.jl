@@ -14,14 +14,15 @@ mutable struct PTimer{A,B<:Dict}
   parts::A
   timings::B
   current::Timing
+  verbose::Bool
 end
 
-function PTimer(parts::AbstractPData{<:Integer})
+function PTimer(parts::AbstractPData{<:Integer};verbose::Bool=false)
   current = Timing()
   timing = map_parts(p->current,parts)
   T = typeof(timing)
   timings = Dict{String,T}()
-  PTimer(parts,timings,current)
+  PTimer(parts,timings,current,verbose)
 end
 
 function Base.getproperty(t::PTimer, sym::Symbol)
@@ -58,6 +59,11 @@ function toc!(t::PTimer,name::String)
   dt = current-t.current
   timing = map_parts(p->dt,t.parts)
   t.timings[name] = timing
+  if t.verbose == true
+    map_main(timing) do i
+      println("$name [$(lstrip(_nice_time(Float64(i.ns)/1.0e9))) s in MAIN]")
+    end
+  end
   t.current = Timing()
 end
 
