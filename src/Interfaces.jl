@@ -2224,6 +2224,86 @@ for op in (:+,:-)
   end
 end
 
+# Not efficient, just for convenience and debugging purposes
+function Base.:\(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
+  T = typeof(one(Ta)\one(Tb)+one(Ta)\one(Tb))
+  c = PVector{T}(undef,a.cols)
+  @check oids_are_equal(a.rows,b.rows)
+  rows_in_main = _to_main(a.rows)
+  cols_in_main = _to_main(a.cols)
+  b_in_main = PVector(zero(Tb),rows_in_main)
+  map_parts(b.values,b_in_main.values,a.rows.partition) do b,b_in_main,rows
+    part = rows.part
+    if part == MAIN
+      b_in_main[view(rows.lid_to_gid,rows.oid_to_lid)] .= view(b,rows.oid_to_lid)
+    else
+      b_in_main .= view(b,rows.oid_to_lid)
+    end
+  end
+  assemble!(b_in_main)
+  I,J,V = map_parts(a.values,a.rows.partition,a.cols.partition) do a,rows,cols
+    n = 0
+    for (i,j,v) in nziterator(a)
+      if rows.lid_to_part[i] == rows.part
+        n += 1
+      end
+    end
+    I = zeros(Int,n)
+    J = zeros(Int,n)
+    V = zeros(Ta,n)
+    n = 0
+    for (i,j,v) in nziterator(a)
+      if rows.lid_to_part[i] == rows.part
+        n += 1
+        I[n] = rows.lid_to_gid[i]
+        J[n] = cols.lid_to_gid[j]
+        V[n] = v
+      end
+    end
+    I,J,V
+  end
+  assemble!(I,J,V,rows_in_main)
+  I,J,V = map_parts(a.rows.partition,I,J,V) do rows,I,J,V
+    if rows.part == MAIN
+      I,J,V
+    else
+      similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
+    end
+  end
+  a_in_main = PSparseMatrix(I,J,V,rows_in_main,cols_in_main;ids=:global)
+  c_in_main = PVector{T}(undef,cols_in_main)
+  map_main(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
+    c .= a\b
+    nothing
+  end
+  exchange!(c_in_main)
+  map_parts(c.values,c_in_main.values,a.cols.partition) do c, c_in_main, cols
+    part = cols.part
+    if part == MAIN
+      c[cols.oid_to_lid] .= view(c_in_main,view(cols.lid_to_gid,cols.oid_to_lid))
+    else
+      c[cols.oid_to_lid] .= c_in_main
+    end
+  end
+  c
+end
+
+function _to_main(rows::PRange)
+  parts = get_part_ids(rows.partition)
+  ngids = length(rows)
+  partition = map_parts(parts,rows.partition) do part,rows
+    if part == MAIN
+      lid_to_gid = collect(1:ngids)
+      lid_to_part = fill(Int32(MAIN),ngids)
+    else
+      lid_to_gid = collect(view(rows.lid_to_gid,rows.oid_to_lid))
+      lid_to_part = fill(Int32(MAIN),num_oids(rows))
+    end
+    IndexSet(part,lid_to_gid,lid_to_part)
+  end
+  mrows = PRange(ngids,partition)
+end
+
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)

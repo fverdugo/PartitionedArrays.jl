@@ -601,5 +601,10 @@ function test_interfaces(parts)
   IterativeSolvers.cg!(x,A,y)
   fill!(x,0.0)
 
+  x = A\y
+  @test isa(x,PVector)
+  r = A*x-y
+  @test norm(r) < 1.0e-9
+
 end
 
