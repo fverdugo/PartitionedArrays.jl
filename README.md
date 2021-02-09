@@ -62,7 +62,7 @@ The wall time includes
 - Interpolation of a manufactured solution
 - Computation of the residual (incudes a matrix-vector product) and its norm.
 
-The results are obtained with the package [`PartitionedPoisson.jl`](https://github.com/fverdugo/PartitionedPoisson.jl) commit [`cfda8b3`](https://github.com/fverdugo/PartitionedPoisson.jl/tree/cfda8b3bb21b3c6481c05b545aa963747c88cdd6).
+The results are obtained with the package [`PartitionedPoisson.jl`](https://github.com/fverdugo/PartitionedPoisson.jl).
 
 
 ## How to collaborate
