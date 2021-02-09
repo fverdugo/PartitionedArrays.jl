@@ -730,25 +730,44 @@ function async_exchange!(
   async_exchange!(_replace,values,exchanger,t0)
 end
 
+function async_exchange!(
+  values_rcv::AbstractPData{<:AbstractVector{T}},
+  values_snd::AbstractPData{<:AbstractVector{T}},
+  exchanger::Exchanger,
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where T
+
+  async_exchange!(_replace,values_rcv,values_snd,exchanger,t0)
+end
+
 _replace(x,y) = y
 
 function async_exchange!(
   combine_op,
-  values::AbstractPData{<:AbstractVector{T}},
+  values::AbstractPData{<:AbstractVector{Trcv}},
   exchanger::Exchanger,
-  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where T
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where {Trcv,Tsnd}
+
+  async_exchange!(combine_op,values,values,exchanger,t0)
+end
+
+function async_exchange!(
+  combine_op,
+  values_rcv::AbstractPData{<:AbstractVector{Trcv}},
+  values_snd::AbstractPData{<:AbstractVector{Tsnd}},
+  exchanger::Exchanger,
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where {Trcv,Tsnd}
 
   # Allocate buffers
-  data_rcv = allocate_rcv_buffer(T,exchanger)
-  data_snd = allocate_snd_buffer(T,exchanger)
+  data_rcv = allocate_rcv_buffer(Trcv,exchanger)
+  data_snd = allocate_snd_buffer(Tsnd,exchanger)
 
   # Fill snd buffer
-  t1 = map_parts(t0,values,data_snd,exchanger.lids_snd) do t0,values,data_snd,lids_snd 
+  t1 = map_parts(t0,values_snd,data_snd,exchanger.lids_snd) do t0,values_snd,data_snd,lids_snd 
     @task begin
       wait(schedule(t0))
       for p in 1:length(lids_snd.data)
         lid = lids_snd.data[p]
-        data_snd.data[p] = values[lid]
+        data_snd.data[p] = values_snd[lid]
       end
     end
   end
@@ -761,14 +780,14 @@ function async_exchange!(
     exchanger.parts_snd,
     t1)
 
-  # Fill values from rcv buffer
+  # Fill values_rcv from rcv buffer
   # asynchronously
-  t3 = map_parts(t2,values,data_rcv,exchanger.lids_rcv) do t2,values,data_rcv,lids_rcv 
+  t3 = map_parts(t2,values_rcv,data_rcv,exchanger.lids_rcv) do t2,values_rcv,data_rcv,lids_rcv 
     @task begin
       wait(schedule(t2))
       for p in 1:length(lids_rcv.data)
         lid = lids_rcv.data[p]
-        values[lid] = combine_op(values[lid],data_rcv.data[p])
+        values_rcv[lid] = combine_op(values_rcv[lid],data_rcv.data[p])
       end
     end
   end
@@ -793,6 +812,16 @@ function async_exchange!(
   data, ptrs = map_parts(t->(t.data,t.ptrs),values)
   t_exchanger = _table_exchanger(exchanger,ptrs)
   async_exchange!(combine_op,data,t_exchanger,t0)
+end
+
+function async_exchange!(
+  combine_op,
+  values_rcv::AbstractPData{<:Table},
+  values_snd::AbstractPData{<:Table},
+  exchanger::Exchanger,
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv))
+
+  @notimplemented
 end
 
 function _table_exchanger(exchanger,values)

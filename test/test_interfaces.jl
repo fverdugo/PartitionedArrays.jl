@@ -220,6 +220,30 @@ function test_interfaces(parts)
     end
   end
 
+  values_rcv = map_parts(values) do values
+    fill(10.0,length(values))
+  end
+
+  values_snd = map_parts(values) do values
+    fill(20.0,length(values))
+  end
+
+  exchange!(values_rcv,values_snd,exchanger)
+
+  map_parts(values_rcv,partition) do values_rcv, partition
+    for lid in 1:length(partition.lid_to_part)
+      if partition.lid_to_part[lid] == partition.part
+        @test values_rcv[lid] == 10.0
+      else
+        @test values_rcv[lid] == 20.0
+      end
+    end
+  end
+
+  map_parts(values_snd) do values_snd
+    @test all(values_snd .== 20.0)
+  end
+
   values = map_parts(parts,partition) do part, partition
     values = [ zeros(Int,3) for lid in 1:num_lids(partition)]
     for lid in partition.oid_to_lid
