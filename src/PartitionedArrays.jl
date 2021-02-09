@@ -25,6 +25,7 @@ export gather_all!
 export gather
 export gather_all
 export scatter
+export scatter!
 export emit
 export reduce_main
 export reduce_all

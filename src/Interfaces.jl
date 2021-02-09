@@ -2228,19 +2228,22 @@ end
 function Base.:\(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
   T = typeof(one(Ta)\one(Tb)+one(Ta)\one(Tb))
   c = PVector{T}(undef,a.cols)
-  @check oids_are_equal(a.rows,b.rows)
-  rows_in_main = _to_main(a.rows)
-  cols_in_main = _to_main(a.cols)
-  b_in_main = PVector(zero(Tb),rows_in_main)
-  map_parts(b.values,b_in_main.values,a.rows.partition) do b,b_in_main,rows
-    part = rows.part
-    if part == MAIN
-      b_in_main[view(rows.lid_to_gid,rows.oid_to_lid)] .= view(b,rows.oid_to_lid)
-    else
-      b_in_main .= view(b,rows.oid_to_lid)
-    end
+  a_in_main = gather(a)
+  b_in_main = gather(b,a_in_main.rows)
+  c_in_main = gather(c,a_in_main.cols)
+  map_main(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
+    c .= a\b
+    nothing
   end
-  assemble!(b_in_main)
+  scatter!(c,c_in_main)
+  c
+end
+
+function gather(
+  a::PSparseMatrix{Ta},
+  rows_in_main::PRange=_to_main(a.rows),
+  cols_in_main::PRange=_to_main(a.cols)) where {Ta}
+
   I,J,V = map_parts(a.values,a.rows.partition,a.cols.partition) do a,rows,cols
     n = 0
     for (i,j,v) in nziterator(a)
@@ -2271,18 +2274,32 @@ function Base.:\(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
     end
   end
   a_in_main = PSparseMatrix(I,J,V,rows_in_main,cols_in_main;ids=:global)
-  c_in_main = PVector{T}(undef,cols_in_main)
-  map_main(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
-    c .= a\b
-    nothing
-  end
-  exchange!(c_in_main)
-  map_parts(c.values,c_in_main.values,a.cols.partition) do c, c_in_main, cols
-    part = cols.part
+  a_in_main
+end
+
+function gather(b::PVector,rows_in_main::PRange=_to_main(b.rows))
+  T = eltype(b)
+  b_in_main = PVector(zero(T),rows_in_main)
+  map_parts(b.values,b_in_main.values,b.rows.partition) do b,b_in_main,rows
+    part = rows.part
     if part == MAIN
-      c[cols.oid_to_lid] .= view(c_in_main,view(cols.lid_to_gid,cols.oid_to_lid))
+      b_in_main[view(rows.lid_to_gid,rows.oid_to_lid)] .= view(b,rows.oid_to_lid)
     else
-      c[cols.oid_to_lid] .= c_in_main
+      b_in_main .= view(b,rows.oid_to_lid)
+    end
+  end
+  assemble!(b_in_main)
+  b_in_main
+end
+
+function scatter!(c::PVector,c_in_main::PVector)
+  exchange!(c_in_main)
+  map_parts(c.values,c_in_main.values,c.rows.partition) do c, c_in_main, rows
+    part = rows.part
+    if part == MAIN
+      c[rows.oid_to_lid] .= view(c_in_main,view(rows.lid_to_gid,rows.oid_to_lid))
+    else
+      c[rows.oid_to_lid] .= c_in_main
     end
   end
   c
