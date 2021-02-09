@@ -61,7 +61,7 @@ function toc!(t::PTimer,name::String)
   t.timings[name] = timing
   if t.verbose == true
     map_main(timing) do i
-      println("$name [$(lstrip(_nice_time(Float64(i.ns)/1.0e9))) s in MAIN]")
+      println("[$(lstrip(_nice_time(Float64(i.ns)/1.0e9))) s in MAIN] $name")
     end
   end
   t.current = Timing()
