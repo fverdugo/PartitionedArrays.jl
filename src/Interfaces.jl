@@ -2135,7 +2135,11 @@ function gather(
       similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
     end
   end
-  a_in_main = PSparseMatrix(I,J,V,rows_in_main,cols_in_main;ids=:global)
+  T = eltype(a.values)
+  exchanger = empty_exchanger(rows_in_main.partition)
+  a_in_main = PSparseMatrix(
+    (args...)->compresscoo(T,args...),
+    I,J,V,rows_in_main,cols_in_main,exchanger;ids=:global)
   a_in_main
 end
 
