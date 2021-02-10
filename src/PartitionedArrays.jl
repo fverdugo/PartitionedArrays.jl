@@ -87,6 +87,7 @@ export PSparseMatrix
 export matrix_exchanger
 export nzindex
 export nziterator
+export compresscoo
 export PTimer
 export tic!
 export toc!
@@ -101,6 +102,8 @@ export mpi
 include("Helpers.jl")
 
 include("Interfaces.jl")
+
+include("SparseUtils.jl")
 
 include("IndexSets.jl")
 
