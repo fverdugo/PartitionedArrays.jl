@@ -2055,6 +2055,106 @@ function async_assemble!(
   t4
 end
 
+function async_exchange!(
+  I::AbstractPData{<:AbstractVector{<:Integer}},
+  J::AbstractPData{<:AbstractVector{<:Integer}},
+  V::AbstractPData{<:AbstractVector},
+  rows::PRange,
+  t0::AbstractPData=_empty_tasks(rows.exchanger.parts_rcv))
+
+  map_parts(wait∘schedule,t0)
+
+  part = get_part_ids(rows.partition)
+  parts_rcv = rows.exchanger.parts_rcv
+  parts_snd = rows.exchanger.parts_snd
+  lids_snd = rows.exchanger.lids_snd
+
+  to_lids!(I,rows)
+  coo_values = map_parts(tuple,I,J,V)
+
+  function setup_snd(part,parts_snd,lids_snd,row_lids,coo_values)
+    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
+    unset = zero(Int32)
+    lid_to_i = fill(unset,num_lids(row_lids))
+    for i in 1:length(lids_snd)
+      for p in lids_snd.ptrs[i]:(lids_snd.ptrs[i+1]-1)
+        lid = lids_snd.data[p]
+        lid_to_i[lid] = i
+      end
+    end
+    ptrs = zeros(Int32,length(parts_snd)+1)
+    k_li, k_gj, k_v = coo_values
+    Tv = eltype(k_v)
+    for k in 1:length(k_li)
+      li = k_li[k]
+      i = lid_to_i[li]
+      if i != unset
+        ptrs[i+1] +=1
+      elseif row_lids.lid_to_part[li] != part
+        k_v[k] = zero(Tv)
+      end
+    end
+    length_to_ptrs!(ptrs)
+    gi_snd_data = zeros(Int,ptrs[end]-1)
+    gj_snd_data = zeros(Int,ptrs[end]-1)
+    v_snd_data = zeros(Tv,ptrs[end]-1)
+    for k in 1:length(k_li)
+      li = k_li[k]
+      i = lid_to_i[li]
+      if i != unset
+        gi = row_lids.lid_to_gid[li]
+        gj = k_gj[k]
+        v = k_v[k]
+        p = ptrs[i]
+        gi_snd_data[p] = gi
+        gj_snd_data[p] = gj
+        v_snd_data[p] = v
+        ptrs[i] +=1
+      end
+    end
+    rewind_ptrs!(ptrs)
+    gi_snd = Table(gi_snd_data,ptrs)
+    gj_snd = Table(gj_snd_data,ptrs)
+    v_snd = Table(v_snd_data,ptrs)
+    gi_snd, gj_snd, v_snd 
+  end
+  
+  gi_snd, gj_snd, v_snd = map_parts(
+    setup_snd,part,parts_snd,lids_snd,rows.partition,coo_values)
+
+  gi_rcv, t1 = async_exchange(gi_snd,parts_rcv,parts_snd)
+  gj_rcv, t2 = async_exchange(gj_snd,parts_rcv,parts_snd)
+  v_rcv, t3 = async_exchange(v_snd,parts_rcv,parts_snd)
+
+  function setup_rcv(t1,t2,t3,part,row_lids,gi_rcv,gj_rcv,v_rcv,coo_values)
+    @task begin
+      wait(schedule(t1))
+      wait(schedule(t2))
+      wait(schedule(t3))
+      k_li, k_gj, k_v = coo_values
+      to_gids!(k_li,row_lids)
+      ptrs = gi_rcv.ptrs
+      current_n = length(k_li)
+      new_n = current_n + length(gi_rcv.data)
+      resize!(k_li,new_n)
+      resize!(k_gj,new_n)
+      resize!(k_v,new_n)
+      for p in 1:length(gi_rcv.data)
+        gi = gi_rcv.data[p]
+        gj = gj_rcv.data[p]
+        v = v_rcv.data[p]
+        k_li[current_n+p] = gi
+        k_gj[current_n+p] = gj
+        k_v[current_n+p] = v
+      end
+    end
+  end
+
+  t4 = map_parts(setup_rcv,t1,t2,t3,part,rows.partition,gi_rcv,gj_rcv,v_rcv,coo_values)
+
+  t4
+end
+
 function Base.:*(a::Number,b::PSparseMatrix)
   values = map_parts(b.values) do values
     a*values

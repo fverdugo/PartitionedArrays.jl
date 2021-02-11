@@ -606,5 +606,9 @@ function test_interfaces(parts)
   r = A*x-y
   @test norm(r) < 1.0e-9
 
+  to_gids!(I,A.rows)
+  to_gids!(J,A.cols)
+  exchange!(I,J,V,A.cols)
+
 end
 
