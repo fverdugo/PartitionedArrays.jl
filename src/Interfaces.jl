@@ -1845,75 +1845,6 @@ function LinearAlgebra.mul!(
   c
 end
 
-struct SubSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
-  parent::A
-  indices::B
-  inv_indices::C
-  flag::Tuple{Int,Int}
-  function SubSparseMatrix(
-    parent::AbstractSparseMatrix{T},
-    indices::Tuple,
-    inv_indices::Tuple,
-    flag::Tuple{Int,Int}) where T
-
-    A = typeof(parent)
-    B = typeof(indices)
-    C = typeof(inv_indices)
-    new{T,A,B,C}(parent,indices,inv_indices,flag)
-  end
-end
-
-Base.size(a::SubSparseMatrix) = map(length,a.indices)
-Base.IndexStyle(::Type{<:SubSparseMatrix}) = IndexCartesian()
-function Base.getindex(a::SubSparseMatrix,i::Integer,j::Integer)
-  I = a.indices[1][i]
-  J = a.indices[2][j]
-  a.parent[I,J]
-end
-
-function LinearAlgebra.mul!(
-  C::AbstractVector,
-  A::SubSparseMatrix,
-  B::AbstractVector,
-  α::Number,
-  β::Number)
-
-  @notimplemented
-end
-
-function LinearAlgebra.mul!(
-  C::AbstractVector,
-  A::SubSparseMatrix{T,<:SparseArrays.AbstractSparseMatrixCSC} where T,
-  B::AbstractVector,
-  α::Number,
-  β::Number)
-
-  size(A, 2) == size(B, 1) || throw(DimensionMismatch())
-  size(A, 1) == size(C, 1) || throw(DimensionMismatch())
-  size(B, 2) == size(C, 2) || throw(DimensionMismatch())
-  if β != 1
-      β != 0 ? rmul!(C, β) : fill!(C, zero(eltype(C)))
-  end
-  rows, cols = A.indices
-  invrows, invcols = A.inv_indices
-  rflag, cflag = A.flag
-  Ap = A.parent
-  nzv = nonzeros(Ap)
-  rv = rowvals(Ap)
-  colptrs = SparseArrays.getcolptr(Ap)
-  for (j,J) in enumerate(cols)
-      αxj = B[j] * α
-      for p = colptrs[J]:(colptrs[J+1]-1)
-        I = rv[p]
-        i = invrows[I]*rflag
-        if i>0
-          C[i] += nzv[p]*αxj
-        end
-      end
-  end
-  C
-end
-
 function local_view(a::PSparseMatrix,rows::PRange,cols::PRange)
   @notimplementedif a.rows !== rows
   @notimplementedif a.cols !== cols
@@ -2002,75 +1933,6 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
   k_snd = map_parts(setup_snd,part,row_lids,col_lids,gi_snd,gj_snd,values)
 
   Exchanger(parts_rcv,parts_snd,k_rcv,k_snd)
-end
-
-function nzindex(A::AbstractSparseMatrix, i0::Integer, i1::Integer)
-  @notimplemented
-end
-
-function nzindex(A::SparseArrays.AbstractSparseMatrixCSC, i0::Integer, i1::Integer)
-    if !(1 <= i0 <= size(A, 1) && 1 <= i1 <= size(A, 2)); throw(BoundsError()); end
-    ptrs = SparseArrays.getcolptr(A)
-    r1 = Int(ptrs[i1])
-    r2 = Int(ptrs[i1+1]-1)
-    (r1 > r2) && return -1
-    r1 = searchsortedfirst(rowvals(A), i0, r1, r2, Base.Order.Forward)
-    ((r1 > r2) || (rowvals(A)[r1] != i0)) ? -1 : r1
-end
-
-nziterator(a::AbstractSparseMatrix) = @notimplemented
-
-nziterator(a::SparseArrays.AbstractSparseMatrixCSC) = NZIteratorCSC(a)
-
-struct NZIteratorCSC{A}
-  matrix::A
-end
-
-Base.length(a::NZIteratorCSC) = nnz(a.matrix)
-Base.eltype(::Type{<:NZIteratorCSC{A}}) where A = Tuple{Int,Int,eltype(A)}
-Base.eltype(::T) where T <: NZIteratorCSC = eltype(T)
-Base.IteratorSize(::Type{<:NZIteratorCSC}) = Base.HasLength()
-Base.IteratorEltype(::Type{<:NZIteratorCSC}) = Base.HasEltype()
-
-@inline function Base.iterate(a::NZIteratorCSC)
-  if nnz(a.matrix) == 0
-    return nothing
-  end
-  col = 0
-  ptrs = SparseArrays.getcolptr(a.matrix)
-  knext = nothing
-  while knext === nothing
-    col += 1
-    ks = ptrs[col]:(ptrs[col+1]-1)
-    knext = iterate(ks)
-  end
-  k, kstate = knext
-  i = Int(rowvals(a.matrix)[k])
-  j = col
-  v = nonzeros(a.matrix)[k]
-  (i,j,v), (col,kstate)
-end
-
-@inline function Base.iterate(a::NZIteratorCSC,state)
-  ptrs = SparseArrays.getcolptr(a.matrix)
-  col, kstate = state
-  ks = ptrs[col]:(ptrs[col+1]-1)
-  knext = iterate(ks,kstate)
-  if knext === nothing
-    while knext === nothing
-      if col == size(a.matrix,2)
-        return nothing
-      end
-      col += 1
-      ks = ptrs[col]:(ptrs[col+1]-1)
-      knext = iterate(ks)
-    end
-  end
-  k, kstate = knext
-  i = Int(rowvals(a.matrix)[k])
-  j = col
-  v = nonzeros(a.matrix)[k]
-  (i,j,v), (col,kstate)
 end
 
 # Non-blocking exchange
@@ -2193,6 +2055,106 @@ function async_assemble!(
   t4
 end
 
+function async_exchange!(
+  I::AbstractPData{<:AbstractVector{<:Integer}},
+  J::AbstractPData{<:AbstractVector{<:Integer}},
+  V::AbstractPData{<:AbstractVector},
+  rows::PRange,
+  t0::AbstractPData=_empty_tasks(rows.exchanger.parts_rcv))
+
+  map_parts(wait∘schedule,t0)
+
+  part = get_part_ids(rows.partition)
+  parts_rcv = rows.exchanger.parts_rcv
+  parts_snd = rows.exchanger.parts_snd
+  lids_snd = rows.exchanger.lids_snd
+
+  to_lids!(I,rows)
+  coo_values = map_parts(tuple,I,J,V)
+
+  function setup_snd(part,parts_snd,lids_snd,row_lids,coo_values)
+    owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
+    unset = zero(Int32)
+    lid_to_i = fill(unset,num_lids(row_lids))
+    for i in 1:length(lids_snd)
+      for p in lids_snd.ptrs[i]:(lids_snd.ptrs[i+1]-1)
+        lid = lids_snd.data[p]
+        lid_to_i[lid] = i
+      end
+    end
+    ptrs = zeros(Int32,length(parts_snd)+1)
+    k_li, k_gj, k_v = coo_values
+    Tv = eltype(k_v)
+    for k in 1:length(k_li)
+      li = k_li[k]
+      i = lid_to_i[li]
+      if i != unset
+        ptrs[i+1] +=1
+      elseif row_lids.lid_to_part[li] != part
+        k_v[k] = zero(Tv)
+      end
+    end
+    length_to_ptrs!(ptrs)
+    gi_snd_data = zeros(Int,ptrs[end]-1)
+    gj_snd_data = zeros(Int,ptrs[end]-1)
+    v_snd_data = zeros(Tv,ptrs[end]-1)
+    for k in 1:length(k_li)
+      li = k_li[k]
+      i = lid_to_i[li]
+      if i != unset
+        gi = row_lids.lid_to_gid[li]
+        gj = k_gj[k]
+        v = k_v[k]
+        p = ptrs[i]
+        gi_snd_data[p] = gi
+        gj_snd_data[p] = gj
+        v_snd_data[p] = v
+        ptrs[i] +=1
+      end
+    end
+    rewind_ptrs!(ptrs)
+    gi_snd = Table(gi_snd_data,ptrs)
+    gj_snd = Table(gj_snd_data,ptrs)
+    v_snd = Table(v_snd_data,ptrs)
+    gi_snd, gj_snd, v_snd 
+  end
+  
+  gi_snd, gj_snd, v_snd = map_parts(
+    setup_snd,part,parts_snd,lids_snd,rows.partition,coo_values)
+
+  gi_rcv, t1 = async_exchange(gi_snd,parts_rcv,parts_snd)
+  gj_rcv, t2 = async_exchange(gj_snd,parts_rcv,parts_snd)
+  v_rcv, t3 = async_exchange(v_snd,parts_rcv,parts_snd)
+
+  function setup_rcv(t1,t2,t3,part,row_lids,gi_rcv,gj_rcv,v_rcv,coo_values)
+    @task begin
+      wait(schedule(t1))
+      wait(schedule(t2))
+      wait(schedule(t3))
+      k_li, k_gj, k_v = coo_values
+      to_gids!(k_li,row_lids)
+      ptrs = gi_rcv.ptrs
+      current_n = length(k_li)
+      new_n = current_n + length(gi_rcv.data)
+      resize!(k_li,new_n)
+      resize!(k_gj,new_n)
+      resize!(k_v,new_n)
+      for p in 1:length(gi_rcv.data)
+        gi = gi_rcv.data[p]
+        gj = gj_rcv.data[p]
+        v = v_rcv.data[p]
+        k_li[current_n+p] = gi
+        k_gj[current_n+p] = gj
+        k_v[current_n+p] = v
+      end
+    end
+  end
+
+  t4 = map_parts(setup_rcv,t1,t2,t3,part,rows.partition,gi_rcv,gj_rcv,v_rcv,coo_values)
+
+  t4
+end
+
 function Base.:*(a::Number,b::PSparseMatrix)
   values = map_parts(b.values) do values
     a*values
@@ -2273,7 +2235,11 @@ function gather(
       similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
     end
   end
-  a_in_main = PSparseMatrix(I,J,V,rows_in_main,cols_in_main;ids=:global)
+  T = eltype(a.values)
+  exchanger = empty_exchanger(rows_in_main.partition)
+  a_in_main = PSparseMatrix(
+    (args...)->compresscoo(T,args...),
+    I,J,V,rows_in_main,cols_in_main,exchanger;ids=:global)
   a_in_main
 end
 

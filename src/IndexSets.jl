@@ -53,7 +53,7 @@ Base.IndexStyle(::Type{<:LidToGid}) = IndexLinear()
 @inline function Base.getindex(a::LidToGid,lid::Integer)
   @boundscheck begin
     if !( 1<=lid && lid<=length(a) )
-      throw(BoundsError(a,gid))
+      throw(BoundsError(a,lid))
     end
   end
   noids = length(a.oid_to_gid)
