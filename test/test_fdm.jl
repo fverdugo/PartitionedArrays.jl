@@ -95,8 +95,8 @@ function test_fdm(parts)
   # The initial guess needs the ghost layer (that why we take cols)
   # in other to perform the product A*x in the cg solver.
   # We also need to set the boundary values
-  x = PVector(0.0,cols)
-  map_parts(x.values,x.rows.partition) do x,rows
+  x0 = PVector(0.0,cols)
+  map_parts(x0.values,x0.rows.partition) do x,rows
     for lid in rows.oid_to_lid
       cis = CartesianIndices(ns)
       i = rows.lid_to_gid[lid]
@@ -111,6 +111,7 @@ function test_fdm(parts)
 
   # When this call returns, x has the correct answer only in the owned values.
   # The values at ghost ids can be recovered with exchange!(x)
+  x = copy(x0)
   IterativeSolvers.cg!(x,A,b,verbose=i_am_main(parts))
 
   # This compares owned values, so we don't need to exchange!
@@ -119,5 +120,21 @@ function test_fdm(parts)
   #display(b.values)
   #exchange!(x)
   #display(x.values)
+
+  # Now with a preconditioner
+
+  P = AdditiveSchwarz(lu,A)
+  y = P\b
+  @test norm(y-x̂)/norm(x̂) < 1
+  x = copy(x0)
+  IterativeSolvers.cg!(x,A,b,Pl=P,verbose=i_am_main(parts))
+  @test norm(x-x̂) < 1.0e-5
+
+  AdditiveSchwarz!(lu!,P,A)
+  y = P\b
+  @test norm(y-x̂)/norm(x̂) < 1
+  x = copy(x0)
+  IterativeSolvers.cg!(x,A,b,Pl=P,verbose=i_am_main(parts))
+  @test norm(x-x̂) < 1.0e-5
 
 end
