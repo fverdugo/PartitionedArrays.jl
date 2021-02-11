@@ -117,19 +117,4 @@ function test_fdm(parts)
   # This compares owned values, so we don't need to exchange!
   @test norm(x-x̂) < 1.0e-5
 
-  # Now, with a preconditioner
-  P = AdditiveSchwarz(lu,A,0)
-  y = P\b
-  @test norm(y-x̂)/norm(x̂) < 1
-  x = copy(x0)
-  IterativeSolvers.cg!(x,A,b,Pl=P,verbose=i_am_main(parts))
-  @test norm(x-x̂) < 1.0e-5
-
-  AdditiveSchwarz!(lu!,P,A)
-  y = P\b
-  @test norm(y-x̂)/norm(x̂) < 1
-  x = copy(x0)
-  IterativeSolvers.cg!(x,A,b,Pl=P,verbose=i_am_main(parts))
-  @test norm(x-x̂) < 1.0e-5
-
 end

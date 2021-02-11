@@ -92,8 +92,6 @@ export PTimer
 export tic!
 export toc!
 export print_timer
-export AdditiveSchwarz
-export AdditiveSchwarz!
 
 export SequentialBackend
 export sequential
@@ -108,8 +106,6 @@ include("Interfaces.jl")
 include("SparseUtils.jl")
 
 include("IndexSets.jl")
-
-include("Solvers.jl")
 
 include("PTimers.jl")
 
