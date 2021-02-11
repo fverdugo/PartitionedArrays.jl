@@ -1,17 +1,40 @@
-struct AdditiveSchwarz{A,B,C,D,E}
+mutable struct AdditiveSchwarz{A,B,C,D}
   problems::A
   solvers::B
   rhs::C
-  rows::D
-  cols::E
+  matrix::D
+end
+
+function _increase_overlap(a::PSparseMatrix)
+  @check oids_are_equal(a.rows,a.cols)
+  I,J,V = map_parts(collectcoo,a.values)
+  to_gids!(I,a.rows)
+  to_gids!(J,a.cols)
+  rows = a.cols
+  exchange!(I,J,V,rows)
+  cols = add_gids(rows,J)
+  exchanger = empty_exchanger(rows.partition)
+  T = eltype(a.values)
+  PSparseMatrix(
+    (args...)->compresscoo(T,args...),
+    I,J,V,rows,cols,exchanger,ids=:global)
+end
+
+function _increase_overlap(a::PSparseMatrix,width::Integer)
+  if width == 0
+    return a
+  else
+    b = _increase_overlap(a)
+    return _increase_overlap(b,width-1)
+  end
 end
 
 function AdditiveSchwarzConfig(A::PSparseMatrix)
-  map_parts(A.values,A.rows.partition,A.cols.partition) do A,rows,cols
-    part = rows.part
+  @check oids_are_equal(A.rows,A.cols)
+  I,J,V = map_parts(A.values,A.rows.partition,A.cols.partition) do A,rows,cols
     n = 0
     for (i,j,v) in nziterator(A)
-      if rows.lid_to_part[i] == part && cols.lid_to_part[j] == part
+      if haskey(rows.gid_to_lid,cols.lid_to_gid[j])
         n+=1
       end
     end
@@ -20,58 +43,67 @@ function AdditiveSchwarzConfig(A::PSparseMatrix)
     V = zeros(eltype(A),n)
     n = 0
     for (i,j,v) in nziterator(A)
-      if rows.lid_to_part[i] == part && cols.lid_to_part[j] == part
+      gj = cols.lid_to_gid[j]
+      if haskey(rows.gid_to_lid,gj)
         n+=1
-        I[n] = rows.lid_to_ohid[i]
-        J[n] = rows.lid_to_ohid[j]
+        I[n] = i
+        J[n] = rows.gid_to_lid[gj]
         V[n] = v
       end
     end
-    B = compresscoo(A,I,J,V,num_oids(rows),num_oids(cols))
-    B, zeros(eltype(A),num_oids(rows))
+    I,J,V
   end
+  T = eltype(A.values)
+  problems = PSparseMatrix(
+    (args...)->compresscoo(T,args...),
+    I,J,V,A.rows,A.rows,ids=:local)
+  rhs = PVector{eltype(A)}(undef,A.rows)
+  problems, rhs
 end
 
-function AdditiveSchwarz(setup,A::PSparseMatrix)
-  problems, rhs = AdditiveSchwarzConfig(A)
-  solvers = map_parts(setup,problems)
-  AdditiveSchwarz(problems,solvers,rhs,A.rows,A.cols)
+function AdditiveSchwarz(setup,A::PSparseMatrix,width::Integer)
+  B = _increase_overlap(A,width)
+  problems, rhs = AdditiveSchwarzConfig(B)
+  solvers = map_parts(setup,problems.values)
+  AdditiveSchwarz(problems,solvers,rhs,A)
 end
 
 function AdditiveSchwarz!(setup!,P::AdditiveSchwarz,A::PSparseMatrix)
+  @check oids_are_equal(P.problems.rows,A.rows)
   map_parts(
-    P.problems,
-    P.solvers,
+    P.problems.values,
+    P.problems.rows.partition,
+    P.problems.cols.partition,
     A.values,
     A.rows.partition,
-    A.cols.partition) do p,s,A,rows,cols
-
-    part = rows.part
-    n = 0
-    nz = nonzeros(p)
+    A.cols.partition) do P,rowsP,colsP,A,rows,cols
+    nz = nonzeros(P)
     for (i,j,v) in nziterator(A)
-      if rows.lid_to_part[i] == part && cols.lid_to_part[j] == part
-        n+=1
-        nz[n] = v
+      oi = rows.lid_to_ohid[i]
+      if oi>0
+        gj = cols.lid_to_gid[j]
+        if haskey(colsP.gid_to_lid,gj)
+          li = rowsP.oid_to_lid[oi]
+          lj = colsP.gid_to_lid[gj]
+          n = nzindex(P,li,lj)
+          nz[n] = v
+        end
       end
     end
-    setup!(s,p)
-    nothing
   end
+  exchange!(P.problems)
+  map_parts(setup!,P.solvers,P.problems.values)
+  P.matrix = A
   P
 end
 
 function LinearAlgebra.ldiv!(y::PVector,P::AdditiveSchwarz,b::PVector)
-  @check oids_are_equal(P.rows,b.rows)
-  @check oids_are_equal(P.cols,y.rows)
-  map_parts(
-    y.owned_values,P.solvers,P.rhs,b.owned_values) do y,s,r,b
-    r .= b
-    ldiv!(s,r)
-    y .= r
-    nothing
-  end
-  y
+  @check oids_are_equal(P.problems.rows,b.rows)
+  @check oids_are_equal(P.problems.cols,y.rows)
+  P.rhs .= b
+  exchange!(P.rhs)
+  map_parts(ldiv!,P.solvers,P.rhs.values)
+  y .= P.rhs
 end
 
 function LinearAlgebra.ldiv!(P::AdditiveSchwarz,b::PVector)
@@ -79,7 +111,7 @@ function LinearAlgebra.ldiv!(P::AdditiveSchwarz,b::PVector)
 end
 
 function Base.:\(P::AdditiveSchwarz,b::PVector)
-  y = similar(b,eltype(b),P.cols)
+  y = similar(b,eltype(b),P.matrix.cols)
   ldiv!(y,P,b)
   y
 end

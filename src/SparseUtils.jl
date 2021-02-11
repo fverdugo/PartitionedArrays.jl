@@ -110,6 +110,21 @@ end
   (i,j,v), (col,kstate)
 end
 
+function collectcoo(a::AbstractSparseMatrix)
+  n = nnz(a)
+  I = zeros(Int,n)
+  J = zeros(Int,n)
+  V = zeros(eltype(a),n)
+  n = 0
+  for (i,j,v) in nziterator(a)
+    n+=1
+    I[n] = i
+    J[n] = j
+    V[n] = v
+  end
+  I,J,V
+end
+
 struct SubSparseMatrix{T,A,B,C} <: AbstractMatrix{T}
   parent::A
   indices::B

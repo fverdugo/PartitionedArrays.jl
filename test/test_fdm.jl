@@ -22,7 +22,7 @@ function test_fdm(parts)
 
   #lx = 2.0
   #ls = (lx,lx)
-  #nx = 10
+  #nx = 4
   #ns = (nx,nx)
   #n = prod(ns)
   #h = lx/(nx-1)
@@ -117,13 +117,8 @@ function test_fdm(parts)
   # This compares owned values, so we don't need to exchange!
   @test norm(x-x̂) < 1.0e-5
 
-  #display(b.values)
-  #exchange!(x)
-  #display(x.values)
-
-  # Now with a preconditioner
-
-  P = AdditiveSchwarz(lu,A)
+  # Now, with a preconditioner
+  P = AdditiveSchwarz(lu,A,0)
   y = P\b
   @test norm(y-x̂)/norm(x̂) < 1
   x = copy(x0)
