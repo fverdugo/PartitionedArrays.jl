@@ -1,6 +1,7 @@
 module PartitionedArrays
 
 using SparseArrays
+using SparseMatricesCSR
 using LinearAlgebra
 using Printf
 import MPI
@@ -88,6 +89,7 @@ export matrix_exchanger
 export nzindex
 export nziterator
 export compresscoo
+export indextype
 export PTimer
 export tic!
 export toc!
