@@ -1,7 +1,26 @@
 
+"""
+    abstract type AbstractBackend end
+
+Abstract type representing a message passing model used to run
+a distributed computation.
+
+At this moment, these specializations are available
+- [`SequentialBackend`](@ref)
+- [`MPIBackend`](@ref)
+"""
 abstract type AbstractBackend end
 
 # Should return a AbstractPData{Int}
+"""
+    get_part_ids(b::AbstractBackend,nparts::Integer) -> AbstractPData{Int}
+    get_part_ids(b::AbstractBackend,nparts::Tuple) -> AbstractPData{Int}
+
+Return a partitioned data consisting of `nparts`,
+where each part stores its part id. The concrete type of
+the returned object depends on the back-end `b`. If `nparts` is a tuple
+a Cartesian partition is considered with `nparts[i]` parts in direction `i`.
+"""
 function get_part_ids(b::AbstractBackend,nparts::Integer)
   @abstractmethod
 end
@@ -17,14 +36,45 @@ function prun(driver::Function,b::AbstractBackend,nparts)
 end
 
 # Data distributed in parts of type T
+"""
+    abstract type AbstractPData{T,N} end
+
+Abstract type representing a data partitioned into parts of type `T` where `N`
+is the tensor order of the partition. I.e., `N==1` for linear partitions and
+`N>1` for Cartesian partitions.
+
+At this moment, these specializations are available
+- [`SequentialData`](@ref)
+- [`MPIData`](@ref)
+"""
 abstract type AbstractPData{T,N} end
 
+"""
+    size(a::AbstractPData) -> Tuple
+
+Number of parts per direction in the partitioned data `a`.
+"""
 Base.size(a::AbstractPData) = @abstractmethod
 
+"""
+    length(a::AbstractPData) -> Int
+
+Same as `num_parts(a)`.
+"""
 Base.length(a::AbstractPData) = prod(size(a))
 
+"""
+    num_parts(a::AbstractPData) -> Int
+
+Total number of parts in `a`.
+"""
 num_parts(a::AbstractPData) = length(a)
 
+"""
+    get_backend(a::AbstractPData) -> AbstractBackend
+
+Get the back-end associated with `a`. 
+"""
 get_backend(a::AbstractPData) = @abstractmethod
 
 Base.iterate(a::AbstractPData)  = @abstractmethod
