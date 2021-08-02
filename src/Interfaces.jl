@@ -2346,3 +2346,21 @@ function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
   return x
 end
 
+# Multi-level stuff
+
+"""
+    get_previous_level_part_ids(b::AbstractBackend,level_to_nparts::Vector)
+"""
+function get_previous_level_part_ids(b::AbstractBackend,level_to_nparts::Vector)
+  @abstractmethod
+end
+
+function scatter_to_previous_level(data::AbstractPData,l2_to_l1::AbstractPData)
+  @abstractmethod
+end
+
+
+
+
+
+

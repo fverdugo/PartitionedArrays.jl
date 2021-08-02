@@ -194,3 +194,19 @@ function async_exchange!(
   end
   t_out
 end
+
+# Multi-level stuff
+function get_previous_level_part_ids(b::SequentialBackend,level_to_nparts::Vector)
+  @assert length(level_to_nparts) > 0
+  parts_l1 = get_part_ids(b,level_to_nparts[1])
+  l1_to_l0 = map_parts(i->Int32[],parts_l1)
+  level_to_ids = [l1_to_l0]
+  for level in 2:length(level_to_nparts)
+    parts_l2 = get_part_ids(b,level_to_nparts[level])
+    r = PRange(parts_l2,level_to_nparts[level-1])
+    ids = map_parts(i->Int32.(get_lid_to_gid(i)),r.partition)
+    push!(level_to_ids,ids)
+  end
+  level_to_ids
+end
+

@@ -209,10 +209,18 @@ function main(parts)
 
 end
 
-nparts = 4
-main(get_part_ids(sequential,nparts))
+#nparts = 4
+#main(get_part_ids(sequential,nparts))
+#
+#nparts = (2,2)
+#main(get_part_ids(sequential,nparts))
 
-nparts = (2,2)
-main(get_part_ids(sequential,nparts))
+l1_to_l0, l2_to_l1, l3_to_l2 = get_previous_level_part_ids(sequential,[10,4,2])
+
+display(l1_to_l0)
+display(l2_to_l1)
+display(l3_to_l2)
+
+
 
 end # module
