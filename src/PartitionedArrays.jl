@@ -94,8 +94,10 @@ export PTimer
 export tic!
 export toc!
 export print_timer
-export get_previous_level_part_ids
-export scatter_to_previous_level
+export Hierarchy
+export num_levels
+export move_next
+export move_prev
 
 export SequentialBackend
 export sequential

@@ -2349,18 +2349,30 @@ end
 # Multi-level stuff
 
 """
-    get_previous_level_part_ids(b::AbstractBackend,level_to_nparts::Vector)
 """
-function get_previous_level_part_ids(b::AbstractBackend,level_to_nparts::Vector)
+struct Hierarchy{A,B}
+  prev_part_ids::A
+  curr_part_ids::B
+  next_part_ids::B
+end
+
+num_levels(a::Hierarchy) = length(a.curr_part_ids)
+
+function Hierarchy(b::AbstractBackend,level_to_nparts::AbstractVector)
   @abstractmethod
 end
 
-function scatter_to_previous_level(data::AbstractPData,l2_to_l1::AbstractPData)
+function allocate_next(l1_data::AbstractPData,l2_to_l1::AbstractPData)
   @abstractmethod
 end
 
+function move_next!(l2_data::AbstractPData,l1_data::AbstractPData,l2_to_l1::AbstractPData)
+  @abstractmethod
+end
 
-
-
+function move_next(l1_data::AbstractPData,l2_to_l1::AbstractPData)
+  l2_data = allocate_next(l1_data,l2_to_l1)
+  move_next!(l2_data,l1_data,l2_to_l1)
+end
 
 

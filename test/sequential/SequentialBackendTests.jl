@@ -215,11 +215,19 @@ end
 #nparts = (2,2)
 #main(get_part_ids(sequential,nparts))
 
-l1_to_l0, l2_to_l1, l3_to_l2 = get_previous_level_part_ids(sequential,[10,4,2])
+h = Hierarchy(sequential,[(8,8),(2,2),(1,1)])
+h = Hierarchy(sequential,[10,3,1])
 
-display(l1_to_l0)
+l1_parts =h.curr_part_ids[1]
+l2_to_l1 = h.prev_part_ids[2]
+l1_to_l2 = h.next_part_ids[1]
 display(l2_to_l1)
-display(l3_to_l2)
+display(l1_to_l2)
+
+l1_data = map_parts(i->10*i,l1_parts)
+l2_data = move_next(l1_data,l2_to_l1)
+display(l2_data)
+display(map_parts(sum,l2_data))
 
 
 

@@ -196,17 +196,49 @@ function async_exchange!(
 end
 
 # Multi-level stuff
-function get_previous_level_part_ids(b::SequentialBackend,level_to_nparts::Vector)
+
+function Hierarchy(b::SequentialBackend,level_to_nparts::AbstractVector)
   @assert length(level_to_nparts) > 0
-  parts_l1 = get_part_ids(b,level_to_nparts[1])
-  l1_to_l0 = map_parts(i->Int32[],parts_l1)
-  level_to_ids = [l1_to_l0]
+  curr_part_ids = map(x->map_parts(y->Int32(y),get_part_ids(b,x)),level_to_nparts)
+  l1_to_l0 = map_parts(i->Int32[],curr_part_ids[1])
+  prev_part_ids = [l1_to_l0]
   for level in 2:length(level_to_nparts)
     parts_l2 = get_part_ids(b,level_to_nparts[level])
     r = PRange(parts_l2,level_to_nparts[level-1])
-    ids = map_parts(i->Int32.(get_lid_to_gid(i)),r.partition)
-    push!(level_to_ids,ids)
+    part_ids = map_parts(i->Int32.(get_lid_to_gid(i)),r.partition)
+    push!(prev_part_ids,part_ids)
   end
-  level_to_ids
+  next_part_ids = map(x->map_parts(p->Int32(-1),x),curr_part_ids)
+  for level in 2:length(level_to_nparts)
+    prev_ids = prev_part_ids[level]
+    next_ids = next_part_ids[level-1]
+    for part in 1:length(prev_ids.parts)
+      next_ids.parts[prev_ids.parts[part]] .= part
+    end
+  end
+  Hierarchy(prev_part_ids,curr_part_ids,next_part_ids)
 end
+
+function allocate_next(l1_data::SequentialData,l2_to_l1::SequentialData)
+  T = eltype(l1_data.parts)
+  N = ndims(l2_to_l1.parts)
+  s = size(l2_to_l1.parts)
+  parts = Array{Vector{T},N}(undef,s)
+  for part in 1:num_parts(l2_to_l1)
+    parts[part] = Vector{T}(undef,size(l2_to_l1.parts[part]))
+  end
+  SequentialData(parts)
+end
+
+function move_next!(l2_data::AbstractPData,l1_data::AbstractPData,l2_to_l1::AbstractPData)
+  @assert size(l2_data) == size(l2_to_l1)
+  for part in 1:num_parts(l2_data)
+    for p in 1:length(l2_to_l1.parts[part])
+      l2_data.parts[part][p] = l1_data.parts[p]
+    end
+  end
+  l2_data
+end
+
+
 
