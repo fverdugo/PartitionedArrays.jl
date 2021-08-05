@@ -217,7 +217,8 @@ main(get_part_ids(sequential,nparts))
 
 function main_ml(h)
 
-  l1_parts =h.curr[1]
+  l1_parts = h.curr[1]
+  l2_parts = h.curr[2]
   l2_to_l1 = h.prev[2]
   l1_to_l2 = h.next[1]
   
@@ -243,6 +244,12 @@ function main_ml(h)
     @test a == b
   end
 
+  l2_data = map_parts(i->10*i,l2_parts)
+  l1_data = emit_prev(l2_data,l1_to_l2,l2_to_l1)
+  map_parts(l1_data,l1_to_l2) do a,b
+    @test a == 10*b
+  end
+
 end
 
 h = Hierarchy(sequential,[(8,8),(2,2),(1,1)])
@@ -250,6 +257,5 @@ main_ml(h)
 
 h = Hierarchy(sequential,[10,3,1])
 main_ml(h)
-
 
 end # module

@@ -2406,4 +2406,12 @@ function scatter_prev(
   @abstractmethod
 end
 
+function emit_prev(
+  l2_data::AbstractPData,l1_to_l2::AbstractPData,l2_to_l1::AbstractPData)
+
+  l2_vecs = map_parts(l2_data,l2_to_l1) do v,l1s
+    fill(v,length(l1s))
+  end
+  scatter_prev(l2_vecs,l1_to_l2,l2_to_l1)
+end
 
