@@ -96,8 +96,9 @@ export toc!
 export print_timer
 export Hierarchy
 export num_levels
-export move_next
-export move_prev
+export allocate_gather_next
+export gather_next!
+export gather_next
 
 export SequentialBackend
 export sequential

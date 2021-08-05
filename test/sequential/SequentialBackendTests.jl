@@ -215,19 +215,31 @@ end
 #nparts = (2,2)
 #main(get_part_ids(sequential,nparts))
 
-h = Hierarchy(sequential,[(8,8),(2,2),(1,1)])
+function main_ml(h)
+
+  l1_parts =h.curr[1]
+  l2_to_l1 = h.prev[2]
+  l1_to_l2 = h.next[1]
+  
+  l1_data = map_parts(i->10*i,l1_parts)
+  l2_data = gather_next(l1_data,l2_to_l1)
+  map_parts(l2_data,l2_to_l1) do l2,l1
+    @test l2 == 10*l1
+  end
+
+  l1_data = map_parts(i->i*collect(1:4*(mod(i,3)+1)),l1_parts)
+  l2_data = gather_next(l1_data,l2_to_l1)
+  map_parts(l2_data,l2_to_l1) do l2,l1
+    @test l2 == map(i->i*collect(1:4*(mod(i,3)+1)),l1)
+  end
+end
+
+#h = Hierarchy(sequential,[(8,8),(2,2),(1,1)])
+#main_ml(h)
+
 h = Hierarchy(sequential,[10,3,1])
+main_ml(h)
 
-l1_parts =h.curr_part_ids[1]
-l2_to_l1 = h.prev_part_ids[2]
-l1_to_l2 = h.next_part_ids[1]
-display(l2_to_l1)
-display(l1_to_l2)
-
-l1_data = map_parts(i->10*i,l1_parts)
-l2_data = move_next(l1_data,l2_to_l1)
-display(l2_data)
-display(map_parts(sum,l2_data))
 
 
 

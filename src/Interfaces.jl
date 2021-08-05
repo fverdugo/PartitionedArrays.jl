@@ -2351,28 +2351,51 @@ end
 """
 """
 struct Hierarchy{A,B}
-  prev_part_ids::A
-  curr_part_ids::B
-  next_part_ids::B
+  prev::A
+  curr::B
+  next::B
 end
 
-num_levels(a::Hierarchy) = length(a.curr_part_ids)
+num_levels(a::Hierarchy) = length(a.curr)
 
 function Hierarchy(b::AbstractBackend,level_to_nparts::AbstractVector)
   @abstractmethod
 end
 
-function allocate_next(l1_data::AbstractPData,l2_to_l1::AbstractPData)
+function gather_next!(l2_data::AbstractPData,l1_data::AbstractPData,l2_to_l1::AbstractPData)
   @abstractmethod
 end
 
-function move_next!(l2_data::AbstractPData,l1_data::AbstractPData,l2_to_l1::AbstractPData)
+function gather_next!(
+  l2_data::AbstractPData{<:Table},l1_data::AbstractPData,l2_to_l1::AbstractPData)
   @abstractmethod
 end
 
-function move_next(l1_data::AbstractPData,l2_to_l1::AbstractPData)
-  l2_data = allocate_next(l1_data,l2_to_l1)
-  move_next!(l2_data,l1_data,l2_to_l1)
+function gather_next(l1_data::AbstractPData,l2_to_l1::AbstractPData)
+  l2_data = allocate_gather_next(l1_data,l2_to_l1)
+  gather_next!(l2_data,l1_data,l2_to_l1)
 end
 
+function allocate_gather_next(l1_data::AbstractPData,l2_to_l1::AbstractPData)
+  T = eltype(l1_data)
+  rcv = map_parts(l2_to_l1) do l1_ids
+    Vector{T}(undef,length(l1_ids))
+  end
+  rcv
+end
+
+function allocate_gather_next(
+  l1_data::AbstractPData{<:AbstractVector},l2_to_l1::AbstractPData)
+
+  l_l1 = map_parts(length,l1_data)
+  ls_l2 = gather_next(l_l1,l2_to_l1)
+  T = eltype(eltype(l1_data))
+  rcv = map_parts(ls_l2) do ls
+    ptrs = counts_to_ptrs(ls)
+    ndata = ptrs[end]-1
+    data = Vector{T}(undef,ndata)
+    Table(data,ptrs)
+  end
+  rcv
+end
 

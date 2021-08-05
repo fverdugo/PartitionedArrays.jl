@@ -219,26 +219,32 @@ function Hierarchy(b::SequentialBackend,level_to_nparts::AbstractVector)
   Hierarchy(prev_part_ids,curr_part_ids,next_part_ids)
 end
 
-function allocate_next(l1_data::SequentialData,l2_to_l1::SequentialData)
-  T = eltype(l1_data.parts)
-  N = ndims(l2_to_l1.parts)
-  s = size(l2_to_l1.parts)
-  parts = Array{Vector{T},N}(undef,s)
-  for part in 1:num_parts(l2_to_l1)
-    parts[part] = Vector{T}(undef,size(l2_to_l1.parts[part]))
-  end
-  SequentialData(parts)
-end
-
-function move_next!(l2_data::AbstractPData,l1_data::AbstractPData,l2_to_l1::AbstractPData)
+function gather_next!(l2_data::SequentialData,l1_data::SequentialData,l2_to_l1::SequentialData)
   @assert size(l2_data) == size(l2_to_l1)
   for part in 1:num_parts(l2_data)
-    for p in 1:length(l2_to_l1.parts[part])
-      l2_data.parts[part][p] = l1_data.parts[p]
+    ps = l2_to_l1.parts[part]
+    for (i,p) in enumerate(ps)
+      l2_data.parts[part][i] = l1_data.parts[p]
     end
   end
   l2_data
 end
 
-
-
+function gather_next!(
+  l2_data::SequentialData{<:Table},l1_data::SequentialData,l2_to_l1::SequentialData)
+  @assert size(l2_data) == size(l2_to_l1)
+  for part in 1:num_parts(l2_data)
+    ptrs = l2_data.parts[part].ptrs
+    data = l2_data.parts[part].data
+    ps = l2_to_l1.parts[part]
+    for (j,p) in enumerate(ps)
+      vals = l1_data.parts[p]
+      @check length(vals) == (ptrs[j+1] - ptrs[j])
+      offset = ptrs[j]-1
+      for i in 1:length(vals) 
+        data[i+offset] = vals[i]
+      end
+    end
+  end
+  l2_data
+end
