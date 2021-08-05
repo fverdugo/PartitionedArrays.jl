@@ -248,3 +248,18 @@ function gather_next!(
   end
   l2_data
 end
+
+function scatter_prev(
+  l2_data::SequentialData,l1_to_l2::SequentialData,l2_to_l1::SequentialData)
+  T = eltype(eltype(l2_data))
+  N = ndims(l1_to_l2)
+  l1_parts = Array{T,N}(undef,size(l1_to_l2))
+  for p2 in 1:length(l2_to_l1)
+    p1s = l2_to_l1.parts[p2]
+    for (i,p1) in enumerate(p1s)
+      l1_parts[p1] = l2_data.parts[p2][i]
+    end
+  end
+  SequentialData(l1_parts)
+end
+

@@ -209,11 +209,11 @@ function main(parts)
 
 end
 
-#nparts = 4
-#main(get_part_ids(sequential,nparts))
-#
-#nparts = (2,2)
-#main(get_part_ids(sequential,nparts))
+nparts = 4
+main(get_part_ids(sequential,nparts))
+
+nparts = (2,2)
+main(get_part_ids(sequential,nparts))
 
 function main_ml(h)
 
@@ -227,20 +227,29 @@ function main_ml(h)
     @test l2 == 10*l1
   end
 
+  l1_data_bis = scatter_prev(l2_data,l1_to_l2,l2_to_l1)
+  map_parts(l1_data,l1_data_bis) do a,b
+    @test a == b
+  end
+
   l1_data = map_parts(i->i*collect(1:4*(mod(i,3)+1)),l1_parts)
   l2_data = gather_next(l1_data,l2_to_l1)
   map_parts(l2_data,l2_to_l1) do l2,l1
     @test l2 == map(i->i*collect(1:4*(mod(i,3)+1)),l1)
   end
+
+  l1_data_bis = scatter_prev(l2_data,l1_to_l2,l2_to_l1)
+  map_parts(l1_data,l1_data_bis) do a,b
+    @test a == b
+  end
+
 end
 
-#h = Hierarchy(sequential,[(8,8),(2,2),(1,1)])
-#main_ml(h)
+h = Hierarchy(sequential,[(8,8),(2,2),(1,1)])
+main_ml(h)
 
 h = Hierarchy(sequential,[10,3,1])
 main_ml(h)
-
-
 
 
 end # module

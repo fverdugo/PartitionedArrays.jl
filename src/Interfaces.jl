@@ -2399,3 +2399,11 @@ function allocate_gather_next(
   rcv
 end
 
+# The back-end need to support at least these cases:
+# i.e. AbstractPData{AbstractVector{<:Number}} and AbstractPData{AbstractVector{<:AbstractVector{<:Number}}}
+function scatter_prev(
+  l2_data::AbstractPData,l1_to_l2::AbstractPData,l2_to_l1::AbstractPData)
+  @abstractmethod
+end
+
+

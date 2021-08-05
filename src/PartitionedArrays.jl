@@ -99,6 +99,7 @@ export num_levels
 export allocate_gather_next
 export gather_next!
 export gather_next
+export scatter_prev
 
 export SequentialBackend
 export sequential
