@@ -228,7 +228,7 @@ function main_ml(h)
     @test l2 == 10*l1
   end
 
-  l1_data_bis = scatter_prev(l2_data,l1_to_l2,l2_to_l1)
+  l1_data_bis = scatter_prev(l2_data,l2_to_l1,l1_to_l2)
   map_parts(l1_data,l1_data_bis) do a,b
     @test a == b
   end
@@ -239,13 +239,21 @@ function main_ml(h)
     @test l2 == map(i->i*collect(1:4*(mod(i,3)+1)),l1)
   end
 
-  l1_data_bis = scatter_prev(l2_data,l1_to_l2,l2_to_l1)
+  l1_data_bis = scatter_prev(l2_data,l2_to_l1,l1_to_l2)
+  map_parts(l1_data,l1_data_bis) do a,b
+    @test a == b
+  end
+  scatter_prev!(l1_data_bis,l2_data,l2_to_l1,l1_to_l2)
+  map_parts(l1_data,l1_data_bis) do a,b
+    @test a == b
+  end
+  scatter_prev!(l1_data_bis,l2_data,l2_to_l1)
   map_parts(l1_data,l1_data_bis) do a,b
     @test a == b
   end
 
   l2_data = map_parts(i->10*i,l2_parts)
-  l1_data = emit_prev(l2_data,l1_to_l2,l2_to_l1)
+  l1_data = emit_prev(l2_data,l2_to_l1,l1_to_l2)
   map_parts(l1_data,l1_to_l2) do a,b
     @test a == 10*b
   end

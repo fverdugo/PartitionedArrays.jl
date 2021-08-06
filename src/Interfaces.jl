@@ -2402,16 +2402,31 @@ end
 # The back-end need to support at least these cases:
 # i.e. AbstractPData{AbstractVector{<:Number}} and AbstractPData{AbstractVector{<:AbstractVector{<:Number}}}
 function scatter_prev(
-  l2_data::AbstractPData,l1_to_l2::AbstractPData,l2_to_l1::AbstractPData)
+  l2_data::AbstractPData,l2_to_l1::AbstractPData,l1_to_l2::AbstractPData)
   @abstractmethod
 end
 
-function emit_prev(
-  l2_data::AbstractPData,l1_to_l2::AbstractPData,l2_to_l1::AbstractPData)
+function scatter_prev!(
+  l1_data::AbstractPData,
+  l2_data::AbstractPData,
+  l2_to_l1::AbstractPData)
+  @abstractmethod
+end
 
+# just for conveninence
+function scatter_prev!(
+  l1_data::AbstractPData,
+  l2_data::AbstractPData,
+  l2_to_l1::AbstractPData,
+  l1_to_l2::AbstractPData)
+  scatter_prev!(l1_data,l2_data,l2_to_l1)
+end
+
+function emit_prev(
+  l2_data::AbstractPData,l2_to_l1::AbstractPData,l1_to_l2::AbstractPData)
   l2_vecs = map_parts(l2_data,l2_to_l1) do v,l1s
     fill(v,length(l1s))
   end
-  scatter_prev(l2_vecs,l1_to_l2,l2_to_l1)
+  scatter_prev(l2_vecs,l2_to_l1,l1_to_l2)
 end
 

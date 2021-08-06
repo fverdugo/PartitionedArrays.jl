@@ -100,6 +100,7 @@ export allocate_gather_next
 export gather_next!
 export gather_next
 export scatter_prev
+export scatter_prev!
 export emit_prev
 
 export SequentialBackend
