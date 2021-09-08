@@ -19,7 +19,9 @@ function get_part_ids(b::MPIBackend,nparts::Tuple)
 end
 
 function prun(driver::Function,b::MPIBackend,nparts)
-  MPI.Init()
+  if !MPI.Initialized()
+    MPI.Init()
+  end
   #try 
     part = get_part_ids(b,nparts)
     driver(part)
