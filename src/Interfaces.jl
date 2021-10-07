@@ -466,26 +466,30 @@ function exchange(args...;kwargs...)
 end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
-# Assumes that neighbors is a symmetric communication graph
-function discover_parts_snd(parts_rcv::AbstractPData, neighbors::AbstractPData)
-  @assert num_parts(parts_rcv) == num_parts(neighbors)
+# Assumes that neighbors_snd is a symmetric communication graph
+# if neighbors_rcv not provided
+function discover_parts_snd(
+  parts_rcv::AbstractPData,
+  neighbors_snd::AbstractPData,
+  neighbors_rcv::AbstractPData=neighbors_snd)
+  @assert num_parts(parts_rcv) == num_parts(neighbors_rcv)
 
   parts = get_part_ids(parts_rcv)
 
   # Tell the neighbors whether I want to receive data from them
-  data_snd = map_parts(parts,neighbors,parts_rcv) do part, neighbors, parts_rcv
-    dict_snd = Dict(( n=>Int32(-1) for n in neighbors))
+  data_rcv = map_parts(parts,neighbors_rcv,parts_rcv) do part, neighbors_rcv, parts_rcv
+    dict_snd = Dict(( n=>Int32(-1) for n in neighbors_rcv))
     for i in parts_rcv
       dict_snd[i] = part
     end
-    [ dict_snd[n] for n in neighbors ]
+    [ dict_snd[n] for n in neighbors_rcv ]
   end
-  data_rcv = exchange(data_snd,neighbors,neighbors)
+  data_snd = exchange(data_rcv,neighbors_snd,neighbors_rcv)
 
   # build parts_snd
-  parts_snd = map_parts(data_rcv) do data_rcv
-    k = findall(j->j>0,data_rcv)
-    data_rcv[k]
+  parts_snd = map_parts(data_snd) do data_snd
+    k = findall(j->j>0,data_snd)
+    data_snd[k]
   end
 
   parts_snd
@@ -532,6 +536,14 @@ end
 
 function discover_parts_snd(parts_rcv::AbstractPData,::Nothing)
   discover_parts_snd(parts_rcv)
+end
+
+function discover_parts_snd(parts_rcv::AbstractPData,::Nothing,::Nothing)
+  discover_parts_snd(parts_rcv)
+end
+
+function discover_parts_snd(parts_rcv::AbstractPData,neighbors::AbstractPData,::Nothing)
+  discover_parts_snd(parts_rcv,neighbors)
 end
 
 abstract type AbstractIndexSet end
@@ -681,7 +693,11 @@ function Base.copy(a::Exchanger)
     copy(a.lids_snd))
 end
 
-function Exchanger(ids::AbstractPData{<:AbstractIndexSet},neighbors=nothing;reuse_parts_rcv=false)
+function Exchanger(
+  ids::AbstractPData{<:AbstractIndexSet},
+  neighbors_snd=nothing,
+  neighbors_rcv=nothing;
+  reuse_parts_rcv=false)
 
   parts = get_part_ids(ids)
 
@@ -724,7 +740,7 @@ function Exchanger(ids::AbstractPData{<:AbstractIndexSet},neighbors=nothing;reus
   if reuse_parts_rcv
     parts_snd = parts_rcv
   else
-    parts_snd = discover_parts_snd(parts_rcv,neighbors)
+    parts_snd = discover_parts_snd(parts_rcv,neighbors_snd,neighbors_rcv)
   end
 
   gids_snd = exchange(gids_rcv,parts_snd,parts_rcv)
@@ -1048,7 +1064,9 @@ function PRange(
   firstgid::AbstractPData{<:Integer},
   hid_to_gid::AbstractPData{Vector{Int}},
   hid_to_part::AbstractPData{Vector{Int32}},
-  neighbors=nothing;
+  neighbors_snd=nothing,
+  neighbors_rcv=nothing,
+  ;
   kwargs...)
 
   partition = map_parts(
@@ -1060,7 +1078,7 @@ function PRange(
       hid_to_gid,
       hid_to_part)
   end
-  exchanger = Exchanger(partition,neighbors;kwargs...)
+  exchanger = Exchanger(partition,neighbors_snd,neighbors_rcv;kwargs...)
   ghost = true
   gid_to_part = nothing
   PRange(ngids,partition,gid_to_part,ghost)
@@ -1292,11 +1310,12 @@ function add_gids!(
   a::PRange,
   i_to_gid::AbstractPData{<:AbstractArray{<:Integer}},
   i_to_part::AbstractPData{<:AbstractArray{<:Integer}},
-  neighbors=nothing;
+  neighbors_snd=nothing,
+  neighbors_rcv=nothing;
   kwargs...)
 
   map_parts(add_gids!,a.partition,i_to_gid,i_to_part)
-  a.exchanger = Exchanger(a.partition,neighbors;kwargs...)
+  a.exchanger = Exchanger(a.partition,neighbors_snd,neighbors_rcv;kwargs...)
   a.ghost = true
   a
 end
@@ -1304,7 +1323,8 @@ end
 function add_gids!(
   a::PRange,
   gids::AbstractPData{<:AbstractArray{<:Integer}},
-  neighbors=nothing;
+  neighbors_snd=nothing,
+  neighbors_rcv=nothing;
   kwargs...)
 
   if a.gid_to_part === nothing
@@ -1315,7 +1335,7 @@ function add_gids!(
     throw(DomainError(a,msg))
   end
   map_parts(add_gids!,a.gid_to_part,a.partition,gids)
-  a.exchanger = Exchanger(a.partition,neighbors;kwargs...)
+  a.exchanger = Exchanger(a.partition,neighbors_snd,neighbors_rcv;kwargs...)
   a.ghost = true
   a
 end
