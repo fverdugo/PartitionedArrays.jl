@@ -46,6 +46,7 @@ function Base.iterate(a::SequentialData,state)
 end
 
 function map_parts(task,args::SequentialData...)
+  @nospecialize task args
   @assert length(args) > 0
   @assert all(a->length(a.parts)==length(first(args).parts),args)
   parts_in = map(a->a.parts,args)
