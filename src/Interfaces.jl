@@ -1455,12 +1455,22 @@ function Base.similar(
 end
 
 function Base.copy!(a::PVector,b::PVector)
-  map_parts(copy!,a.values,b.values)
+  @check oids_are_equal(a.rows,b.rows)
+  if a.rows.partition === b.rows.partition
+    map_parts(copy!,a.values,b.values)
+  else
+    map_parts(copy!,a.owned_values,b.owned_values)
+  end
   a
 end
 
 function Base.copyto!(a::PVector,b::PVector)
-  map_parts(copyto!,a.values,b.values)
+  @check oids_are_equal(a.rows,b.rows)
+  if a.rows.partition === b.rows.partition
+    map_parts(copyto!,a.values,b.values)
+  else
+    map_parts(copyto!,a.owned_values,b.owned_values)
+  end
   a
 end
 
