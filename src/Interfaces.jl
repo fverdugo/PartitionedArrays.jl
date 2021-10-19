@@ -639,6 +639,16 @@ function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   a.lid_to_gid == b.lid_to_gid
 end
 
+function find_lid_map(a::AbstractIndexSet,b::AbstractIndexSet)
+  alid_to_blid = fill(Int32(-1),num_lids(a))
+  for blid in 1:num_lids(b)
+    gid = b.lid_to_gid[blid]
+    alid = a.gid_to_lid[gid]
+    alid_to_blid[alid] = blid
+  end
+  alid_to_blid
+end
+
 # The given ids are assumed to be a sub-set of the lids
 function touched_hids(a::AbstractIndexSet,gids::AbstractVector{<:Integer})
   i = 0
@@ -1688,8 +1698,46 @@ function LinearAlgebra.dot(a::PVector,b::PVector)
 end
 
 function local_view(a::PVector,rows::PRange)
-  @notimplementedif a.rows !== rows
-  a.values
+  if a.rows === rows
+    a.values
+  else
+    map_parts(a.values,rows.partition,a.rows.partition) do values,rows,arows
+      LocalView(values,(find_lid_map(rows,arows),))
+    end
+  end
+end
+
+struct LocalView{T,N,A,B} <:AbstractArray{T,N}
+  plids_to_value::A
+  d_to_lid_to_plid::B
+  local_size::NTuple{N,Int}
+  function LocalView(
+    plids_to_value::AbstractArray{T,N},d_to_lid_to_plid::NTuple{N}) where {T,N}
+    A = typeof(plids_to_value)
+    B = typeof(d_to_lid_to_plid)
+    local_size = map(length,d_to_lid_to_plid)
+    new{T,N,A,B}(plids_to_value,d_to_lid_to_plid,local_size)
+  end
+end
+
+Base.size(a::LocalView) = a.local_size
+Base.IndexStyle(::Type{<:LocalView}) = IndexCartesian()
+function Base.getindex(a::LocalView{T,N},lids::Vararg{Integer,N}) where {T,N}
+  plids = map(_lid_to_plid,lids,a.d_to_lid_to_plid)
+  if all(i->i>0,plids)
+    a.plids_to_value[plids...]
+  else
+    zero(T)
+  end
+end
+function Base.setindex!(a::LocalView{T,N},v,lids::Vararg{Integer,N}) where {T,N}
+  plids = map(_lid_to_plid,lids,a.d_to_lid_to_plid)
+  @check all(i->i>0,plids) "You are trying to set a value that is not stored in the local portion"
+  a.plids_to_value[plids...] = v
+end
+function _lid_to_plid(lid,lid_to_plid)
+  plid = lid_to_plid[lid]
+  plid
 end
 
 function global_view(a::PVector,rows::PRange)
@@ -1926,9 +1974,16 @@ function LinearAlgebra.mul!(
 end
 
 function local_view(a::PSparseMatrix,rows::PRange,cols::PRange)
-  @notimplementedif a.rows !== rows
-  @notimplementedif a.cols !== cols
-  a.values
+  if a.rows === rows && a.cols === cols
+    a.values
+  else
+    map_parts(
+      a.values,rows.partition,cols.partition,a.rows.partition,a.cols.partition) do values,rows,cols,arows,acols
+      rmap = find_lid_map(rows,arows)
+      cmap = (cols === rows && acols === arows) ? rmap : find_lid_map(cols,acols)
+      LocalView(values,(rmap,cmap))
+    end
+  end
 end
 
 function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)

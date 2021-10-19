@@ -509,6 +509,23 @@ function test_interfaces(parts)
     end
   end
 
+  subrows_partition = map_parts(v.rows.partition) do rows
+    perm = [3,1,2]
+    IndexSet(rows.part,rows.lid_to_gid[perm],rows.lid_to_part[perm])
+  end
+  subrows = PRange(length(v.rows),subrows_partition)
+  subv = PVector(1.0,subrows)
+  map_parts(local_view(subv,v.rows)) do v
+    v[[1,2,3]] = [6,7,8]
+  end
+  map_parts(subv.values) do v
+    perm = [2,3,1]
+    @test v[perm] == [6,7,8]
+  end
+  map_parts(local_view(subv,v.rows)) do v
+    @test v[[1,2,3]] == [6,7,8]
+  end
+
   map_parts(parts,global_view(v,v.rows)) do part,v
     if part == 4
       v[9] = 6
@@ -587,6 +604,7 @@ function test_interfaces(parts)
   end
   A = PSparseMatrix(I,J,V,n,n;ids=:global)
   local_view(A,A.rows,A.cols)
+  local_view(A,copy(A.rows),copy(A.cols))
   global_view(A,A.rows,A.cols)
 
   x = PVector{Float64}(undef,A.cols)
