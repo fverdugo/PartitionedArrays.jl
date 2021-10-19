@@ -26,7 +26,7 @@ function test_interfaces(parts)
       [1,3]
     end
   end
-  
+
   parts_snd = map_parts(parts) do part
     if part == 1
       [3,4]
@@ -38,7 +38,7 @@ function test_interfaces(parts)
       [2]
     end
   end
-  
+
   data_snd = map_parts(i->10*i,parts_snd)
   data_rcv = map_parts(similar,parts_rcv)
 
@@ -550,7 +550,8 @@ function test_interfaces(parts)
     i = collect(1:num_lids(rows))
     j = i
     v = fill(2.0,length(i))
-    sparse(i,j,v,num_lids(rows),num_lids(cols))
+    a=sparse(i,j,v,num_lids(rows),num_lids(cols))
+    a
   end
 
   x = PVector{Float64}(undef,cols)
@@ -571,8 +572,17 @@ function test_interfaces(parts)
     @test all( values .== 6 )
   end
 
+  LinearAlgebra.fillstored!(A,1.0)
+  fill!(x,3.0)
+  mul!(b,A,x)
+  exchange!(b)
+  map_parts(b.values) do values
+    @test all( values .== 3 )
+  end
+
   exchange!(A)
   assemble!(A)
+
 
   I,J,V = map_parts(parts) do part
     if part == 1
@@ -611,4 +621,3 @@ function test_interfaces(parts)
   exchange!(I,J,V,A.cols)
 
 end
-

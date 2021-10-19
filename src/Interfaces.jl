@@ -73,7 +73,7 @@ num_parts(a::AbstractPData) = length(a)
 """
     get_backend(a::AbstractPData) -> AbstractBackend
 
-Get the back-end associated with `a`. 
+Get the back-end associated with `a`.
 """
 get_backend(a::AbstractPData) = @abstractmethod
 
@@ -828,7 +828,7 @@ function async_exchange!(
   data_snd = allocate_snd_buffer(Tsnd,exchanger)
 
   # Fill snd buffer
-  t1 = map_parts(t0,values_snd,data_snd,exchanger.lids_snd) do t0,values_snd,data_snd,lids_snd 
+  t1 = map_parts(t0,values_snd,data_snd,exchanger.lids_snd) do t0,values_snd,data_snd,lids_snd
     @task begin
       wait(schedule(t0))
       for p in 1:length(lids_snd.data)
@@ -848,7 +848,7 @@ function async_exchange!(
 
   # Fill values_rcv from rcv buffer
   # asynchronously
-  t3 = map_parts(t2,values_rcv,data_rcv,exchanger.lids_rcv) do t2,values_rcv,data_rcv,lids_rcv 
+  t3 = map_parts(t2,values_rcv,data_rcv,exchanger.lids_rcv) do t2,values_rcv,data_rcv,lids_rcv
     @task begin
       wait(schedule(t2))
       for p in 1:length(lids_rcv.data)
@@ -946,7 +946,7 @@ mutable struct PRange{A,B,C} <: AbstractUnitRange{Int}
     exchanger::Exchanger,
     gid_to_part::Union{AbstractPData{<:AbstractArray{<:Integer}},Nothing}=nothing,
     ghost::Bool=true)
-  
+
     A = typeof(partition)
     B = typeof(exchanger)
     C = typeof(gid_to_part)
@@ -1782,6 +1782,13 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   end
 end
 
+function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
+  map_parts(a.values) do values
+    LinearAlgebra.fillstored!(values,v)
+  end
+  a
+end
+
 function Base.copy(a::PSparseMatrix)
   PSparseMatrix(
     copy(a.values),
@@ -1988,7 +1995,7 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
     gj_rcv = Table(gj_rcv_data,ptrs)
     k_rcv, gi_rcv, gj_rcv
   end
-  
+
   k_rcv, gi_rcv, gj_rcv = map_parts(setup_rcv,part,parts_rcv,row_lids,col_lids,values)
 
   gi_snd = exchange(gi_rcv,parts_snd,parts_rcv)
@@ -2097,9 +2104,9 @@ function async_assemble!(
     gi_rcv = Table(gi_rcv_data,ptrs)
     gj_rcv = Table(gj_rcv_data,ptrs)
     v_rcv = Table(v_rcv_data,ptrs)
-    gi_rcv, gj_rcv, v_rcv 
+    gi_rcv, gj_rcv, v_rcv
   end
-  
+
   gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.partition,coo_values)
 
   gi_snd, t1 = async_exchange(gi_rcv,parts_snd,parts_rcv)
@@ -2196,9 +2203,9 @@ function async_exchange!(
     gi_snd = Table(gi_snd_data,ptrs)
     gj_snd = Table(gj_snd_data,ptrs)
     v_snd = Table(v_snd_data,ptrs)
-    gi_snd, gj_snd, v_snd 
+    gi_snd, gj_snd, v_snd
   end
-  
+
   gi_snd, gj_snd, v_snd = map_parts(
     setup_snd,part,parts_snd,lids_snd,rows.partition,coo_values)
 
@@ -2375,4 +2382,3 @@ function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
   fill!(x, zero(T))
   return x
 end
-
