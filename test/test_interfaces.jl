@@ -572,7 +572,7 @@ function test_interfaces(parts)
     @test all( values .== 6 )
   end
 
-  fill!(A,1.0)
+  LinearAlgebra.fillstored!(A,1.0)
   fill!(x,3.0)
   mul!(b,A,x)
   exchange!(b)

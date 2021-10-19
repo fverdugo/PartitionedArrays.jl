@@ -1782,7 +1782,7 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
   end
 end
 
-function Base.fill!(a::PSparseMatrix,v)
+function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
   map_parts(a.values) do values
     LinearAlgebra.fillstored!(values,v)
   end
