@@ -1490,6 +1490,19 @@ function Base.copy(b::PVector)
   a
 end
 
+function LinearAlgebra.rmul!(a::PVector,v::Number)
+  map_parts(a.values) do l
+    rmul!(l,v)
+  end
+  a
+end
+
+function Base.:(==)(a::PVector,b::PVector)
+  length(a) == length(b) &&
+  num_parts(a.values) == num_parts(b.values) &&
+  reduce(&,map_parts(==,a.owned_values,b.owned_values),init=true)
+end
+
 struct DistributedBroadcasted{A,B,C}
   owned_values::A
   ghost_values::B
@@ -1574,6 +1587,101 @@ function LinearAlgebra.norm(a::PVector,p::Real=2)
     norm(oid_to_value,p)^p
   end
   reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
+end
+
+# Distances.jl related (needed eg for non-linear solvers)
+
+for M in Distances.metrics
+  @eval begin
+    function (dist::$M)(a::PVector,b::PVector)
+      _eval_dist(dist,a,b,Distances.parameters(dist))
+    end
+  end
+end
+
+function _eval_dist(d,a,b,::Nothing)
+  partials = map_parts(a.owned_values,b.owned_values) do a,b
+    _eval_dist_local(d,a,b,nothing)
+  end
+  s = reduce(
+    (i,j)->Distances.eval_reduce(d,i,j),
+    partials,
+    init=Distances.eval_start(d, a, b))
+  Distances.eval_end(d,s)
+end
+
+Base.@propagate_inbounds function _eval_dist_local(d,a,b,::Nothing)
+  @boundscheck if length(a) != length(b)
+    throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
+  end
+  if length(a) == 0
+    return zero(Distances.result_type(d, a, b))
+  end
+  @inbounds begin
+    s = Distances.eval_start(d, a, b)
+    if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
+      @simd for I in eachindex(a, b)
+        ai = a[I]
+        bi = b[I]
+        s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+      end
+    else
+      for (ai, bi) in zip(a, b)
+        s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+      end
+    end
+    return s
+  end
+end
+
+function _eval_dist(d,a,b,p)
+  @notimplemented
+end
+
+function _eval_dist_local(d,a,b,p)
+  @notimplemented
+end
+
+function Base.any(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    any(f,o)
+  end
+  reduce(|,partials,init=false)
+end
+
+function Base.all(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    all(f,o)
+  end
+  reduce(&,partials,init=true)
+end
+
+function Base.maximum(x::PVector)
+  partials = map_parts(maximum,x.owned_values)
+  reduce(max,partials,init=typemin(eltype(x)))
+end
+
+function Base.maximum(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    maximum(f,o)
+  end
+  reduce(max,partials,init=typemin(eltype(x)))
+end
+
+function Base.minimum(x::PVector)
+  partials = map_parts(minimum,x.owned_values)
+  reduce(min,partials,init=typemax(eltype(x)))
+end
+
+function Base.minimum(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    minimum(f,o)
+  end
+  reduce(min,partials,init=typemax(eltype(x)))
+end
+
+function Base.findall(f::Function,x::PVector)
+  @notimplemented
 end
 
 function PVector{T}(

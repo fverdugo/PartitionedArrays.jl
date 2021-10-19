@@ -4,6 +4,7 @@ using SparseArrays
 using PartitionedArrays
 using Test
 using IterativeSolvers
+using Distances
 
 function test_interfaces(parts)
 
@@ -446,6 +447,25 @@ function test_interfaces(parts)
   map_parts(u.values,v.values) do u,v
     @test u == 3*v
   end
+
+  @test any(i->i>4,v) == true
+  @test any(i->i>10,v) == false
+  @test all(i->i<10,v) == true
+  @test all(i->i<4,v) == false
+  @test maximum(v) == 5
+  @test minimum(v) == 0
+  @test maximum(i->i-1,v) == 4
+  @test minimum(i->i-1,v) == -1
+
+  w = copy(v)
+  rmul!(w,-1)
+  @test all(i->i==0,v+w)
+
+  @test w == w
+  @test w != v
+
+  @test sqeuclidean(w,v) ≈ (norm(w-v))^2
+  @test euclidean(w,v) ≈ norm(w-v)
 
   w = similar(v)
   w = similar(v,Float64)
