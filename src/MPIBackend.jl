@@ -7,13 +7,13 @@ struct MPIBackend <: AbstractBackend end
 const mpi = MPIBackend()
 
 function get_part_ids(b::MPIBackend,nparts::Integer)
-  comm = MPI.COMM_WORLD
+  comm = MPI.Comm_dup(MPI.COMM_WORLD)
   @notimplementedif num_parts(comm) != nparts
   MPIData(get_part_id(comm),comm,(nparts,))
 end
 
 function get_part_ids(b::MPIBackend,nparts::Tuple)
-  comm = MPI.COMM_WORLD
+  comm = MPI.Comm_dup(MPI.COMM_WORLD)
   @notimplementedif num_parts(comm) != prod(nparts)
   MPIData(get_part_id(comm),comm,nparts)
 end
@@ -47,6 +47,10 @@ Base.size(a::MPIData) = a.size
 get_part_id(a::MPIData) = get_part_id(a.comm)
 get_backend(a::MPIData) = mpi
 i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
+
+function get_part_ids(a::MPIData)
+  MPIData(get_part_id(a.comm),a.comm,a.size)
+end
 
 function Base.iterate(a::MPIData)
   next = iterate(a.part)
