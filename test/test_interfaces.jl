@@ -11,7 +11,7 @@ function test_interfaces(parts)
   nparts = num_parts(parts)
   @assert nparts == 4
 
-  parts2 = get_part_ids(get_backend(parts),nparts)
+  parts2 = get_part_ids(parts)
   map_parts(parts,parts2) do part1, part2
     @test part1 == part2
   end
