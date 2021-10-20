@@ -1,5 +1,6 @@
 using PartitionedArrays
 using Test
+using MPI
 
 function main(parts)
 
@@ -7,6 +8,10 @@ function main(parts)
 
   nparts = num_parts(parts)
   @assert nparts == 4
+
+  @test MPI.COMM_WORLD !== parts.comm
+  _parts = get_part_ids(parts)
+  @test _parts.comm === parts.comm
 
   #s = size(parts)
   #display(map_parts(part->s,parts))
