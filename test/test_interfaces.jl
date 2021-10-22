@@ -658,4 +658,17 @@ function test_interfaces(parts)
   to_gids!(J,A.cols)
   exchange!(I,J,V,A.cols)
 
+  factors = lu(A)
+  x .= 0
+  ldiv!(x,factors,y)
+  r = A*x-y
+  @test norm(r) < 1.0e-9
+
+  lu!(factors,A)
+  x .= 0
+  ldiv!(x,factors,y)
+  r = A*x-y
+  @test norm(r) < 1.0e-9
+
+
 end

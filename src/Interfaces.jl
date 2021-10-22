@@ -2451,6 +2451,30 @@ function Base.:\(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
   c
 end
 
+# Not efficient, just for convenience and debugging purposes
+struct PLU{A,B,C}
+  lu_in_main::A
+  rows::B
+  cols::C
+end
+function LinearAlgebra.lu(a::PSparseMatrix)
+  a_in_main = gather(a)
+  lu_in_main = map_main(lu,a_in_main.values)
+  PLU(lu_in_main,a_in_main.rows,a_in_main.cols)
+end
+function LinearAlgebra.lu!(b::PLU,a::PSparseMatrix)
+  a_in_main = gather(a,b.rows,b.cols)
+  map_main(lu!,b.lu_in_main,a_in_main.values)
+  b
+end
+function LinearAlgebra.ldiv!(c::PVector,a::PLU,b::PVector)
+  b_in_main = gather(b,a.rows)
+  c_in_main = gather(c,a.cols)
+  map_main(ldiv!,c_in_main.values,a.lu_in_main,b_in_main.values)
+  scatter!(c,c_in_main)
+  c
+end
+
 function gather(
   a::PSparseMatrix{Ta},
   rows_in_main::PRange=_to_main(a.rows),
