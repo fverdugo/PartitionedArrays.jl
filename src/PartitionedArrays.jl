@@ -6,6 +6,7 @@ using LinearAlgebra
 using Printf
 import MPI
 import IterativeSolvers
+import Distances
 
 export AbstractBackend
 export prun

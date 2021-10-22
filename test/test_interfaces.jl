@@ -4,13 +4,14 @@ using SparseArrays
 using PartitionedArrays
 using Test
 using IterativeSolvers
+using Distances
 
 function test_interfaces(parts)
 
   nparts = num_parts(parts)
   @assert nparts == 4
 
-  parts2 = get_part_ids(get_backend(parts),nparts)
+  parts2 = get_part_ids(parts)
   map_parts(parts,parts2) do part1, part2
     @test part1 == part2
   end
@@ -26,7 +27,7 @@ function test_interfaces(parts)
       [1,3]
     end
   end
-  
+
   parts_snd = map_parts(parts) do part
     if part == 1
       [3,4]
@@ -38,7 +39,7 @@ function test_interfaces(parts)
       [2]
     end
   end
-  
+
   data_snd = map_parts(i->10*i,parts_snd)
   data_rcv = map_parts(similar,parts_rcv)
 
@@ -447,6 +448,25 @@ function test_interfaces(parts)
     @test u == 3*v
   end
 
+  @test any(i->i>4,v) == true
+  @test any(i->i>10,v) == false
+  @test all(i->i<10,v) == true
+  @test all(i->i<4,v) == false
+  @test maximum(v) == 5
+  @test minimum(v) == 0
+  @test maximum(i->i-1,v) == 4
+  @test minimum(i->i-1,v) == -1
+
+  w = copy(v)
+  rmul!(w,-1)
+  @test all(i->i==0,v+w)
+
+  @test w == w
+  @test w != v
+
+  @test sqeuclidean(w,v) ≈ (norm(w-v))^2
+  @test euclidean(w,v) ≈ norm(w-v)
+
   w = similar(v)
   w = similar(v,Float64)
   w = similar(v,Float64,ids3)
@@ -509,6 +529,23 @@ function test_interfaces(parts)
     end
   end
 
+  subrows_partition = map_parts(v.rows.partition) do rows
+    perm = [3,1,2]
+    IndexSet(rows.part,rows.lid_to_gid[perm],rows.lid_to_part[perm])
+  end
+  subrows = PRange(length(v.rows),subrows_partition)
+  subv = PVector(1.0,subrows)
+  map_parts(local_view(subv,v.rows)) do v
+    v[[1,2,3]] = [6,7,8]
+  end
+  map_parts(subv.values) do v
+    perm = [2,3,1]
+    @test v[perm] == [6,7,8]
+  end
+  map_parts(local_view(subv,v.rows)) do v
+    @test v[[1,2,3]] == [6,7,8]
+  end
+
   map_parts(parts,global_view(v,v.rows)) do part,v
     if part == 4
       v[9] = 6
@@ -550,7 +587,8 @@ function test_interfaces(parts)
     i = collect(1:num_lids(rows))
     j = i
     v = fill(2.0,length(i))
-    sparse(i,j,v,num_lids(rows),num_lids(cols))
+    a=sparse(i,j,v,num_lids(rows),num_lids(cols))
+    a
   end
 
   x = PVector{Float64}(undef,cols)
@@ -571,8 +609,17 @@ function test_interfaces(parts)
     @test all( values .== 6 )
   end
 
+  LinearAlgebra.fillstored!(A,1.0)
+  fill!(x,3.0)
+  mul!(b,A,x)
+  exchange!(b)
+  map_parts(b.values) do values
+    @test all( values .== 3 )
+  end
+
   exchange!(A)
   assemble!(A)
+
 
   I,J,V = map_parts(parts) do part
     if part == 1
@@ -587,6 +634,7 @@ function test_interfaces(parts)
   end
   A = PSparseMatrix(I,J,V,n,n;ids=:global)
   local_view(A,A.rows,A.cols)
+  local_view(A,copy(A.rows),copy(A.cols))
   global_view(A,A.rows,A.cols)
 
   x = PVector{Float64}(undef,A.cols)
@@ -611,4 +659,3 @@ function test_interfaces(parts)
   exchange!(I,J,V,A.cols)
 
 end
-

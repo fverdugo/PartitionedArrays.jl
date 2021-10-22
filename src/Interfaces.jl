@@ -73,7 +73,7 @@ num_parts(a::AbstractPData) = length(a)
 """
     get_backend(a::AbstractPData) -> AbstractBackend
 
-Get the back-end associated with `a`. 
+Get the back-end associated with `a`.
 """
 get_backend(a::AbstractPData) = @abstractmethod
 
@@ -639,6 +639,16 @@ function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   a.lid_to_gid == b.lid_to_gid
 end
 
+function find_lid_map(a::AbstractIndexSet,b::AbstractIndexSet)
+  alid_to_blid = fill(Int32(-1),num_lids(a))
+  for blid in 1:num_lids(b)
+    gid = b.lid_to_gid[blid]
+    alid = a.gid_to_lid[gid]
+    alid_to_blid[alid] = blid
+  end
+  alid_to_blid
+end
+
 # The given ids are assumed to be a sub-set of the lids
 function touched_hids(a::AbstractIndexSet,gids::AbstractVector{<:Integer})
   i = 0
@@ -828,7 +838,7 @@ function async_exchange!(
   data_snd = allocate_snd_buffer(Tsnd,exchanger)
 
   # Fill snd buffer
-  t1 = map_parts(t0,values_snd,data_snd,exchanger.lids_snd) do t0,values_snd,data_snd,lids_snd 
+  t1 = map_parts(t0,values_snd,data_snd,exchanger.lids_snd) do t0,values_snd,data_snd,lids_snd
     @task begin
       wait(schedule(t0))
       for p in 1:length(lids_snd.data)
@@ -848,7 +858,7 @@ function async_exchange!(
 
   # Fill values_rcv from rcv buffer
   # asynchronously
-  t3 = map_parts(t2,values_rcv,data_rcv,exchanger.lids_rcv) do t2,values_rcv,data_rcv,lids_rcv 
+  t3 = map_parts(t2,values_rcv,data_rcv,exchanger.lids_rcv) do t2,values_rcv,data_rcv,lids_rcv
     @task begin
       wait(schedule(t2))
       for p in 1:length(lids_rcv.data)
@@ -946,7 +956,7 @@ mutable struct PRange{A,B,C} <: AbstractUnitRange{Int}
     exchanger::Exchanger,
     gid_to_part::Union{AbstractPData{<:AbstractArray{<:Integer}},Nothing}=nothing,
     ghost::Bool=true)
-  
+
     A = typeof(partition)
     B = typeof(exchanger)
     C = typeof(gid_to_part)
@@ -1455,12 +1465,22 @@ function Base.similar(
 end
 
 function Base.copy!(a::PVector,b::PVector)
-  map_parts(copy!,a.values,b.values)
+  @check oids_are_equal(a.rows,b.rows)
+  if a.rows.partition === b.rows.partition
+    map_parts(copy!,a.values,b.values)
+  else
+    map_parts(copy!,a.owned_values,b.owned_values)
+  end
   a
 end
 
 function Base.copyto!(a::PVector,b::PVector)
-  map_parts(copyto!,a.values,b.values)
+  @check oids_are_equal(a.rows,b.rows)
+  if a.rows.partition === b.rows.partition
+    map_parts(copyto!,a.values,b.values)
+  else
+    map_parts(copyto!,a.owned_values,b.owned_values)
+  end
   a
 end
 
@@ -1468,6 +1488,19 @@ function Base.copy(b::PVector)
   a = similar(b)
   copy!(a,b)
   a
+end
+
+function LinearAlgebra.rmul!(a::PVector,v::Number)
+  map_parts(a.values) do l
+    rmul!(l,v)
+  end
+  a
+end
+
+function Base.:(==)(a::PVector,b::PVector)
+  length(a) == length(b) &&
+  num_parts(a.values) == num_parts(b.values) &&
+  reduce(&,map_parts(==,a.owned_values,b.owned_values),init=true)
 end
 
 struct DistributedBroadcasted{A,B,C}
@@ -1554,6 +1587,101 @@ function LinearAlgebra.norm(a::PVector,p::Real=2)
     norm(oid_to_value,p)^p
   end
   reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
+end
+
+# Distances.jl related (needed eg for non-linear solvers)
+
+for M in Distances.metrics
+  @eval begin
+    function (dist::$M)(a::PVector,b::PVector)
+      _eval_dist(dist,a,b,Distances.parameters(dist))
+    end
+  end
+end
+
+function _eval_dist(d,a,b,::Nothing)
+  partials = map_parts(a.owned_values,b.owned_values) do a,b
+    _eval_dist_local(d,a,b,nothing)
+  end
+  s = reduce(
+    (i,j)->Distances.eval_reduce(d,i,j),
+    partials,
+    init=Distances.eval_start(d, a, b))
+  Distances.eval_end(d,s)
+end
+
+Base.@propagate_inbounds function _eval_dist_local(d,a,b,::Nothing)
+  @boundscheck if length(a) != length(b)
+    throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
+  end
+  if length(a) == 0
+    return zero(Distances.result_type(d, a, b))
+  end
+  @inbounds begin
+    s = Distances.eval_start(d, a, b)
+    if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
+      @simd for I in eachindex(a, b)
+        ai = a[I]
+        bi = b[I]
+        s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+      end
+    else
+      for (ai, bi) in zip(a, b)
+        s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+      end
+    end
+    return s
+  end
+end
+
+function _eval_dist(d,a,b,p)
+  @notimplemented
+end
+
+function _eval_dist_local(d,a,b,p)
+  @notimplemented
+end
+
+function Base.any(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    any(f,o)
+  end
+  reduce(|,partials,init=false)
+end
+
+function Base.all(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    all(f,o)
+  end
+  reduce(&,partials,init=true)
+end
+
+function Base.maximum(x::PVector)
+  partials = map_parts(maximum,x.owned_values)
+  reduce(max,partials,init=typemin(eltype(x)))
+end
+
+function Base.maximum(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    maximum(f,o)
+  end
+  reduce(max,partials,init=typemin(eltype(x)))
+end
+
+function Base.minimum(x::PVector)
+  partials = map_parts(minimum,x.owned_values)
+  reduce(min,partials,init=typemax(eltype(x)))
+end
+
+function Base.minimum(f::Function,x::PVector)
+  partials = map_parts(x.owned_values) do o
+    minimum(f,o)
+  end
+  reduce(min,partials,init=typemax(eltype(x)))
+end
+
+function Base.findall(f::Function,x::PVector)
+  @notimplemented
 end
 
 function PVector{T}(
@@ -1678,8 +1806,46 @@ function LinearAlgebra.dot(a::PVector,b::PVector)
 end
 
 function local_view(a::PVector,rows::PRange)
-  @notimplementedif a.rows !== rows
-  a.values
+  if a.rows === rows
+    a.values
+  else
+    map_parts(a.values,rows.partition,a.rows.partition) do values,rows,arows
+      LocalView(values,(find_lid_map(rows,arows),))
+    end
+  end
+end
+
+struct LocalView{T,N,A,B} <:AbstractArray{T,N}
+  plids_to_value::A
+  d_to_lid_to_plid::B
+  local_size::NTuple{N,Int}
+  function LocalView(
+    plids_to_value::AbstractArray{T,N},d_to_lid_to_plid::NTuple{N}) where {T,N}
+    A = typeof(plids_to_value)
+    B = typeof(d_to_lid_to_plid)
+    local_size = map(length,d_to_lid_to_plid)
+    new{T,N,A,B}(plids_to_value,d_to_lid_to_plid,local_size)
+  end
+end
+
+Base.size(a::LocalView) = a.local_size
+Base.IndexStyle(::Type{<:LocalView}) = IndexCartesian()
+function Base.getindex(a::LocalView{T,N},lids::Vararg{Integer,N}) where {T,N}
+  plids = map(_lid_to_plid,lids,a.d_to_lid_to_plid)
+  if all(i->i>0,plids)
+    a.plids_to_value[plids...]
+  else
+    zero(T)
+  end
+end
+function Base.setindex!(a::LocalView{T,N},v,lids::Vararg{Integer,N}) where {T,N}
+  plids = map(_lid_to_plid,lids,a.d_to_lid_to_plid)
+  @check all(i->i>0,plids) "You are trying to set a value that is not stored in the local portion"
+  a.plids_to_value[plids...] = v
+end
+function _lid_to_plid(lid,lid_to_plid)
+  plid = lid_to_plid[lid]
+  plid
 end
 
 function global_view(a::PVector,rows::PRange)
@@ -1770,6 +1936,13 @@ struct PSparseMatrix{T,A,B,C,D} <: AbstractMatrix{T}
     D = typeof(exchanger)
     new{T,A,B,C,D}(values,rows,cols,exchanger)
   end
+end
+
+function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
+  map_parts(a.values) do values
+    LinearAlgebra.fillstored!(values,v)
+  end
+  a
 end
 
 function Base.copy(a::PSparseMatrix)
@@ -1916,9 +2089,16 @@ function LinearAlgebra.mul!(
 end
 
 function local_view(a::PSparseMatrix,rows::PRange,cols::PRange)
-  @notimplementedif a.rows !== rows
-  @notimplementedif a.cols !== cols
-  a.values
+  if a.rows === rows && a.cols === cols
+    a.values
+  else
+    map_parts(
+      a.values,rows.partition,cols.partition,a.rows.partition,a.cols.partition) do values,rows,cols,arows,acols
+      rmap = find_lid_map(rows,arows)
+      cmap = (cols === rows && acols === arows) ? rmap : find_lid_map(cols,acols)
+      LocalView(values,(rmap,cmap))
+    end
+  end
 end
 
 function global_view(a::PSparseMatrix,rows::PRange,cols::PRange)
@@ -1978,7 +2158,7 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
     gj_rcv = Table(gj_rcv_data,ptrs)
     k_rcv, gi_rcv, gj_rcv
   end
-  
+
   k_rcv, gi_rcv, gj_rcv = map_parts(setup_rcv,part,parts_rcv,row_lids,col_lids,values)
 
   gi_snd = exchange(gi_rcv,parts_snd,parts_rcv)
@@ -2087,9 +2267,9 @@ function async_assemble!(
     gi_rcv = Table(gi_rcv_data,ptrs)
     gj_rcv = Table(gj_rcv_data,ptrs)
     v_rcv = Table(v_rcv_data,ptrs)
-    gi_rcv, gj_rcv, v_rcv 
+    gi_rcv, gj_rcv, v_rcv
   end
-  
+
   gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.partition,coo_values)
 
   gi_snd, t1 = async_exchange(gi_rcv,parts_snd,parts_rcv)
@@ -2186,9 +2366,9 @@ function async_exchange!(
     gi_snd = Table(gi_snd_data,ptrs)
     gj_snd = Table(gj_snd_data,ptrs)
     v_snd = Table(v_snd_data,ptrs)
-    gi_snd, gj_snd, v_snd 
+    gi_snd, gj_snd, v_snd
   end
-  
+
   gi_snd, gj_snd, v_snd = map_parts(
     setup_snd,part,parts_snd,lids_snd,rows.partition,coo_values)
 
@@ -2365,4 +2545,3 @@ function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
   fill!(x, zero(T))
   return x
 end
-
