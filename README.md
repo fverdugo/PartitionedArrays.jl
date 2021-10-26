@@ -37,7 +37,7 @@ On these types, several communication operations are defined:
 
 One can use PETSc bindings like [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) for parallel computations in Julia, but this approach has some limitations:
 
-- PETSc is hard-codded for vectors/matrices of some particular element types (e.g. Float64 and ComplexF64).
+- PETSc is hard-coded for vectors/matrices of some particular element types (e.g. `Float64` and `ComplexF64`).
 
 - PETSc forces one to use MPI as the parallel execution model. Drivers are executed as `mpirun -np 4 julia --project=. input.jl`, which means no interactive Julia sessions, no `Revise`, no `Debugger`. This is a major limitation to develop parallel algorithms.
 
@@ -46,7 +46,7 @@ This package aims to overcome these limitations. It implements (and allows to im
 - `MPIBackend`: Chunks of parallel data and parallel tasks are mapped to different MPI processes. The drivers are to be executed in MPI mode, e.g., `mpirun -n 4 julia --project=. input.jl`.
 
 
-The `SequentialBackend` is specially handy for developing new code. Since it runs in a standard Julia session, one can use tools like `Revise` and `Debugger` that will certainly do your live easier at the developing stage. Once the code works with the `SequentialBackend`, it can be automatically deployed in a super computer via the `MPIBackend`.  Other back ends like a `ThreadedBacked`, `DistributedBackend`, or `MPIXBackend` can be added in the future.
+The `SequentialBackend` is specially handy for developing new code. Since it runs in a standard Julia session, one can use tools like `Revise` and `Debugger` that will certainly do your life easier at the developing stage. Once the code works with the `SequentialBackend`, it can be automatically deployed in a supercomputer via the `MPIBackend`.  Other back ends like a `ThreadedBacked`, `DistributedBackend`, or `MPIXBackend` can be added in the future.
 
 ## Performance
 
