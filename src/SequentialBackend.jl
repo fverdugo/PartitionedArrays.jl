@@ -13,6 +13,10 @@ function get_part_ids(b::SequentialBackend,nparts::Tuple)
   SequentialData(parts)
 end
 
+function prun_debug(driver::Function,b::SequentialBackend,nparts)
+  prun(driver,b,nparts)
+end
+
 struct SequentialData{T,N} <: AbstractPData{T,N}
   parts::Array{T,N}
 end

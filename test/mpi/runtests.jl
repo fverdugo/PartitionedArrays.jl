@@ -14,4 +14,7 @@ using Test
 
 @testset "PTimers" begin include("PTimersTests.jl") end
 
+@testset "ExceptionTests" begin include("ExceptionTests.jl") end
+
+
 end

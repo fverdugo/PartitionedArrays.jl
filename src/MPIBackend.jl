@@ -22,12 +22,32 @@ function prun(driver::Function,b::MPIBackend,nparts)
   if !MPI.Initialized()
     MPI.Init()
   end
-  #try 
-    part = get_part_ids(b,nparts)
-    driver(part)
-  #finally
-  #  MPI.Finalize()
-  #end
+  try
+     part = get_part_ids(b,nparts)
+     driver(part)
+  catch e
+    @error "" exception=(e, catch_backtrace())
+    if MPI.Initialized() && !MPI.Finalized()
+      MPI.Abort(MPI.COMM_WORLD,0)
+    end
+  end
+  # We are NOT invoking MPI.Finalize() here because we rely on
+  # MPI.jl, which registers MPI.Finalize() in atexit()
+end
+
+# Useful to debug an MPI program when executed interactively
+# on the REPL, i.e., with a single MPI task
+function prun_debug(driver::Function,b::MPIBackend,nparts)
+  if !MPI.Initialized()
+    MPI.Init()
+  end
+  if (length(nparts) != 1)
+    MPI.Abort(MPI.COMM_WORLD,0)
+  end
+  part = get_part_ids(b,nparts)
+  driver(part)
+  # We are NOT invoking MPI.Finalize() here because we rely on
+  # MPI.jl, which registers MPI.Finalize() in atexit()
 end
 
 struct MPIData{T,N} <: AbstractPData{T,N}
@@ -156,7 +176,7 @@ function scatter(snd::MPIData)
     MPI.Scatter!(MPI.UBuffer(snd.part,1),MPI.IN_PLACE,MAIN-1,snd.comm)
   else
     rcv = Vector{eltype(snd.part)}(undef,1)
-    MPI.Scatter!(nothing,rcv,MAIN-1,snd.comm)        
+    MPI.Scatter!(nothing,rcv,MAIN-1,snd.comm)
     part = rcv[1]
   end
   MPIData(part,snd.comm,snd.size)
@@ -171,7 +191,7 @@ function scatter(snd::MPIData{<:Table})
     rcv = snd.part[MAIN]
   else
     rcv = eltype(snd.part)(undef,counts_scat.part)
-    MPI.Scatterv!(nothing,rcv,MAIN-1,snd.comm)        
+    MPI.Scatterv!(nothing,rcv,MAIN-1,snd.comm)
   end
   MPIData(rcv,snd.comm,snd.size)
 end
@@ -282,4 +302,3 @@ function async_exchange!(
   t_out = MPIData(t2,comm,s)
   t_out
 end
-
