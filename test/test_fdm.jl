@@ -32,7 +32,7 @@ function test_fdm(parts)
 
   # Use a Cartesian partition if possible
   if ndims(parts) == length(ns)
-    rows = PRange(parts,ns)
+    rows = PRange(parts,ns) 
   else
     rows = PRange(parts,n)
   end
@@ -44,7 +44,7 @@ function test_fdm(parts)
   # We don't need the ghost layer for the exact solution
   # So, it can be allocated right now.
   x̂ = similar(b)
-  
+
   # Loop over (owned) rows, fill the coo-vectors, rhs, and the exact solution
   # In this case, we always touch local rows, but arbitrary cols.
   # Thus, row ids can be readily stored in local numbering so that we do not need to convert
