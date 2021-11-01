@@ -1091,7 +1091,7 @@ function PRange(
   exchanger = Exchanger(partition,neighbors_snd,neighbors_rcv;kwargs...)
   ghost = true
   gid_to_part = nothing
-  PRange(ngids,partition,gid_to_part,ghost)
+  PRange(ngids,partition,exchanger,gid_to_part,ghost)
 end
 
 function PRange(
