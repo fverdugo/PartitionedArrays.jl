@@ -3,7 +3,7 @@
 # - https://docs.codecov.com/docs/commit-status
 
 coverage:
-  range: 80..90 # set 95% and above as solid green, everything below 80% as red
+  range: 80..90 # set 90% and above as solid green, everything below 80% as red
   status:
     project: # set to `off` here and remove the lines below to disable this status
       default:
