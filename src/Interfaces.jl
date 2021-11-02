@@ -2173,7 +2173,7 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
       li = row_lids.gid_to_lid[gi]
       lj = col_lids.gid_to_lid[gj]
       k = nzindex(values,li,lj)
-      @check k > 0 "The sparsity patern of the ghost layer is inconsistent"
+      @check k > 0 "The sparsity pattern of the ghost layer is inconsistent"
       k_snd_data[p] = k
     end
     k_snd = Table(k_snd_data,ptrs)
