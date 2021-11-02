@@ -198,3 +198,7 @@ function async_exchange!(
   end
   t_out
 end
+
+# Do not generate warning if SequentialBackend
+function _warn_message_on_main_task_discover_parts_snd(data::SequentialData)
+end
