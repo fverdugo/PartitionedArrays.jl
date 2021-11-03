@@ -1,0 +1,16 @@
+# Documentation available at
+# - https://docs.codecov.com/docs/codecovyml-reference
+# - https://docs.codecov.com/docs/commit-status
+
+coverage:
+  range: 80..90 # set 90% and above as solid green, everything below 80% as red
+  status:
+    project: # set to `off` here and remove the lines below to disable this status
+      default:
+        threshold: 0.5% # allow this coverage drop without status failure
+    patch: # set to `off` here and remove the lines below to disable this status
+      default:
+        threshold: 0.5% # allow this coverage drop without status failure
+
+github_checks:
+  annotations: false
