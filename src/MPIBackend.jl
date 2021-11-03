@@ -190,8 +190,13 @@ function scatter(snd::MPIData{<:Table})
     MPI.Scatterv!(buf,MPI.IN_PLACE,MAIN-1,snd.comm)
     rcv = snd.part[MAIN]
   else
-    rcv = eltype(snd.part)(undef,counts_scat.part)
-    MPI.Scatterv!(nothing,rcv,MAIN-1,snd.comm)
+    T=eltype(snd.part)
+    # This void Vbuffer is required to circumvent a deadlock
+    # that we found with OpenMPI 4.1.X on Gadi. In particular, the
+    # deadlock arises whenever buf is set to nothing
+    buf = MPI.VBuffer(eltype(T)[],eltype(T)[])
+    rcv = T(undef,counts_scat.part)
+    MPI.Scatterv!(buf,rcv,MAIN-1,snd.comm)
   end
   MPIData(rcv,snd.comm,snd.size)
 end
