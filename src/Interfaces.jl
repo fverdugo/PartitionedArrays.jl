@@ -496,8 +496,7 @@ function discover_parts_snd(
 end
 
 function _warn_message_on_main_task_discover_parts_snd(data::AbstractPData)
-   map_parts(get_part_ids(data)) do part
-       if (part==1)
+   map_main(data) do data
         warn_msg="""
                  [PartitionedArrays.jl] Warning: Using a non-scalable implementation
                  to discover reciprocal parts in sparse communication kernel among nearest
@@ -508,7 +507,6 @@ function _warn_message_on_main_task_discover_parts_snd(data::AbstractPData)
         @warn warn_msg
 	      Base.show_backtrace(stderr,backtrace())
         println(stderr,"")
-       end
    end
 end
 
