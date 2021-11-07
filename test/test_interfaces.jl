@@ -162,10 +162,15 @@ function test_interfaces(parts)
     @test r == data_rcv
   end
 
+
   parts_snd_2 = discover_parts_snd(parts_rcv)
   map_parts(parts_snd,parts_snd_2) do parts_snd, parts_snd_2
     @test parts_snd == parts_snd_2
   end
+
+  PartitionedArrays.ERROR_DISCOVER_PARTS_SND[] = true
+  @test_throws ErrorException parts_snd_2 = discover_parts_snd(parts_rcv)
+  PartitionedArrays.ERROR_DISCOVER_PARTS_SND[] = false
 
   n = 10
 

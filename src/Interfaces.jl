@@ -495,24 +495,25 @@ function discover_parts_snd(
   parts_snd
 end
 
-function _warn_message_on_main_task_discover_parts_snd(data::AbstractPData)
-   map_main(data) do data
-        warn_msg="""
-                 [PartitionedArrays.jl] Warning: Using a non-scalable implementation
-                 to discover reciprocal parts in sparse communication kernel among nearest
-                 neighbours. This might cause trouble when running the code at medium/large scales.
-                 You can avoid this using the Exchanger constructor with a superset of
-                 the actual receivers/senders
-                 """
-        @warn warn_msg
-	      Base.show_backtrace(stderr,backtrace())
-        println(stderr,"")
-   end
+const ERROR_DISCOVER_PARTS_SND = Ref(false)
+
+function _error_message_on_main_task_discover_parts_snd(data::AbstractPData)
+  ERROR_DISCOVER_PARTS_SND[] || return nothing
+  error_msg =
+    """
+    [PartitionedArrays.jl] Using a non-scalable implementation
+    to discover reciprocal parts in sparse communication kernel among nearest
+    neighbours. This might cause trouble when running the code at medium/large scales.
+    You can avoid this using the Exchanger constructor with a superset of
+    the actual receivers/senders
+    """
+  @unreachable error_msg
+   nothing
 end
 
 # If neighbors not provided, we need to gather in main
 function discover_parts_snd(parts_rcv::AbstractPData)
-  _warn_message_on_main_task_discover_parts_snd(parts_rcv)
+  _error_message_on_main_task_discover_parts_snd(parts_rcv)
   parts_rcv_main = gather(parts_rcv)
   parts_snd_main = map_parts(_parts_rcv_to_parts_snd,parts_rcv_main)
   parts_snd = scatter(parts_snd_main)
