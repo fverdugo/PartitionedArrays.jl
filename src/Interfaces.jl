@@ -495,6 +495,28 @@ function discover_parts_snd(
   parts_snd
 end
 
+function without_error_discover_parts_snd(f)
+  a = ERROR_DISCOVER_PARTS_SND[]
+  try
+    ERROR_DISCOVER_PARTS_SND[] = false
+    return f()
+  finally
+    ERROR_DISCOVER_PARTS_SND[] = a
+  end
+  nothing
+end
+
+function with_error_discover_parts_snd(f)
+  a = ERROR_DISCOVER_PARTS_SND[]
+  try
+    ERROR_DISCOVER_PARTS_SND[] = true
+    return f()
+  finally
+    ERROR_DISCOVER_PARTS_SND[] = a
+  end
+  nothing
+end
+
 const ERROR_DISCOVER_PARTS_SND = Ref(false)
 
 function _error_message_on_main_task_discover_parts_snd(data::AbstractPData)
@@ -2575,7 +2597,9 @@ function _to_main(rows::PRange)
     end
     IndexSet(part,lid_to_gid,lid_to_part)
   end
-  mrows = PRange(ngids,partition)
+  mrows = without_error_discover_parts_snd() do
+    mrows = PRange(ngids,partition)
+  end
 end
 
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
