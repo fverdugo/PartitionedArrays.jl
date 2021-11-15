@@ -110,10 +110,10 @@ include("SparseUtils.jl")
 
 include("IndexSets.jl")
 
-include("PTimers.jl")
-
 include("SequentialBackend.jl")
 
 include("MPIBackend.jl")
+
+include("PTimers.jl")
 
 end
