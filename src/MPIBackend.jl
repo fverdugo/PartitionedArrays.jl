@@ -41,7 +41,7 @@ function prun_debug(driver::Function,b::MPIBackend,nparts)
   if !MPI.Initialized()
     MPI.Init()
   end
-  if (length(nparts) != 1)
+  if (prod(nparts) != 1)
     MPI.Abort(MPI.COMM_WORLD,0)
   end
   part = get_part_ids(b,nparts)
