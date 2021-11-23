@@ -1,24 +1,36 @@
 
-struct Timing
-  ns::UInt
+struct Timing{T<:Number}
+  ns::T
 end
 
-function Base.:-(a::Timing,b::Timing)
+function Base.:-(a::Timing{T},b::Timing{T}) where {T}
   ns = a.ns-b.ns
   Timing(ns)
 end
 
 @inline Timing() = Timing(time_ns())
+Timing(::AbstractPData)=Timing()
+function Timing(::MPIData)
+   Timing(MPI.Wtime())
+end
 
-mutable struct PTimer{A,B<:Dict}
+mutable struct PTimer{A,B<:Dict,C}
   parts::A
   timings::B
-  current::Timing
+  current::Timing{C}
   verbose::Bool
 end
 
+function _to_secs(::PTimer,t::Timing)
+  Float64(t.ns)/1.0e9
+end
+
+function _to_secs(::PTimer{<:MPIData},t::Timing)
+  t.ns
+end
+
 function PTimer(parts::AbstractPData{<:Integer};verbose::Bool=false)
-  current = Timing()
+  current = Timing(parts)
   timing = map_parts(p->current,parts)
   T = typeof(timing)
   timings = Dict{String,T}()
@@ -35,7 +47,7 @@ function Base.getproperty(t::PTimer, sym::Symbol)
     for (name,timing) in t.timings
       timing_main = gather(timing)
       map_main(timing_main,data) do part_to_timing,data
-        ns = map(i->Float64(i.ns)/1.0e9,part_to_timing)
+        ns = map(i->_to_secs(t,i),part_to_timing)
         d = (min=minimum(ns),max=maximum(ns),avg=sum(ns)/length(ns))
         data[name] = d
       end
@@ -50,21 +62,28 @@ function Base.propertynames(x::PTimer, private=false)
   (fieldnames(typeof(x))...,:data)
 end
 
-function tic!(t::PTimer)
-  t.current = Timing()
+function tic!(t::PTimer;barrier=false)
+  t.current = Timing(t.parts)
+end
+
+function tic!(t::PTimer{<:MPIData};barrier=false)
+  if barrier
+    MPI.Barrier(t.parts.comm)
+  end
+  t.current = Timing(t.parts)
 end
 
 function toc!(t::PTimer,name::String)
-  current = Timing()
+  current = Timing(t.parts)
   dt = current-t.current
   timing = map_parts(p->dt,t.parts)
   t.timings[name] = timing
   if t.verbose == true
     map_main(timing) do i
-      println("[$(lstrip(_nice_time(Float64(i.ns)/1.0e9))) s in MAIN] $name")
+      println("[$(lstrip(_nice_time(_to_secs(t,i)))) s in MAIN] $name")
     end
   end
-  t.current = Timing()
+  t.current = Timing(t.parts)
 end
 
 function Base.show(io::IO,k::MIME"text/plain",t::PTimer)
@@ -127,4 +146,3 @@ function _print_footer(io,longest_name,w,linechars)
   header_w = longest_name+3*w
   println(io,rule^header_w)
 end
-
