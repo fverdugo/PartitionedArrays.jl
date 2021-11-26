@@ -1,7 +1,7 @@
 name = "PartitionedArrays"
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 authors = ["Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors"]
-version = "0.2.7"
+version = "0.2.8"
 
 [deps]
 Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
