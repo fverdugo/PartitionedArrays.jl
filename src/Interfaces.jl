@@ -1435,7 +1435,7 @@ function Base.getproperty(x::PVector, sym::Symbol)
   end
 end
 
-function Base.propertynames(x::PVector, private=false)
+function Base.propertynames(x::PVector, private::Bool=false)
   (fieldnames(typeof(x))...,:owned_values,:ghost_values)
 end
 
