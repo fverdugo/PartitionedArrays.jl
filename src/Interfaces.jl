@@ -2004,7 +2004,7 @@ function Base.getproperty(x::PSparseMatrix, sym::Symbol)
   end
 end
 
-function Base.propertynames(x::PSparseMatrix, private=false)
+function Base.propertynames(x::PSparseMatrix, private::Bool=false)
   (
     fieldnames(typeof(x))...,
     :owned_owned_values,
