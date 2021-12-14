@@ -10,11 +10,9 @@
 
 
 
-This package provides a data-oriented parallel implementation of partitioned vectors and sparse matrices needed in FD, FV, and FE simulations. The long-term goal of this package is to provide (when combined with other Julia packages as `IterativeSolvers.jl`) a Julia alternative to well-known distributed algebra back ends such as `PETSc`.
+This package provides a data-oriented parallel implementation of partitioned vectors and sparse matrices needed in FD, FV, and FE simulations. The long-term goal of this package is to provide (when combined with other Julia packages as `IterativeSolvers.jl`) a Julia alternative to well-known distributed algebra back ends such as `PETSc`. `PartitionedArrays` is being used by other projects such as [`GridapDistributed`](https://github.com/gridap/GridapDistributed.jl), the parallel distributed-memory extension of the [`Gridap`](https://github.com/gridap/Gridap.jl) FE library.
 
-At this moment, a simple FD or FE system can be assembled and solved in parallel with this package together with a Conjugate Gradient method from `IterativeSolvers.jl` . See the files [test_fdm.jl]( https://github.com/fverdugo/PartitionedArrays.jl/blob/master/test/test_fdm.jl) and [test_fem_sa.jl](https://github.com/fverdugo/PartitionedArrays.jl/blob/master/test/test_fem_sa.jl).
-
-These basic types are currently implemented:
+The basic types implemented in `PartitionedArrays` are:
 - `AbstractBackend`: Abstract type to be specialized for different execution models. Now, this package provides `SequentialBackend` and `MPIBackend`.
 - `AbstractPData`: The low level abstract type representing some data partitioned over several chunks or parts. This is the core component of the data-oriented parallel implementation. Now, this package provides `SequentialData` and `MPIData`.
 - `PRange`: A specialization of `AbstractUnitRange` that has information about how the ids in the range are partitioned in different chunks. This type is used to describe the parallel data layout of rows and cols in `PVector` and `PSparseMatrix` objects.
