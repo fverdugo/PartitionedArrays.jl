@@ -1777,6 +1777,10 @@ function Base.:*(b::PVector,a::Number)
   a*b
 end
 
+function Base.:/(b::PVector,a::Number)
+  (1/a)*b
+end
+
 for op in (:+,:-)
   @eval begin
 
