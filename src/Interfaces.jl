@@ -1777,10 +1777,6 @@ function Base.:*(b::PVector,a::Number)
   a*b
 end
 
-function Base.:/(a::Number,b::PVector)
-  (1/a)*b
-end
-
 function Base.:/(b::PVector,a::Number)
   (1/a)*b
 end
