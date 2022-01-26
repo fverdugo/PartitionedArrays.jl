@@ -436,6 +436,20 @@ function test_interfaces(parts)
       end
     end
 
+    in_bounds = Val(false)
+    pcis = PCartesianIndices(parts,(4,4),with_ghost,(false,true),in_bounds)
+    map_parts(parts,pcis) do part, cis
+      if part == 1
+        @test cis == CartesianIndices((1:3,0:3))
+      elseif part == 2
+        @test cis == CartesianIndices((2:4,0:3))
+      elseif part == 3
+        @test cis == CartesianIndices((1:3,2:5))
+      else
+        @test cis == CartesianIndices((2:4,2:5))
+      end
+    end
+
     ids4 = PRange(parts,(5,4),no_ghost)
     ids4 = PRange(parts,(5,4),with_ghost)
     map_parts(parts,ids4.partition,ids4.gid_to_part) do part, ids4,gid_to_part

@@ -1251,6 +1251,34 @@ function PCartesianIndices(
   ::WithGhost,
   isperiodic::NTuple{N,Bool}) where N
 
+  in_bounds = Val(true)
+  PCartesianIndices(parts,ngids,with_ghost,isperiodic,in_bounds)
+end
+
+function PCartesianIndices(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool},
+  in_bounds::Val{false}) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid_out_of_bounds,ngids,np,p,isperiodic)
+    CartesianIndices(d_to_ldid_to_gdid)
+  end
+  lids
+end
+
+function PCartesianIndices(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool},
+  in_bounds::Val{true}) where N
+
   np = size(parts)
   pcis = map_parts(parts) do part
     cis_parts = CartesianIndices(np)
@@ -1302,6 +1330,22 @@ function _lid_to_gid(ngids::Integer,np::Integer,p::Integer)
     lid_to_gid = (gini-1):(gend+1)
   else
     lid_to_gid = (gini-1):gend
+  end
+  lid_to_gid
+end
+
+function _lid_to_gid_out_of_bounds(ngids::Integer,np::Integer,p::Integer,isperiodic::Bool)
+  oid_to_gid = _oid_to_gid(ngids,np,p)
+  gini = first(oid_to_gid)
+  gend = last(oid_to_gid)
+  if isperiodic
+    if np == 1
+      lid_to_gid = oid_to_gid
+    else
+      lid_to_gid = (gini-1):(gend+1)
+    end
+  else
+   lid_to_gid = _lid_to_gid(ngids,np,p)
   end
   lid_to_gid
 end
