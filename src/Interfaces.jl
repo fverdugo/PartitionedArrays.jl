@@ -1195,6 +1195,36 @@ end
 function PRange(
   parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool}) where N
+
+  np = size(parts)
+  partition, gid_to_part = map_parts(parts) do part
+    cp = Tuple(CartesianIndices(np)[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,cp,isperiodic)
+    lid_to_gid = _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
+    d_to_nldids = map(length,d_to_ldid_to_gdid)
+    lid_to_part = _lid_to_part(d_to_nldids,np,cp,isperiodic)
+    oid_to_lid = collect(Int32,findall(lid_to_part .== part))
+    hid_to_lid = collect(Int32,findall(lid_to_part .!= part))
+    part_to_firstgid = _part_to_firstgid(ngids,np)
+    gid_to_part = CartesianGidToPart(ngids,part_to_firstgid)
+    partition = IndexSet(
+      part,
+      lid_to_gid,
+      lid_to_part,
+      oid_to_lid,
+      hid_to_lid)
+    partition, gid_to_part
+  end
+  ghost = true
+  exchanger = Exchanger(partition;reuse_parts_rcv=true)
+  PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
+end
+
+function PRange(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
   ::NoGhost) where N
 
   PRange(parts,ngids)
@@ -1209,10 +1239,61 @@ function PCartesianIndices(
   lids = map_parts(parts) do part
     cis_parts = CartesianIndices(np)
     p = Tuple(cis_parts[part])
-    d_to_odid_to_gdid = map(_lid_to_gid,ngids,np,p)
-    CartesianIndices(d_to_odid_to_gdid)
+    d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,p)
+    CartesianIndices(d_to_ldid_to_gdid)
   end
   lids
+end
+
+function PCartesianIndices(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool}) where N
+
+  in_bounds = Val(true)
+  PCartesianIndices(parts,ngids,with_ghost,isperiodic,in_bounds)
+end
+
+function PCartesianIndices(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool},
+  in_bounds::Val{false}) where N
+
+  np = size(parts)
+  lids = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid_out_of_bounds,ngids,np,p,isperiodic)
+    CartesianIndices(d_to_ldid_to_gdid)
+  end
+  lids
+end
+
+function PCartesianIndices(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool},
+  in_bounds::Val{true}) where N
+
+  np = size(parts)
+  pcis = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,p,isperiodic)
+    d_to_nldids = map(length,d_to_ldid_to_gdid)
+    pcis = Array{NTuple{N,Int32},N}(undef,d_to_nldids)
+    cis = CartesianIndices(pcis)
+    for ci in cis
+      t = Tuple(ci)
+      pcis[ci] = ntuple(d->d_to_ldid_to_gdid[d][t[d]],Val(N))
+    end
+    pcis
+  end
+  pcis
 end
 
 function PCartesianIndices(
@@ -1253,6 +1334,44 @@ function _lid_to_gid(ngids::Integer,np::Integer,p::Integer)
   lid_to_gid
 end
 
+function _lid_to_gid_out_of_bounds(ngids::Integer,np::Integer,p::Integer,isperiodic::Bool)
+  oid_to_gid = _oid_to_gid(ngids,np,p)
+  gini = first(oid_to_gid)
+  gend = last(oid_to_gid)
+  if isperiodic
+    if np == 1
+      lid_to_gid = oid_to_gid
+    else
+      lid_to_gid = (gini-1):(gend+1)
+    end
+  else
+   lid_to_gid = _lid_to_gid(ngids,np,p)
+  end
+  lid_to_gid
+end
+
+function _lid_to_gid(ngids::Integer,np::Integer,p::Integer,isperiodic::Bool)
+  oid_to_gid = _oid_to_gid(ngids,np,p)
+  gini = first(oid_to_gid)
+  gend = last(oid_to_gid)
+  if np == 1
+    lid_to_gid = collect(oid_to_gid)
+  elseif p == 1
+    lid_to_gid = collect(gini:(gend+1))
+    if isperiodic
+      pushfirst!(lid_to_gid,ngids)
+    end
+  elseif p != np
+    lid_to_gid = collect((gini-1):(gend+1))
+  else
+    lid_to_gid = collect((gini-1):gend)
+    if isperiodic
+      push!(lid_to_gid,1)
+    end
+  end
+  lid_to_gid
+end
+
 function _lid_to_part(nlids::Integer,np::Integer,p::Integer)
   lid_to_part = Vector{Int32}(undef,nlids)
   fill!(lid_to_part,p)
@@ -1265,6 +1384,28 @@ function _lid_to_part(nlids::Integer,np::Integer,p::Integer)
     lid_to_part[end] = p+1
   else
     lid_to_part[1] = p-1
+  end
+  lid_to_part
+end
+
+function _lid_to_part(nlids::Integer,np::Integer,p::Integer,isperiodic::Bool)
+  lid_to_part = Vector{Int32}(undef,nlids)
+  fill!(lid_to_part,p)
+  if np == 1
+    lid_to_part
+  elseif p == 1
+    lid_to_part[end] = p+1
+    if isperiodic
+      lid_to_part[1] = np
+    end
+  elseif p != np
+    lid_to_part[1] = p-1
+    lid_to_part[end] = p+1
+  else
+    lid_to_part[1] = p-1
+    if isperiodic
+      lid_to_part[end] = 1
+    end
   end
   lid_to_part
 end
@@ -1286,10 +1427,22 @@ function _lid_to_gid(ngids::Tuple,np::Tuple,p::Integer)
   _lid_to_gid(ngids,np,cp)
 end
 
+function _lid_to_gid(ngids::Tuple,np::Tuple,p::Integer,isperiodic::Tuple)
+  cp = Tuple(CartesianIndices(np)[p])
+  _lid_to_gid(ngids,np,cp,isperiodic)
+end
+
 function _lid_to_gid(ngids::Tuple,np::Tuple,p::Tuple)
   D = length(np)
   @assert length(ngids) == D
   d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,p)
+  _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
+end
+
+function _lid_to_gid(ngids::Tuple,np::Tuple,p::Tuple,isperiodic::Tuple)
+  D = length(np)
+  @assert length(ngids) == D
+  d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,p,isperiodic)
   _id_tensor_product(Int,d_to_ldid_to_gdid,ngids)
 end
 
@@ -1298,10 +1451,22 @@ function _lid_to_part(nlids::Tuple,np::Tuple,p::Integer)
   _lid_to_part(nlids,np,cp)
 end
 
+function _lid_to_part(nlids::Tuple,np::Tuple,p::Integer,isperiodic::Tuple)
+  cp = Tuple(CartesianIndices(np)[p])
+  _lid_to_part(nlids,np,cp,isperiodic)
+end
+
 function _lid_to_part(nlids::Tuple,np::Tuple,p::Tuple)
   D = length(np)
   @assert length(nlids) == D
   d_to_ldid_to_dpart = map(_lid_to_part,nlids,np,p)
+  _id_tensor_product(Int32,d_to_ldid_to_dpart,np)
+end
+
+function _lid_to_part(nlids::Tuple,np::Tuple,p::Tuple,isperiodic::Tuple)
+  D = length(np)
+  @assert length(nlids) == D
+  d_to_ldid_to_dpart = map(_lid_to_part,nlids,np,p,isperiodic)
   _id_tensor_product(Int32,d_to_ldid_to_dpart,np)
 end
 

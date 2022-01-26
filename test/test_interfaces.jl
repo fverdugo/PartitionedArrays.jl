@@ -423,6 +423,33 @@ function test_interfaces(parts)
       end
     end
 
+    pcis = PCartesianIndices(parts,(4,4),with_ghost,(false,true))
+    map_parts(parts,pcis) do part,cis
+      if part == 1
+        @test cis == Tuple{Int, Int}[(1, 4) (1, 1) (1, 2) (1, 3); (2, 4) (2, 1) (2, 2) (2, 3); (3, 4) (3, 1) (3, 2) (3, 3)]
+      elseif part ==2
+        @test cis == Tuple{Int, Int}[(2, 4) (2, 1) (2, 2) (2, 3); (3, 4) (3, 1) (3, 2) (3, 3); (4, 4) (4, 1) (4, 2) (4, 3)]
+      elseif part == 3
+        @test cis == Tuple{Int, Int}[(1, 2) (1, 3) (1, 4) (1, 1); (2, 2) (2, 3) (2, 4) (2, 1); (3, 2) (3, 3) (3, 4) (3, 1)]
+      else
+        @test cis == Tuple{Int, Int}[(2, 2) (2, 3) (2, 4) (2, 1); (3, 2) (3, 3) (3, 4) (3, 1); (4, 2) (4, 3) (4, 4) (4, 1)]
+      end
+    end
+
+    in_bounds = Val(false)
+    pcis = PCartesianIndices(parts,(4,4),with_ghost,(false,true),in_bounds)
+    map_parts(parts,pcis) do part, cis
+      if part == 1
+        @test cis == CartesianIndices((1:3,0:3))
+      elseif part == 2
+        @test cis == CartesianIndices((2:4,0:3))
+      elseif part == 3
+        @test cis == CartesianIndices((1:3,2:5))
+      else
+        @test cis == CartesianIndices((2:4,2:5))
+      end
+    end
+
     ids4 = PRange(parts,(5,4),no_ghost)
     ids4 = PRange(parts,(5,4),with_ghost)
     map_parts(parts,ids4.partition,ids4.gid_to_part) do part, ids4,gid_to_part
@@ -436,6 +463,36 @@ function test_interfaces(parts)
         @test ids4.lid_to_gid == [7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20]
       end
       @test gid_to_part == [1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 3, 3, 4, 4, 4]
+    end
+    @test ids4.ghost = true
+
+    ids4 = PRange(parts,(4,4),with_ghost,(true,true))
+    map_parts(parts,ids4.partition) do part,partition
+      lid_to_gid = partition.lid_to_gid
+      if part == 1
+        @test lid_to_gid == [16, 13, 14, 15, 4, 1, 2, 3, 8, 5, 6, 7, 12, 9, 10, 11]
+      elseif part ==2
+        @test lid_to_gid == [14, 15, 16, 13, 2, 3, 4, 1, 6, 7, 8, 5, 10, 11, 12, 9]
+      elseif part == 3
+        @test lid_to_gid == [8, 5, 6, 7, 12, 9, 10, 11, 16, 13, 14, 15, 4, 1, 2, 3]
+      else
+        @test lid_to_gid == [6, 7, 8, 5, 10, 11, 12, 9, 14, 15, 16, 13, 2, 3, 4, 1]
+      end
+    end
+    @test ids4.ghost = true
+
+    ids4 = PRange(parts,(4,4),with_ghost,(false,true))
+    map_parts(parts,ids4.partition) do part,partition
+      lid_to_gid = partition.lid_to_gid
+      if part == 1
+        @test lid_to_gid == [13, 14, 15, 1, 2, 3, 5, 6, 7, 9, 10, 11]
+      elseif part ==2
+        @test lid_to_gid == [14, 15, 16, 2, 3, 4, 6, 7, 8, 10, 11, 12]
+      elseif part == 3
+        @test lid_to_gid == [5, 6, 7, 9, 10, 11, 13, 14, 15, 1, 2, 3]
+      else
+        @test lid_to_gid == [6, 7, 8, 10, 11, 12, 14, 15, 16, 2, 3, 4]
+      end
     end
     @test ids4.ghost = true
 
