@@ -1248,6 +1248,29 @@ end
 function PCartesianIndices(
   parts::AbstractPData{<:Integer,N},
   ngids::NTuple{N,<:Integer},
+  ::WithGhost,
+  isperiodic::NTuple{N,Bool}) where N
+
+  np = size(parts)
+  pcis = map_parts(parts) do part
+    cis_parts = CartesianIndices(np)
+    p = Tuple(cis_parts[part])
+    d_to_ldid_to_gdid = map(_lid_to_gid,ngids,np,p,isperiodic)
+    d_to_nldids = map(length,d_to_ldid_to_gdid)
+    pcis = Array{NTuple{N,Int32},N}(undef,d_to_nldids)
+    cis = CartesianIndices(pcis)
+    for ci in cis
+      t = Tuple(ci)
+      pcis[ci] = ntuple(d->d_to_ldid_to_gdid[d][t[d]],Val(N))
+    end
+    pcis
+  end
+  pcis
+end
+
+function PCartesianIndices(
+  parts::AbstractPData{<:Integer,N},
+  ngids::NTuple{N,<:Integer},
   ::NoGhost) where N
 
   PCartesianIndices(parts,ngids)
