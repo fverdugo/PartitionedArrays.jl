@@ -74,7 +74,7 @@ end
 
 function Base.iterate(a::MPIData)
   next = iterate(a.part)
-  if next == nothing
+  if next === nothing
     return next
   end
   item, state = next
@@ -83,7 +83,7 @@ end
 
 function Base.iterate(a::MPIData,state)
   next = iterate(a.part,state)
-  if next == nothing
+  if next === nothing
     return next
   end
   item, state = next

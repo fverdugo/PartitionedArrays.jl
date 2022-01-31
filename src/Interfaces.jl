@@ -83,6 +83,26 @@ Base.iterate(a::AbstractPData,state)  = @abstractmethod
 
 get_part_ids(a::AbstractPData) = get_part_ids(get_backend(a),size(a))
 
+"""
+    map_parts(f, xs::AbstractPData...) -> AbstractPData
+
+Call function `f` on the data `xs` owned by the current process.
+
+Internally this unwraps the arguments `xs`, calls `f` with the underlying data,
+and rewraps the result as `AbstractPData` of the same type.
+
+# Example
+In this example (using the `MPIBackend`):
+ - `A`, `B`, `X`, and `Y` are `::MPIData`,
+ - `a`, `b`, `x`, and `y` are `::Vector` (the underlying data of the `MPIData`)
+```julia
+X, Y = map_parts(A, B) do a, b
+    x = a + 2 * b
+    y = a - 5 * b
+    return x, y
+end
+```
+"""
 map_parts(task,a::AbstractPData...) = @abstractmethod
 
 i_am_main(::AbstractPData) = @abstractmethod
