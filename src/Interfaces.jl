@@ -1532,6 +1532,14 @@ function add_gids!(
   a
 end
 
+"""
+    add_gids!(a::PRange, gids::AbstractPData, neighbors_snd=nothing, neighbors_rcv=nothing; kwargs...)
+
+For each part, associate the global IDs in `gids` to the `PRange` `a`.
+Ghost IDs are added for the global IDs that are not owned by the corresponding part.
+
+See also [`add_gids`](@ref).
+"""
 function add_gids!(
   a::PRange,
   gids::AbstractPData{<:AbstractArray{<:Integer}},
@@ -1552,6 +1560,11 @@ function add_gids!(
   a
 end
 
+"""
+    add_gids(a::PRange, args...; kwargs...)
+
+Non-mutating version of [`add_gids!`](@ref).
+"""
 function add_gids(a::PRange,args...;kwargs...)
   b = copy(a)
   add_gids!(b,args...;kwargs...)
@@ -2118,6 +2131,11 @@ function async_assemble!(
 end
 
 # Blocking assembly
+"""
+    assemble!(args...; kwargs...)
+
+Blocking version of `async_assemble!`.
+"""
 function assemble!(args...;kwargs...)
   t = async_assemble!(args...;kwargs...)
   map_parts(schedule,t)
@@ -2423,6 +2441,24 @@ function async_assemble!(
   end
 end
 
+"""
+    async_assemble!(I, J, V, rows::PRange) -> Task
+
+Create a `Task` for syncronizing the [COO-vectors](https://en.wikipedia.org/wiki/Sparse_matrix#Coordinate_list_(COO))
+`I`, `J`, and `V`, i.e. sending the triplet `(i, j, v)` to the process that owns row `i`,
+The row ownership is specified by `rows`.
+
+The `Task` that is returned is not scheduled. To execute the assembly use
+`schedule` and `wait`.
+
+# Example
+```
+assembly_task = async_assemble!(I, J, V, rows)
+map_parts(schedule, assembly_task)
+# Could do other work here while the task is finishing
+map_parts(wait, assembly_task)
+```
+"""
 function async_assemble!(
   I::AbstractPData{<:AbstractVector{<:Integer}},
   J::AbstractPData{<:AbstractVector{<:Integer}},
