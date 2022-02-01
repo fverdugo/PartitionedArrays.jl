@@ -2228,6 +2228,32 @@ function Base.getindex(a::PSparseMatrix,gi::Integer,gj::Integer)
   @notimplemented
 end
 
+"""
+    PSparseMatrix(init, I, J, V, rows::PRange, cols::PRange, args...; ids, kwargs...)
+
+Create a new `PSparseMatrix` from the COO-vectors `I`, `J`, and `V` using
+`init` as the initialization method (e.g. `sparse` for constructing `SparseMatrixCSC`s on
+every process, or `sparsecsr` for constructing `SparseMatrixCSR` on every process).
+`I`, `J`, and `V`, should all be `AbstractPData`-wrapped arrays containing the row-IDs,
+column-IDs, and values, respectively.
+`rows` and `cols` should be `PRange`s describing the process ownership of the rows and
+columns.
+If the IDs (in `I`, and `J`) are given in global-enumeration this should be specified by
+passing `ids=:global` as a keyword argument (the constructor will then internally renumber
+to local IDs), and if the IDs are given in process-local enumeration this should be
+specified by passing `ids=:local`.
+
+    PSparseMatrix(init, I, J, V, rows::Int, cols::Int, args...; kwargs...)
+
+Same as above, but with `rows` and `cols` given as integers. This method requires IDs in
+`I`, and `J` to be globally enumerated (and thus passing `ids=:global`).
+
+    PSparseMatrix(I, J, V, args...; kwargs...)
+
+Same as the methods above, except providing `sparse` as the default initialization method.
+"""
+PSparseMatrix
+
 # If one chooses ids=:global the ids are translated in-place in I and J
 function PSparseMatrix(
   init,
@@ -2271,7 +2297,7 @@ function PSparseMatrix(
   PSparseMatrix(init,I,J,V,rows,cols,args...;ids=ids)
 end
 
-# Using sparse as default
+# Using sparse as default init method
 function PSparseMatrix(
   I::AbstractPData{<:AbstractArray{<:Integer}},
   J::AbstractPData{<:AbstractArray{<:Integer}},
