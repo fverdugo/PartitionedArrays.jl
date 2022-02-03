@@ -90,7 +90,7 @@ Base.IndexStyle(::Type{<:LidToPart}) = IndexLinear()
 @inline function Base.getindex(a::LidToPart,lid::Integer)
   @boundscheck begin
     if !( 1<=lid && lid<=length(a) )
-      throw(BoundsError(a,gid))
+      throw(BoundsError(a,lid))
     end
   end
   if lid <= a.noids
