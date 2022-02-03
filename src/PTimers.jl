@@ -38,7 +38,7 @@ function PTimer(parts::AbstractPData{<:Integer};verbose::Bool=false)
 end
 
 function Base.getproperty(t::PTimer, sym::Symbol)
-  if sym == :data
+  if sym === :data
     data = map_main(t.parts) do part
       d = (min=0.0,max=0.0,avg=0.0)
       T = typeof(d)
@@ -120,7 +120,7 @@ end
 _nice_time(t) = @sprintf("%12.3e",t)
 
 function _print_header(io,longest_name,w,linechars)
-  rule = linechars == :unicode ? "─" : "-"
+  rule = linechars === :unicode ? "─" : "-"
   sec_header = rpad("Section",longest_name)
   max_header = lpad("max",w)
   min_header = lpad("min",w)
@@ -142,7 +142,7 @@ function _print_section(io,longest_name,name,d)
 end
 
 function _print_footer(io,longest_name,w,linechars)
-  rule = linechars == :unicode ? "─" : "-"
+  rule = linechars === :unicode ? "─" : "-"
   header_w = longest_name+3*w
   println(io,rule^header_w)
 end
