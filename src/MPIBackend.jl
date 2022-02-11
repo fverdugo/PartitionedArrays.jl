@@ -8,13 +8,15 @@ const mpi = MPIBackend()
 
 function get_part_ids(b::MPIBackend,nparts::Integer)
   comm = MPI.Comm_dup(MPI.COMM_WORLD)
-  @notimplementedif num_parts(comm) != nparts
+  @notimplementedif(num_parts(comm) != nparts,
+    "Number of MPI processors must be equivalent to number of parts.")
   MPIData(get_part_id(comm),comm,(nparts,))
 end
 
 function get_part_ids(b::MPIBackend,nparts::Tuple)
   comm = MPI.Comm_dup(MPI.COMM_WORLD)
-  @notimplementedif num_parts(comm) != prod(nparts)
+  @notimplementedif(num_parts(comm) != prod(nparts),
+    "Number of MPI processors must be equivalent to number of parts.")
   MPIData(get_part_id(comm),comm,nparts)
 end
 
