@@ -733,4 +733,24 @@ function test_interfaces(parts)
   @test norm(r) < 1.0e-9
 
 
+  let
+    I, J, V = map_parts(p -> (Int64[p], Int64[p], Float64[p]), parts)
+    rows = PRange(parts, 4)
+    cols = PRange(parts, 4)
+    A = PSparseMatrix(I, J, V, rows, cols; ids=:global)
+    v = PVector(0.0, rows)
+    map_main(parts) do p
+      iom = IOBuffer()
+      show(iom, MIME"text/plain"(), A)
+      iov = IOBuffer()
+      show(iov, MIME"text/plain"(), v)
+      if p == 1
+        @test occursin(r"4×4 PSparseMatrix{Float64} with 4 parts .* of (?:SparseArrays\.)?SparseMatrixCSC{Float64, Int64}", String(take!(iom)))
+        @test occursin(r"4-element PVector{Float64} with 4 parts .* of Vector{Float64}", String(take!(iov)))
+      else
+        @test isempty(String(take!(iom)))
+        @test isempty(String(take!(iov)))
+      end
+    end
+  end
 end

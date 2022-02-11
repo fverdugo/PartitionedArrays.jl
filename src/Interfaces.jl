@@ -2829,6 +2829,22 @@ function _to_main(rows::PRange)
   mrows = PRange(ngids,partition)
 end
 
+function Base.show(io::IO, ::MIME"text/plain", A::Union{PSparseMatrix{T,S},PVector{T,S}}) where {T, M, S <: AbstractPData{M}}
+    # Only prints from the main process
+    map_main(A.values) do vals
+        _prefixstr(A::PSparseMatrix{T}) where T = "$(size(A, 1))×$(size(A,2)) PSparseMatrix{$T}"
+        _prefixstr(A::PVector{T}) where T = "$(length(A))-element PVector{$T}"
+        prefix = _prefixstr(A)
+        np = num_parts(A.values)
+        s = np > 1 ? "s" : ""
+        bt = typeof(get_backend(A.values))
+        iob = IOBuffer()
+        print(iob, prefix, " with $np part$s $bt of $M")
+        write(io, seekstart(iob))
+    end
+    return nothing
+end
+
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
