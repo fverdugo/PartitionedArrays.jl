@@ -22,19 +22,25 @@ function prun(driver::Function,b::MPIBackend,nparts)
   if !MPI.Initialized()
     MPI.Init()
   end
-  try
-     part = get_part_ids(b,nparts)
-     driver(part)
-  catch e
-    @error "" exception=(e, catch_backtrace())
-    if MPI.Initialized() && !MPI.Finalized()
-      MPI.Abort(MPI.COMM_WORLD,0)
+  if MPI.Comm_size(MPI.COMM_WORLD) == 1
+    part = get_part_ids(b,nparts)
+    driver(part)
+  else
+    try
+       part = get_part_ids(b,nparts)
+       driver(part)
+    catch e
+      @error "" exception=(e, catch_backtrace())
+      if MPI.Initialized() && !MPI.Finalized()
+        MPI.Abort(MPI.COMM_WORLD,1)
+      end
     end
   end
   # We are NOT invoking MPI.Finalize() here because we rely on
   # MPI.jl, which registers MPI.Finalize() in atexit()
 end
 
+#TODO not needed any more. Deprecate.
 # Useful to debug an MPI program when executed interactively
 # on the REPL, i.e., with a single MPI task
 function prun_debug(driver::Function,b::MPIBackend,nparts)
@@ -42,7 +48,7 @@ function prun_debug(driver::Function,b::MPIBackend,nparts)
     MPI.Init()
   end
   if (prod(nparts) != 1)
-    MPI.Abort(MPI.COMM_WORLD,0)
+    MPI.Abort(MPI.COMM_WORLD,1)
   end
   part = get_part_ids(b,nparts)
   driver(part)
