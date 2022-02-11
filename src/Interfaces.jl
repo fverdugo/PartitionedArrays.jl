@@ -1532,6 +1532,14 @@ function add_gids!(
   a
 end
 
+"""
+    add_gids!(a::PRange, gids::AbstractPData, neighbors_snd=nothing, neighbors_rcv=nothing; kwargs...)
+
+For each part, associate the global IDs in `gids` to the `PRange` `a`.
+Ghost IDs are added for the global IDs that are not owned by the corresponding part.
+
+See also [`add_gids`](@ref).
+"""
 function add_gids!(
   a::PRange,
   gids::AbstractPData{<:AbstractArray{<:Integer}},
@@ -1552,6 +1560,11 @@ function add_gids!(
   a
 end
 
+"""
+    add_gids(a::PRange, args...; kwargs...)
+
+Non-mutating version of [`add_gids!`](@ref).
+"""
 function add_gids(a::PRange,args...;kwargs...)
   b = copy(a)
   add_gids!(b,args...;kwargs...)
@@ -2118,6 +2131,11 @@ function async_assemble!(
 end
 
 # Blocking assembly
+"""
+    assemble!(args...; kwargs...)
+
+Blocking version of `async_assemble!`.
+"""
 function assemble!(args...;kwargs...)
   t = async_assemble!(args...;kwargs...)
   map_parts(schedule,t)
@@ -2210,6 +2228,32 @@ function Base.getindex(a::PSparseMatrix,gi::Integer,gj::Integer)
   @notimplemented
 end
 
+"""
+    PSparseMatrix(init, I, J, V, rows::PRange, cols::PRange, args...; ids, kwargs...)
+
+Create a new `PSparseMatrix` from the COO-vectors `I`, `J`, and `V` using
+`init` as the initialization method (e.g. `sparse` for constructing `SparseMatrixCSC`s on
+every process, or `sparsecsr` for constructing `SparseMatrixCSR` on every process).
+`I`, `J`, and `V`, should all be `AbstractPData`-wrapped arrays containing the row-IDs,
+column-IDs, and values, respectively.
+`rows` and `cols` should be `PRange`s describing the process ownership of the rows and
+columns.
+If the IDs (in `I`, and `J`) are given in global-enumeration this should be specified by
+passing `ids=:global` as a keyword argument (the constructor will then internally renumber
+to local IDs), and if the IDs are given in process-local enumeration this should be
+specified by passing `ids=:local`.
+
+    PSparseMatrix(init, I, J, V, rows::Int, cols::Int, args...; kwargs...)
+
+Same as above, but with `rows` and `cols` given as integers. This method requires IDs in
+`I`, and `J` to be globally enumerated (and thus passing `ids=:global`).
+
+    PSparseMatrix(I, J, V, args...; kwargs...)
+
+Same as the methods above, except providing `sparse` as the default initialization method.
+"""
+PSparseMatrix
+
 # If one chooses ids=:global the ids are translated in-place in I and J
 function PSparseMatrix(
   init,
@@ -2253,7 +2297,7 @@ function PSparseMatrix(
   PSparseMatrix(init,I,J,V,rows,cols,args...;ids=ids)
 end
 
-# Using sparse as default
+# Using sparse as default init method
 function PSparseMatrix(
   I::AbstractPData{<:AbstractArray{<:Integer}},
   J::AbstractPData{<:AbstractArray{<:Integer}},
@@ -2423,6 +2467,24 @@ function async_assemble!(
   end
 end
 
+"""
+    async_assemble!(I, J, V, rows::PRange) -> Task
+
+Create a `Task` for syncronizing the [COO-vectors](https://en.wikipedia.org/wiki/Sparse_matrix#Coordinate_list_(COO))
+`I`, `J`, and `V`, i.e. sending the triplet `(i, j, v)` to the process that owns row `i`,
+The row ownership is specified by `rows`.
+
+The `Task` that is returned is not scheduled. To execute the assembly use
+`schedule` and `wait`.
+
+# Example
+```
+assembly_task = async_assemble!(I, J, V, rows)
+map_parts(schedule, assembly_task)
+# Could do other work here while the task is finishing
+map_parts(wait, assembly_task)
+```
+"""
 function async_assemble!(
   I::AbstractPData{<:AbstractVector{<:Integer}},
   J::AbstractPData{<:AbstractVector{<:Integer}},
