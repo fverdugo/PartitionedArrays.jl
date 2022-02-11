@@ -90,7 +90,7 @@ Base.IndexStyle(::Type{<:LidToPart}) = IndexLinear()
 @inline function Base.getindex(a::LidToPart,lid::Integer)
   @boundscheck begin
     if !( 1<=lid && lid<=length(a) )
-      throw(BoundsError(a,gid))
+      throw(BoundsError(a,lid))
     end
   end
   if lid <= a.noids
@@ -155,7 +155,7 @@ end
 function Base.iterate(a::GidToLid)
   itr = zip(keys(a),values(a))
   next = iterate(itr)
-  if next == nothing
+  if next === nothing
     return nothing
   end
   item, state = next
@@ -164,7 +164,7 @@ end
 
 function Base.iterate(a::GidToLid,(itr,state))
   next = iterate(itr,state)
-  if next == nothing
+  if next === nothing
     return nothing
   end
   item, state = next

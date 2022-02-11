@@ -1607,11 +1607,11 @@ struct PVector{T,A,B} <: AbstractVector{T}
 end
 
 function Base.getproperty(x::PVector, sym::Symbol)
-  if sym == :owned_values
+  if sym === :owned_values
     map_parts(x.values,x.rows.partition) do v,r
       view(v,r.oid_to_lid)
     end
-  elseif sym == :ghost_values
+  elseif sym === :ghost_values
     map_parts(x.values,x.rows.partition) do v,r
       view(v,r.hid_to_lid)
     end
@@ -1912,7 +1912,7 @@ function PVector(
   ids::Symbol)
 
   @assert ids in (:global,:local)
-  if ids == :global
+  if ids === :global
     to_lids!(I,rows)
   end
 
@@ -1944,7 +1944,7 @@ function PVector(
   n::Integer;
   ids::Symbol)
 
-  @assert ids == :global
+  @assert ids === :global
   parts = get_part_ids(I)
   rows = PRange(parts,n)
   add_gids!(rows,I)
@@ -2160,28 +2160,28 @@ function Base.copy(a::PSparseMatrix)
 end
 
 function Base.getproperty(x::PSparseMatrix, sym::Symbol)
-  if sym == :owned_owned_values
+  if sym === :owned_owned_values
     map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.oid_to_lid,c.oid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (1,1)
       SubSparseMatrix(v,indices,inv_indices,flag)
     end
-  elseif sym == :owned_ghost_values
+  elseif sym === :owned_ghost_values
     map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.oid_to_lid,c.hid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (1,-1)
       SubSparseMatrix(v,indices,inv_indices,flag)
     end
-  elseif sym == :ghost_owned_values
+  elseif sym === :ghost_owned_values
     map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.hid_to_lid,c.oid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
       flag = (-1,1)
       SubSparseMatrix(v,indices,inv_indices,flag)
     end
-  elseif sym == :ghost_ghost_values
+  elseif sym === :ghost_ghost_values
     map_parts(x.values,x.rows.partition,x.cols.partition) do v,r,c
       indices = (r.hid_to_lid,c.hid_to_lid)
       inv_indices = (r.lid_to_ohid,c.lid_to_ohid)
@@ -2222,7 +2222,7 @@ function PSparseMatrix(
   ids::Symbol)
 
   @assert ids in (:global,:local)
-  if ids == :global
+  if ids === :global
     to_lids!(I,rows)
     to_lids!(J,cols)
   end
@@ -2244,7 +2244,7 @@ function PSparseMatrix(
   args...;
   ids::Symbol)
 
-  @assert ids == :global
+  @assert ids === :global
   parts = get_part_ids(I)
   rows = PRange(parts,nrows)
   cols = PRange(parts,ncols)
