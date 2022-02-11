@@ -3,6 +3,7 @@
 
 <img src="https://github.com/fverdugo/PartitionedArrays.jl/raw/master/assets/logo.png" width="300" title="Logo">
 
+[![Documentation](https://img.shields.io/badge/-documentation-blue)](https://fverdugo.github.io/PartitionedArrays.jl)
 [![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions)
 [![Coverage](https://codecov.io/gh/fverdugo/PartitionedArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/PartitionedArrays.jl)
 
