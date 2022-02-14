@@ -10,6 +10,8 @@ function run_mpi_driver(;procs,file)
     else
       run(`$cmd -n $procs $(Base.julia_cmd()) --project=$repodir $(joinpath(mpidir,file))`)
     end
-    @test true
+    # This line will be reached if and only if the command launched by `run` runs without errors.
+    # Then, if we arrive here, the test has succeeded.
+    @test true  
   end
 end
