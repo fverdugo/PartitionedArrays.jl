@@ -6,12 +6,9 @@ function run_mpi_driver(;procs,file)
   repodir = joinpath(testdir,"..")
   mpiexec() do cmd
     if MPI.MPI_LIBRARY == MPI.OpenMPI
-      run(`$cmd -n $procs --oversubscribe $(Base.julia_cmd()) --project=$repodir $(joinpath(mpidir,file))`)
+      @test success(`$cmd -n $procs --oversubscribe $(Base.julia_cmd()) --project=$repodir $(joinpath(mpidir,file))`)
     else
-      run(`$cmd -n $procs $(Base.julia_cmd()) --project=$repodir $(joinpath(mpidir,file))`)
+      @test success(`$cmd -n $procs $(Base.julia_cmd()) --project=$repodir $(joinpath(mpidir,file))`)
     end
-    # This line will be reached if and only if the command launched by `run` runs without errors.
-    # Then, if we arrive here, the test has succeeded.
-    @test true  
   end
 end
