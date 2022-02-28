@@ -2307,6 +2307,8 @@ function PSparseMatrix(
   PSparseMatrix(sparse,I,J,V,args...;kwargs...)
 end
 
+SparseArrays.issparse(a::PSparseMatrix) = true
+
 function LinearAlgebra.mul!(
   c::PVector,
   a::PSparseMatrix,
