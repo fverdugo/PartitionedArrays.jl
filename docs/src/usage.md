@@ -49,64 +49,85 @@ conjugate gradients.
 
 To distribute the problem across two workers we have do choose a partitioning.
 Here we arbitrarily assign the first 3 columns and rows to worker 1 and the
-remaining 2 rows and columns to worker 2. The commented code for this problems
-is given as
+remaining 2 rows and columns to worker 2.
 
+First include the packages which are used.
 ```julia
 using PartitionedArrays, SparseArrays, IterativeSolvers
+```
 
-# We want a partitioning into 2 pieces
+We want a partitioning into 2 pieces and chose the sequential backend to handle
+the task sequentially to simplify debugging.
+```julia
 np = 2
-
-# We chose the sequential backend to handle the task sequentially to simplify debugging
 backend = SequentialBackend()
+```
 
-# This the the execution environment
+We enter the execution environment
+```julia
 prun(backend,np) do parts
-    # Generate partitioning of rows and columns
+```
+
+Generate a partitioning of rows and columns. Note that the entry in row 3
+column 4 is visible to the first worker
+```julia
     neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
         if part == 1
-            # Note that the entry in row 3 column 4 is visible to the first worker
             Int32[2], IndexSet(part, [1,2,3], Int32[1,1,1]), IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
         else
             Int32[1], IndexSet(part, [3,4,5], Int32[1,2,2]), IndexSet(part, [3,4,5], Int32[1,2,2])
         end
     end
+```
 
-    # We create information exchangers to manage the synchronization of visible
-    # shared portions of the sparse matrix and the actual row/col
+We create information exchangers to manage the synchronization of visible
+shared portions of the sparse matrix and the actual row/col
+```julia
     global_number_of_dofs = 5
     row_exchanger = Exchanger(row_partitioning,neighbors)
     rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
 
     col_exchanger = Exchanger(col_partitioning,neighbors)
     cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
+```
 
-    # Here we create the sparse matrix entries in COO format in their worker-local numbering
+Next we create the sparse matrix entries in COO format in their worker-local
+numbering. A note about the exact values of the sparse matrices can be found
+in the subsection below.
+```julia
     I, J, V = map_parts(parts) do part
         if part == 1
-            return [ 1, 1, 2, 2, 2, 3, 3, 3], [ 1, 2, 1, 2, 3, 2, 3, 4], Float64[1, 0, 0,-2, 1, 1,-1, 0]
+            return [ 1, 1, 2, 2, 2, 3, 3, 3], [ 1, 2, 1, 2, 3, 2, 3, 4], 0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
         else
-            return [ 1, 1, 2, 2, 2, 3, 3], [ 1, 2, 1, 2, 3, 2, 3], Float64[-1, 1, 1,-2, 1, 1,-1]
+            return [ 1, 1, 2, 2, 2, 3, 3], [ 1, 2, 1, 2, 3, 2, 3], 0.25*Float64[-1, 1, 1,-2, 1, 1,-1]
         end
     end
     A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
+```
 
-    # Trigger sync between the processes
+Since the previous lines created the local prtions we have to trigger sync
+between the workers.
+```julia
     assemble!(A)
+```
 
-    # Construct the right hand side
+Construct the right hand side. Note that the first entry of the rhs of worker 2
+is shared with worker 1.
+```julia
     b = PVector{Float64}(undef, A.rows)
     map_parts(parts,local_view(b, b.rows)) do part, b_local
         if part == 1
             b_local .= [1.0, -1.0, 0.0]
         else
-            # Note that the first entry is shared with worker 1
             b_local .= [0.0, 0.0, 0.0]
         end
     end
+```
 
-    # Solve problem with cg
+Now the sparse matrix and right hand side of the linear system are assembled
+globally and we can solve problem with cg. With the end in the last line we
+close the parallel environment.
+```julia
     u = IterativeSolvers.cg(A,b)
 end
 ```
@@ -164,5 +185,5 @@ P2  0   0   0   1  -1
 ## Advanced example
 
 A more complex example can be found in te package [PartitionedPoisson.jl](https://github.com/fverdugo/PartitionedPoisson.jl),
-which describes the assembly of the finite difference discretization of a
+which describes the assembly of the finite element discretization of a
 Poisson problem in 3D.
