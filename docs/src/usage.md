@@ -147,10 +147,62 @@ and including MPI. Now launching the script with MPI makes the run parallel
 $ mpirun -n 2 julia my-script.jl
 ```
 
+Hence the full MPI code looks like this
+```julia
+using PartitionedArrays, SparseArrays, IterativeSolvers, MPI
+
+np = 2
+backend = MPIBackend()
+
+prun(backend,np) do parts
+    # Construct the partitioning
+    neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
+        if part == 1
+            Int32[2], IndexSet(part, [1,2,3], Int32[1,1,1]), IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
+        else
+            Int32[1], IndexSet(part, [3,4,5], Int32[1,2,2]), IndexSet(part, [3,4,5], Int32[1,2,2])
+        end
+    end
+
+    global_number_of_dofs = 5
+
+    row_exchanger = Exchanger(row_partitioning,neighbors)
+    rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
+
+    col_exchanger = Exchanger(col_partitioning,neighbors)
+    cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
+
+    # Construct the sparse matrix
+    I, J, V = map_parts(parts) do part
+        if part == 1
+            return [ 1, 1, 2, 2, 2, 3, 3, 3], [ 1, 2, 1, 2, 3, 2, 3, 4], 0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
+        else
+            return [ 1, 1, 2, 2, 2, 3, 3], [ 1, 2, 1, 2, 3, 2, 3], 0.25*Float64[-1, 1, 1,-2, 1, 1,-1]
+        end
+    end
+    A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
+    assemble!(A)
+
+    # Construct the dense right hand side
+    b = PVector{Float64}(undef, A.rows)
+    map_parts(parts,local_view(b, b.rows)) do part, b_local
+        if part == 1
+            b_local .= [1.0, -1.0, 0.0]
+        else
+            b_local .= [0.0, 0.0, 0.0]
+        end
+    end
+
+    # Solve the linear problem
+    u = IterativeSolvers.cg(A,b)
+end
+```
+
 ### Note on Local Matrices
 
 It should be noted that the local matrices are constructed as if they were
 locally assembled on a process without knowledge of the remaining processes.
+Dropping the coefficient 0.25 the global and local matrices look as follows:
 
 ```
      Global Matrix
