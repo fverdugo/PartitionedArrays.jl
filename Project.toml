@@ -15,7 +15,7 @@ SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
 [compat]
 Distances = "0.10"
 IterativeSolvers = "0.9"
-MPI = "0.16, 0.17, 0.18, 0.19"
+MPI = "0.16 - 1.0"
 SparseMatricesCSR = "0.6"
 julia = "1.1"
 
