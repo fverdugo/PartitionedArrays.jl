@@ -132,6 +132,8 @@ close the parallel environment.
 end
 ```
 
+### Parallel Code
+
 Now changing the backend to the MPI backend we can solve the problem in parallel.
 This just requires to change the line
 ```julia
