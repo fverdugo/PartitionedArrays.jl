@@ -238,6 +238,6 @@ P2  0   0   0   1  -1
 
 ## Advanced example
 
-A more complex example can be found in te package [PartitionedPoisson.jl](https://github.com/fverdugo/PartitionedPoisson.jl),
+A more complex example can be found in the package [PartitionedPoisson.jl](https://github.com/fverdugo/PartitionedPoisson.jl),
 which describes the assembly of the finite element discretization of a
 Poisson problem in 3D.
