@@ -57,79 +57,93 @@ using PartitionedArrays, SparseArrays, IterativeSolvers
 ```
 
 We want a partitioning into 2 pieces and chose the sequential backend to handle
-the task sequentially to simplify debugging.
+the task sequentially so that the code can be executed in a standard Julia REPL (e.g., to simplify debugging).
 ```julia
 np = 2
 backend = SequentialBackend()
 ```
 
-We enter the execution environment
+Most of the codes using `PartitionedArrays` start creating a distributed object that for each part contains its part id. We call it `parts`.
 ```julia
-prun(backend,np) do parts
+parts = get_part_id(backend,np)
 ```
 
-Generate a partitioning of rows and columns. Note that the entry in row 3
+Now, we generate a partitioning of rows and columns. Note that the entry in row 3
 column 4 is visible to the first worker
 ```julia
-    neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
-        if part == 1
-            Int32[2], IndexSet(part, [1,2,3], Int32[1,1,1]), IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
-        else
-            Int32[1], IndexSet(part, [3,4,5], Int32[1,2,2]), IndexSet(part, [3,4,5], Int32[1,2,2])
-        end
+neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
+    if part == 1
+        (
+        Int32[2],
+        IndexSet(part, [1,2,3], Int32[1,1,1]),
+        IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
+        )
+    else
+        (
+        Int32[1],
+        IndexSet(part, [3,4,5], Int32[1,2,2]),
+        IndexSet(part, [3,4,5], Int32[1,2,2])
+        )
     end
+end
 ```
 
 We create information exchangers to manage the synchronization of visible
 shared portions of the sparse matrix and the actual row/col
 ```julia
-    global_number_of_dofs = 5
-    row_exchanger = Exchanger(row_partitioning,neighbors)
-    rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
+global_number_of_dofs = 5
+row_exchanger = Exchanger(row_partitioning,neighbors)
+rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
 
-    col_exchanger = Exchanger(col_partitioning,neighbors)
-    cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
+col_exchanger = Exchanger(col_partitioning,neighbors)
+cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
 ```
 
 Next we create the sparse matrix entries in COO format in their worker-local
 numbering. A note about the exact values of the sparse matrices can be found
 in the subsection below.
 ```julia
-    I, J, V = map_parts(parts) do part
-        if part == 1
-            return [ 1, 1, 2, 2, 2, 3, 3, 3], [ 1, 2, 1, 2, 3, 2, 3, 4], 0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
-        else
-            return [ 1, 1, 2, 2, 2, 3, 3], [ 1, 2, 1, 2, 3, 2, 3], 0.25*Float64[-1, 1, 1,-2, 1, 1,-1]
-        end
+I, J, V = map_parts(parts) do part
+    if part == 1
+        (
+        [ 1, 1, 2, 2, 2, 3, 3, 3],
+        [ 1, 2, 1, 2, 3, 2, 3, 4],
+        0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
+        )
+    else
+        (
+        [ 1, 1, 2, 2, 2, 3, 3],
+        [ 1, 2, 1, 2, 3, 2, 3],
+        0.25*Float64[-1, 1, 1,-2, 1, 1,-1])
     end
-    A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
+end
+A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
 ```
 
 Since the previous lines created the local prtions we have to trigger sync
 between the workers.
 ```julia
-    assemble!(A)
+assemble!(A)
 ```
 
 Construct the right hand side. Note that the first entry of the rhs of worker 2
 is shared with worker 1.
 ```julia
-    b = PVector{Float64}(undef, A.rows)
-    map_parts(parts,local_view(b, b.rows)) do part, b_local
-        if part == 1
-            b_local .= [1.0, -1.0, 0.0]
-        else
-            b_local .= [0.0, 0.0, 0.0]
-        end
+b = PVector{Float64}(undef, A.rows)
+map_parts(parts,local_view(b, b.rows)) do part, b_local
+    if part == 1
+        b_local .= [1.0, -1.0, 0.0]
+    else
+        b_local .= [0.0, 0.0, 0.0]
     end
+end
 ```
 
 Now the sparse matrix and right hand side of the linear system are assembled
 globally and we can solve problem with cg. With the end in the last line we
 close the parallel environment.
 ```julia
-    u = IterativeSolvers.cg(A,b)
-end
+u = IterativeSolvers.cg(A,b)
 ```
 
 ### Parallel Code
@@ -143,15 +157,15 @@ to
 ```julia
 backend = MPIBackend()
 ```
-and including MPI. Now launching the script with MPI makes the run parallel
+and including and initializing MPI. Now launching the script with MPI makes the run parallel.
 
 ```sh
 $ mpirun -n 2 julia my-script.jl
 ```
 
-Hence the full MPI code looks like this
+Hence the full MPI code is given in the next code box. Note that we have used the `prun` function that automatically includes and initializes MPI for us.
 ```julia
-using PartitionedArrays, SparseArrays, IterativeSolvers, MPI
+using PartitionedArrays, SparseArrays, IterativeSolvers
 
 np = 2
 backend = MPIBackend()
@@ -160,9 +174,17 @@ prun(backend,np) do parts
     # Construct the partitioning
     neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
         if part == 1
-            Int32[2], IndexSet(part, [1,2,3], Int32[1,1,1]), IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
+            (
+            Int32[2],
+            IndexSet(part, [1,2,3], Int32[1,1,1]),
+            IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
+            )
         else
-            Int32[1], IndexSet(part, [3,4,5], Int32[1,2,2]), IndexSet(part, [3,4,5], Int32[1,2,2])
+            (
+            Int32[1],
+            IndexSet(part, [3,4,5], Int32[1,2,2]),
+            IndexSet(part, [3,4,5], Int32[1,2,2])
+            )
         end
     end
 
@@ -176,11 +198,18 @@ prun(backend,np) do parts
 
     # Construct the sparse matrix
     I, J, V = map_parts(parts) do part
-        if part == 1
-            return [ 1, 1, 2, 2, 2, 3, 3, 3], [ 1, 2, 1, 2, 3, 2, 3, 4], 0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
-        else
-            return [ 1, 1, 2, 2, 2, 3, 3], [ 1, 2, 1, 2, 3, 2, 3], 0.25*Float64[-1, 1, 1,-2, 1, 1,-1]
-        end
+      if part == 1
+          (
+          [ 1, 1, 2, 2, 2, 3, 3, 3],
+          [ 1, 2, 1, 2, 3, 2, 3, 4],
+          0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
+          )
+      else
+          (
+          [ 1, 1, 2, 2, 2, 3, 3],
+          [ 1, 2, 1, 2, 3, 2, 3],
+          0.25*Float64[-1, 1, 1,-2, 1, 1,-1])
+      end
     end
     A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
     assemble!(A)
