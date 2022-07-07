@@ -65,7 +65,7 @@ backend = SequentialBackend()
 
 Most of the codes using `PartitionedArrays` start creating a distributed object that for each part contains its part id. We call it `parts`.
 ```julia
-parts = get_part_id(backend,np)
+parts = get_part_ids(backend,np)
 ```
 
 Now, we generate a partitioning of rows and columns. Note that the entry in row 3
