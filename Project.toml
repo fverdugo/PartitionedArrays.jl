@@ -1,7 +1,7 @@
 name = "PartitionedArrays"
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 authors = ["Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors"]
-version = "0.2.10"
+version = "0.2.11"
 
 [deps]
 Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
@@ -15,7 +15,7 @@ SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
 [compat]
 Distances = "0.10"
 IterativeSolvers = "0.9"
-MPI = "0.16 - 1.0"
+MPI = "0.16, 0.17, 0.18, 0.19, 0.20"
 SparseMatricesCSR = "0.6"
 julia = "1.1"
 
