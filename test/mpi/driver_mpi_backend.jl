@@ -237,8 +237,8 @@ using MPI
 MPI.Init()
 
 nparts = 4
-main(get_part_ids(mpi,nparts))
+main(get_part_ids(MPIBackend(),nparts))
 
 nparts = (2,2)
-main(get_part_ids(mpi,nparts))
+main(get_part_ids(MPIBackend(),nparts))
 

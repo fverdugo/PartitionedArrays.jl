@@ -3,9 +3,9 @@ module FDMTests
 include("../test_fdm.jl")
 
 nparts = (2,2,2)
-prun_debug(test_fdm,sequential,nparts)
+with_backend(test_fdm,SequentialBackend(),nparts)
 
 nparts = 4
-prun_debug(test_fdm,sequential,nparts)
+with_backend(test_fdm,SequentialBackend(),nparts)
 
 end # module

@@ -163,14 +163,14 @@ and including and initializing MPI. Now launching the script with MPI makes the 
 $ mpirun -n 2 julia my-script.jl
 ```
 
-Hence the full MPI code is given in the next code box. Note that we have used the `prun` function that automatically includes and initializes MPI for us.
+Hence the full MPI code is given in the next code box. Note that we have used the `with_backend` function that automatically includes and initializes MPI for us.
 ```julia
 using PartitionedArrays, SparseArrays, IterativeSolvers
 
 np = 2
 backend = MPIBackend()
 
-prun(backend,np) do parts
+with_backend(backend,np) do parts
     # Construct the partitioning
     neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
         if part == 1

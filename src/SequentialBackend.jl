@@ -1,7 +1,24 @@
 
-struct SequentialBackend <: AbstractBackend end
+# TODO remove this in the future
+struct SequentialBackendDeprecated <: AbstractBackend end
+const sequential = SequentialBackendDeprecated()
+function get_part_ids(b::SequentialBackendDeprecated,nparts::Integer)
+  @warn "The usage of the constant PartitionedArrays.sequential is deprecated. Use SequentialBackend() instead."
+  parts = [ part for part in 1:nparts ]
+  SequentialData(parts)
+end
+function get_part_ids(b::SequentialBackendDeprecated,nparts::Tuple)
+  @warn "The usage of the constant PartitionedArrays.sequential is deprecated. Use SequentialBackend() instead."
+  parts = collect(LinearIndices(nparts))
+  SequentialData(parts)
+end
+function prun_debug(driver::Function,b::SequentialBackendDeprecated,nparts)
+  @warn "The usage of the constant PartitionedArrays.sequential is deprecated. Use SequentialBackend() instead."
+  @warn "Function `prun_debug` is deprecated, use `with_backend` instead."
+  with_backend(driver,b,nparts)
+end
 
-const sequential = SequentialBackend()
+struct SequentialBackend <: AbstractBackend end
 
 function get_part_ids(b::SequentialBackend,nparts::Integer)
   parts = [ part for part in 1:nparts ]
@@ -14,7 +31,8 @@ function get_part_ids(b::SequentialBackend,nparts::Tuple)
 end
 
 function prun_debug(driver::Function,b::SequentialBackend,nparts)
-  prun(driver,b,nparts)
+  @warn "Function `prun_debug` is deprecated, use `with_backend` instead."
+  with_backend(driver,b,nparts)
 end
 
 struct SequentialData{T,N} <: AbstractPData{T,N}
@@ -25,7 +43,7 @@ Base.size(a::SequentialData) = size(a.parts)
 
 i_am_main(a::SequentialData) = true
 
-get_backend(a::SequentialData) = sequential
+get_backend(a::SequentialData) = SequentialBackend()
 
 function Base.iterate(a::SequentialData)
   next = map_parts(iterate,a)

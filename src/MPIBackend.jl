@@ -1,10 +1,24 @@
 
+# TODO remove this in the future.
+struct MPIBackendDeprecated <: AbstractBackend end
+const mpi = MPIBackendDeprecated()
+function get_part_ids(b::MPIBackendDeprecated,nparts::Integer)
+  @warn "The usage of the constant PartitionedArrays.mpi is deprecated. Use MPIBackend() instead."
+  get_part_ids(MPIBackend(),nparts)
+end
+function get_part_ids(b::MPIBackendDeprecated,nparts::Tuple)
+  @warn "The usage of the constant PartitionedArrays.mpi is deprecated. Use MPIBackend() instead."
+  get_part_ids(MPIBackend(),nparts)
+end
+function prun_debug(driver::Function,b::MPIBackendDeprecated,nparts)
+  @warn "The usage of the constant PartitionedArrays.mpi is deprecated. Use MPIBackend() instead."
+  prun_debug(driver,MPIBackend(),nparts)
+end
+
 get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
 num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
 
 struct MPIBackend <: AbstractBackend end
-
-const mpi = MPIBackend()
 
 function get_part_ids(b::MPIBackend,nparts::Integer)
   comm = MPI.Comm_dup(MPI.COMM_WORLD)
@@ -20,7 +34,7 @@ function get_part_ids(b::MPIBackend,nparts::Tuple)
   MPIData(get_part_id(comm),comm,nparts)
 end
 
-function prun(driver::Function,b::MPIBackend,nparts)
+function with_backend(driver::Function,b::MPIBackend,nparts)
   if !MPI.Initialized()
     MPI.Init()
   end
@@ -46,6 +60,7 @@ end
 # Useful to debug an MPI program when executed interactively
 # on the REPL, i.e., with a single MPI task
 function prun_debug(driver::Function,b::MPIBackend,nparts)
+  @warn "Function `prun_debug` is deprecated, use `with_backend` instead."
   if !MPI.Initialized()
     MPI.Init()
   end
@@ -73,7 +88,7 @@ end
 
 Base.size(a::MPIData) = a.size
 get_part_id(a::MPIData) = get_part_id(a.comm)
-get_backend(a::MPIData) = mpi
+get_backend(a::MPIData) = MPIBackend()
 i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
 
 function get_part_ids(a::MPIData)

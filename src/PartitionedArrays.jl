@@ -9,7 +9,12 @@ import IterativeSolvers
 import Distances
 
 export AbstractBackend
-export prun, prun_debug
+export with_backend
+export prun, prun_debug # These ones are deprecated
+function prun(args...;kwargs...)
+  @warn "Function `prun` is deprecated, use `with_backend` instead."
+  with_backend(args...;kwargs...)
+end
 export AbstractPData
 export SequentialData
 export MPIData
