@@ -34,7 +34,7 @@ function get_part_ids(b::MPIBackend,nparts::Tuple)
   MPIData(get_part_id(comm),comm,nparts)
 end
 
-function with_backend(driver::Function,b::MPIBackend,nparts)
+function with_backend(driver,b::MPIBackend,nparts)
   if !MPI.Initialized()
     MPI.Init()
   end
