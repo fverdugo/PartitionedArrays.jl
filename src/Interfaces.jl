@@ -30,7 +30,7 @@ function get_part_ids(b::AbstractBackend,nparts::Tuple)
 end
 
 # This can be overwritten to add a finally clause
-function prun(driver::Function,b::AbstractBackend,nparts)
+function with_backend(driver::Function,b::AbstractBackend,nparts)
   part = get_part_ids(b,nparts)
   driver(part)
 end

@@ -9,7 +9,7 @@ import IterativeSolvers
 import Distances
 
 export AbstractBackend
-export prun, prun_debug
+export with_backend, prun_debug
 export AbstractPData
 export SequentialData
 export MPIData
