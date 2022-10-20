@@ -74,7 +74,7 @@ end
 
 Base.size(a::MPIData) = a.size
 get_part_id(a::MPIData) = get_part_id(a.comm)
-get_backend(a::MPIData) = mpi
+get_backend(a::MPIData) = MPIBackend()
 i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
 
 function get_part_ids(a::MPIData)

@@ -26,7 +26,7 @@ Base.size(a::SequentialData) = size(a.parts)
 
 i_am_main(a::SequentialData) = true
 
-get_backend(a::SequentialData) = sequential
+get_backend(a::SequentialData) = SequentialBackend()
 
 function Base.iterate(a::SequentialData)
   next = map_parts(iterate,a)
