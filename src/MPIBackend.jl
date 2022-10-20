@@ -46,6 +46,7 @@ end
 # Useful to debug an MPI program when executed interactively
 # on the REPL, i.e., with a single MPI task
 function prun_debug(driver::Function,b::MPIBackend,nparts)
+  @warn "Function `prun_debug` is deprecated, use `with_backend` instead."
   if !MPI.Initialized()
     MPI.Init()
   end

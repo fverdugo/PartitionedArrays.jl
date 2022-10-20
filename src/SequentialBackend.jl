@@ -14,6 +14,7 @@ function get_part_ids(b::SequentialBackend,nparts::Tuple)
 end
 
 function prun_debug(driver::Function,b::SequentialBackend,nparts)
+  @warn "Function `prun_debug` is deprecated, use `with_backend` instead."
   with_backend(driver,b,nparts)
 end
 
