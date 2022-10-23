@@ -45,26 +45,20 @@ i_am_main(a::SequentialData) = true
 
 get_backend(a::SequentialData) = SequentialBackend()
 
-function Base.iterate(a::SequentialData)
-  next = map_parts(iterate,a)
-  if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
-    return nothing
-  end
-  item = map_parts(first,next)
-  state = map_parts(_second,next)
-  item, state
+function unpack(a::SequentialData)
+  x, y = unpack_first_and_tail(a)
+  (x,unpack(y)...)
 end
 
-_second(a) = a[2]
+function unpack(a::SequentialData{<:Tuple{Any}})
+  x = map_parts(first,a)
+  (x,)
+end
 
-function Base.iterate(a::SequentialData,state)
-  next = map_parts(iterate,a,state)
-  if eltype(next.parts) == Nothing || any(i->i==Nothing,next.parts)
-    return nothing
-  end
-  item = map_parts(first,next)
-  state = map_parts(_second,next)
-  item, state
+function unpack_first_and_tail(a::SequentialData)
+  x = map_parts(first,a)
+  y = map_parts(tail,a)
+  x,y
 end
 
 function map_parts(task,args::SequentialData...)

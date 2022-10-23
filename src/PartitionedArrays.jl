@@ -23,6 +23,7 @@ export i_am_main
 export map_parts
 export get_part_ids
 export get_backend
+export unpack
 export MAIN
 export map_main
 export get_part

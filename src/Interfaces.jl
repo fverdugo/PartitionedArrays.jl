@@ -107,9 +107,8 @@ Get the back-end associated with `a`.
 """
 get_backend(a::AbstractPData) = @abstractmethod
 
-Base.iterate(a::AbstractPData)  = @abstractmethod
+unpack(a::AbstractPData)  = @abstractmethod
 
-Base.iterate(a::AbstractPData,state)  = @abstractmethod
 
 """
     get_part_ids(a::AbstractPData) -> AbstractPData{Int}
