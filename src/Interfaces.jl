@@ -30,7 +30,37 @@ function get_part_ids(b::AbstractBackend,nparts::Tuple)
 end
 
 # This can be overwritten to add a finally clause
-function with_backend(driver::Function,b::AbstractBackend,nparts)
+"""
+    with_backend(driver,b::AbstractBackend,nparts)
+
+Call `driver(parts)` with `parts = get_part_ids(b,nparts)` by performing
+all initialization and finalization steps required for the particular
+back-end `b` before and after calling `driver(parts)`.
+
+This is the safest way of running the parallel function `driver`.
+
+For `b::MPIBackend`, it calls `MPI.Init()` if needed and
+calls `MPI.Abort` if some error occurs when running `driver(parts)`.
+
+# Examples
+
+The next code will provably fail since MPI needs to be initialized.
+
+    using MPI
+    using PartitionedArrays
+    nparts = 1
+    parts = get_part_ids(MPIBackend(),nparts)
+    display(parts)
+
+However, this other code will work since initialization of MPI will
+be managed internally
+
+    using MPI
+    using PartitionedArrays
+    nparts = 1
+    with_backend(display,MPIBackend(),nparts)
+"""
+function with_backend(driver,b::AbstractBackend,nparts)
   part = get_part_ids(b,nparts)
   driver(part)
 end
@@ -81,35 +111,65 @@ Base.iterate(a::AbstractPData)  = @abstractmethod
 
 Base.iterate(a::AbstractPData,state)  = @abstractmethod
 
+"""
+    get_part_ids(a::AbstractPData) -> AbstractPData{Int}
+
+Get the part ids associated with the partitioned data `a`.
+Equivalent to `get_part_ids(get_backend(a),size(a))`.
+"""
 get_part_ids(a::AbstractPData) = get_part_ids(get_backend(a),size(a))
 
 """
     map_parts(f, xs::AbstractPData...) -> AbstractPData
 
-Call function `f` on the data `xs` owned by the current process.
-
-Internally this unwraps the arguments `xs`, calls `f` with the underlying data,
-and rewraps the result as `AbstractPData` of the same type.
+Transform the partitioned data in `xs` by applying `f` to the
+underlying local parts, resulting in another partitioned data.
+If `f` returns an iterable object, the resulting partitioned data
+will contain an iterable object at each part. This object
+can be unpacked into several partitioned data of a single local element.
 
 # Example
-In this example (using the `MPIBackend`):
- - `A`, `B`, `X`, and `Y` are `::MPIData`,
- - `a`, `b`, `x`, and `y` are `::Vector` (the underlying data of the `MPIData`)
-```julia
-X, Y = map_parts(A, B) do a, b
-    x = a + 2 * b
-    y = a - 5 * b
-    return x, y
-end
-```
+    using PartitionedArrays
+    backend = SequentialBackend()
+    p = get_part_ids(backend,3)
+    x,y = map_parts(p) do p
+        (sin(p),cos(p))
+    end
+    map_parts(x,p) do x,p
+        @assert x == sin(p)
+    end
+    z = map_parts(+,x,y)
+    map_parts(p,z) do p,z
+        @assert z == sin(p)+cos(p)
+    end
 """
 map_parts(task,a::AbstractPData...) = @abstractmethod
 
+"""
+    i_am_main(::AbstractPData) -> Bool
+
+Return `true` if the calling process is considered to be the main process for the
+underlying back-end.
+"""
 i_am_main(::AbstractPData) = @abstractmethod
 
+"""
+    eltype(a::AbstractPData) -> DataType
+    eltype(::Type{<:AbstractPData}) -> DataType
+
+Return the type of the local elements in `a`. It returns the same value
+when called on `typeof(a)`.
+"""
 Base.eltype(a::AbstractPData{T}) where T = T
 Base.eltype(::Type{<:AbstractPData{T}}) where T = T
 
+"""
+    ndims(a::AbstractPData) -> Int
+    ndims(::Type{<:AbstractPData}) -> Int
+
+Return the number of directions of the data partition of `a`. It returns the same value
+when called on `typeof(a)`.
+"""
 Base.ndims(a::AbstractPData{T,N}) where {T,N} = N
 Base.ndims(::Type{<:AbstractPData{T,N}}) where {T,N} = N
 
@@ -121,8 +181,18 @@ Base.copy(a::AbstractPData) = map_parts(copy,a)
 #
 #AbstractPData(a::AbstractPData) = a
 
+"""
+    const MAIN
+
+Contains the integer id of the part considered the main part.
+"""
 const MAIN = 1
 
+"""
+    map_main(f,args::AbstractPData...) -> AbstractPData
+
+Like `map_parts(f,args...)` but only applies `f` on the main part.
+"""
 function map_main(f,args::AbstractPData...)
   parts = get_part_ids(first(args))
   map_parts(parts,args...) do part,args...
