@@ -62,7 +62,7 @@ function test_fem_sa(parts)
       end
     end
     I,J,V
-  end
+  end |> unpack
 
   # Create rows and cols without ghost layer
   rows = PRange(parts,ns.+1)

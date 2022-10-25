@@ -95,24 +95,6 @@ function get_part_ids(a::MPIData)
   MPIData(get_part_id(a.comm),a.comm,a.size)
 end
 
-function Base.iterate(a::MPIData)
-  next = iterate(a.part)
-  if next === nothing
-    return next
-  end
-  item, state = next
-  MPIData(item,a.comm,a.size), state
-end
-
-function Base.iterate(a::MPIData,state)
-  next = iterate(a.part,state)
-  if next === nothing
-    return next
-  end
-  item, state = next
-  MPIData(item,a.comm,a.size), state
-end
-
 function map_parts(task,args::MPIData...)
   @assert length(args) > 0
   @assert all(a->a.comm===first(args).comm,args)

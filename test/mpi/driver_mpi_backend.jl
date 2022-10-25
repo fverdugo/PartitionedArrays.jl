@@ -103,7 +103,7 @@ function main(parts)
     10*part, part+10
   end
 
-  a,b = a_and_b
+  a,b = a_and_b |> unpack
   map_parts(a_and_b,a,b) do a_and_b, a, b
     a1,b1 = a_and_b
     @test a == a1

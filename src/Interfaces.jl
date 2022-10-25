@@ -107,8 +107,21 @@ Get the back-end associated with `a`.
 """
 get_backend(a::AbstractPData) = @abstractmethod
 
-unpack(a::AbstractPData)  = @abstractmethod
+function unpack(a::AbstractPData)
+  if eltype(a) <: Tuple{<:Any}
+    x = map_parts(first,a)
+    (x,)
+  else
+    x, y = unpack_first_and_tail(a)
+    (x,unpack(y)...)
+  end
+end
 
+function unpack_first_and_tail(a::AbstractPData)
+  x = map_parts(first,a)
+  y = map_parts(Base.tail,a)
+  x, y
+end
 
 """
     get_part_ids(a::AbstractPData) -> AbstractPData{Int}
@@ -851,7 +864,7 @@ function Exchanger(
     gids_rcv = Table(data_gids,ptrs)
 
     lids_rcv, gids_rcv
-  end
+  end |> unpack
 
   if reuse_parts_rcv
     parts_snd = parts_rcv
@@ -991,7 +1004,7 @@ function async_exchange!(
   exchanger::Exchanger,
   t0::AbstractPData=_empty_tasks(exchanger.parts_rcv))
 
-  data, ptrs = map_parts(t->(t.data,t.ptrs),values)
+  data, ptrs = map_parts(t->(t.data,t.ptrs),values) |> unpack
   t_exchanger = _table_exchanger(exchanger,ptrs)
   async_exchange!(combine_op,data,t_exchanger,t0)
 end
@@ -1113,7 +1126,7 @@ function PRange(parts::AbstractPData{<:Integer},ngids::Integer)
       firstgid)
     gid_to_part = LinearGidToPart(ngids,part_to_firstgid)
     partition, gid_to_part
-  end
+  end |> unpack
   ghost = false
   PRange(ngids,partition,gid_to_part,ghost)
 end
@@ -1151,7 +1164,7 @@ function PRange(
       firstgid)
     gid_to_part = LinearGidToPart(ngids,part_to_firstgid)
     partition, gid_to_part
-  end
+  end |> unpack
   ghost = false
   PRange(ngids,partition,gid_to_part,ghost)
 end
@@ -1220,7 +1233,7 @@ function PRange(
       oid_to_lid,
       hid_to_lid)
     partition, gid_to_part
-  end
+  end |> unpack
   ghost = false
   PRange(prod(ngids),partition,gid_to_part,ghost)
 end
@@ -1275,7 +1288,7 @@ function PRange(
       oid_to_lid,
       hid_to_lid)
     partition, gid_to_part
-  end
+  end |> unpack
   ghost = true
   exchanger = Exchanger(partition;reuse_parts_rcv=true)
   PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
@@ -1305,7 +1318,7 @@ function PRange(
       oid_to_lid,
       hid_to_lid)
     partition, gid_to_part
-  end
+  end |> unpack
   ghost = true
   exchanger = Exchanger(partition;reuse_parts_rcv=true)
   PRange(prod(ngids),partition,exchanger,gid_to_part,ghost)
@@ -2478,7 +2491,8 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
     k_rcv, gi_rcv, gj_rcv
   end
 
-  k_rcv, gi_rcv, gj_rcv = map_parts(setup_rcv,part,parts_rcv,row_lids,col_lids,values)
+  k_rcv, gi_rcv, gj_rcv = map_parts(
+    setup_rcv,part,parts_rcv,row_lids,col_lids,values) |> unpack
 
   gi_snd = exchange(gi_rcv,parts_snd,parts_rcv)
   gj_snd = exchange(gj_rcv,parts_snd,parts_rcv)
@@ -2607,7 +2621,8 @@ function async_assemble!(
     gi_rcv, gj_rcv, v_rcv
   end
 
-  gi_rcv, gj_rcv, v_rcv = map_parts(setup_rcv,part,parts_rcv,rows.partition,coo_values)
+  gi_rcv, gj_rcv, v_rcv = map_parts(
+      setup_rcv,part,parts_rcv,rows.partition,coo_values) |> unpack
 
   gi_snd, t1 = async_exchange(gi_rcv,parts_snd,parts_rcv)
   gj_snd, t2 = async_exchange(gj_rcv,parts_snd,parts_rcv)
@@ -2707,7 +2722,7 @@ function async_exchange!(
   end
 
   gi_snd, gj_snd, v_snd = map_parts(
-    setup_snd,part,parts_snd,lids_snd,rows.partition,coo_values)
+    setup_snd,part,parts_snd,lids_snd,rows.partition,coo_values)  |> unpack
 
   gi_rcv, t1 = async_exchange(gi_snd,parts_rcv,parts_snd)
   gj_rcv, t2 = async_exchange(gj_snd,parts_rcv,parts_snd)
@@ -2837,7 +2852,7 @@ function gather(
       end
     end
     I,J,V
-  end
+  end |> unpack
   assemble!(I,J,V,rows_in_main)
   I,J,V = map_parts(a.rows.partition,I,J,V) do rows,I,J,V
     if rows.part == MAIN
@@ -2845,7 +2860,7 @@ function gather(
     else
       similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
     end
-  end
+  end |> unpack
   T = eltype(a.values)
   exchanger = empty_exchanger(rows_in_main.partition)
   a_in_main = PSparseMatrix(

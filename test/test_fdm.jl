@@ -78,7 +78,7 @@ function test_fdm(parts)
       end
     end
     I,J,V
-  end
+  end |> unpack
 
   # TODO fill b and x̂ while add_gids is communicating values.
 

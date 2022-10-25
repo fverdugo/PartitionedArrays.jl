@@ -375,7 +375,7 @@ function test_interfaces(parts)
 
   hid_to_gid, hid_to_part = map_parts(parts) do part
     Int[], Int32[]
-  end
+  end |> unpack
   ids5 = PRange(parts,reduce(+,a,init=0),a,xscan(+,a,init=1),hid_to_gid,hid_to_part)
 
   if ndims(parts) > 1
@@ -693,7 +693,7 @@ function test_interfaces(parts)
     else
       [9,9,8,10], [9,2,8,10], [10.0,2.0,30.0,50.0]
     end
-  end
+  end |> unpack
   A = PSparseMatrix(I,J,V,n,n;ids=:global)
   local_view(A,A.rows,A.cols)
   local_view(A,copy(A.rows),copy(A.cols))
@@ -734,7 +734,8 @@ function test_interfaces(parts)
 
 
   let
-    I, J, V = map_parts(p -> (Int64[p], Int64[p], Float64[p]), parts)
+    I, J, V = map_parts(
+      p -> (Int64[p], Int64[p], Float64[p]), parts) |> unpack
     rows = PRange(parts, 4)
     cols = PRange(parts, 4)
     A = PSparseMatrix(I, J, V, rows, cols; ids=:global)

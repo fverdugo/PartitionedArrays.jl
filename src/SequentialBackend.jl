@@ -45,22 +45,6 @@ i_am_main(a::SequentialData) = true
 
 get_backend(a::SequentialData) = SequentialBackend()
 
-function unpack(a::SequentialData)
-  x, y = unpack_first_and_tail(a)
-  (x,unpack(y)...)
-end
-
-function unpack(a::SequentialData{<:Tuple{Any}})
-  x = map_parts(first,a)
-  (x,)
-end
-
-function unpack_first_and_tail(a::SequentialData)
-  x = map_parts(first,a)
-  y = map_parts(tail,a)
-  x,y
-end
-
 function map_parts(task,args::SequentialData...)
   @assert length(args) > 0
   @assert all(a->length(a.parts)==length(first(args).parts),args)
