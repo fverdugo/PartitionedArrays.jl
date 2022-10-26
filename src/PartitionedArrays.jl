@@ -1,5 +1,12 @@
 module PartitionedArrays
 
+include("new/PartitionedArrays.jl")
+
+end # module
+
+#=
+module PartitionedArrays
+
 using SparseArrays
 using SparseMatricesCSR
 using LinearAlgebra
@@ -123,3 +130,5 @@ include("MPIBackend.jl")
 include("PTimers.jl")
 
 end
+=#
+

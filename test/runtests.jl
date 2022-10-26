@@ -1,3 +1,7 @@
+include("new/runtests.jl")
+
+#=
+
 module RunTests
 
 using Test
@@ -11,4 +15,6 @@ using Test
 @testset "MPI" begin include("mpi/runtests.jl") end
 
 end # module
+
+=#
 
