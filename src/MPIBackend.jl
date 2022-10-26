@@ -256,7 +256,11 @@ function async_exchange!(
 
   t2 = @task begin
     req_all = fetch(t1)
-    MPI.Waitall!(req_all)
+    @static if isdefined(MPI,:Waitall)
+        MPI.Waitall(req_all,MPI.Status)
+    else
+        MPI.Waitall!(req_all)
+    end
   end
 
   t_out = MPIData(t2,comm,s)
@@ -306,7 +310,11 @@ function async_exchange!(
 
   t2 = @task begin
     req_all = fetch(t1)
-    MPI.Waitall!(req_all)
+    @static if isdefined(MPI,:Waitall)
+      MPI.Waitall(req_all,MPI.Status)
+    else
+      MPI.Waitall!(req_all)
+    end
   end
 
   t_out = MPIData(t2,comm,s)
