@@ -64,5 +64,5 @@ function Base.map(f,args::SequentialArray...)
 end
 
 function gather!(rcv::SequentialArray,snd::SequentialArray;destination=1)
-    gather!(rcv.items,snd.items;destination)
+    gather!(rcv.items,deepcopy(snd.items);destination)
 end
