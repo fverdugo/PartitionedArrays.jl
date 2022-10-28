@@ -1,6 +1,6 @@
 module GenericJaggedArrayTests
 
-using GalerkinToolkit
+using PartitionedArrays
 using Test
 
 a = [[1,2],[3,4,5],Int[],[3,4]]

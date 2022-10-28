@@ -16,7 +16,7 @@ function interfaces_tests(backend)
        @test b == 10*rank
    end
 
-   a = map_first(+,b,rank;destination=2)
+   a = map_one(+,b,rank;source=2)
 
    map(a,b,rank) do a,b,rank
        if rank == 2
