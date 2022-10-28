@@ -63,7 +63,7 @@ function primitives_tests(distribute)
 
    rcv = emit(snd,source=2)
    map(rcv) do rcv
-       @test rcv == rcv
+     @test rcv == [1,2]
    end
    @test typeof(snd) == typeof(rcv)
 
