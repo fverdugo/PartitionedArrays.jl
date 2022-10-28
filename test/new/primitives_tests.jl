@@ -26,8 +26,18 @@ function primitives_tests(distribute)
        end
    end
 
+   a = map_one(+,b,rank;source=:all)
+
    snd = b
    rcv = gather(snd;destination=2)
-   display(rcv)
+   map_one(rcv;source=2) do rcv
+     @test rcv == [10 30; 20 40]
+   end
+
+   snd = b
+   rcv = gather(snd;destination=:all)
+   map(rcv) do rcv
+     @test rcv == [10 30; 20 40]
+   end
 
 end

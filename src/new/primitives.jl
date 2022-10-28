@@ -81,13 +81,18 @@ in `args` (the first component by default). Set the remaining entries to `nothin
        nothing
 """
 function map_one(f,args...;otherwise=(args...)->nothing,source=1)
-    rank = linear_indices(first(args))
-    map(rank,args...) do rank,args...
-        if rank == source
-            f(args...)
-        else
-            otherwise(args...)
+    if isa(source,Integer)
+        rank = linear_indices(first(args))
+        map(rank,args...) do rank,args...
+            if rank == source
+                f(args...)
+            else
+                otherwise(args...)
+            end
         end
+    else
+      @assert source === :all
+      map(f,args...)
     end
 end
 
@@ -97,6 +102,8 @@ end
 Copy the elements of array `snd` into the first component of the array `rcv` and return `rcv`.
 Another component different from the
 first one can be used to store the result by setting the optional key-word argument `destination`.
+Setting `destination=:all`, will store the result in all entries of `rcv` resulting in a "gather all"
+operation.
 
 The result array `rcv` can be allocated with the helper function [`allocate_gather`](@ref).
 
@@ -124,9 +131,18 @@ The result array `rcv` can be allocated with the helper function [`allocate_gath
 """
 function gather!(rcv,snd;destination=1)
     @assert size(rcv) == size(snd)
-    @assert size(rcv[destination]) == size(snd)
-    for i in eachindex(snd)
-        rcv[destination][i] = snd[i]
+    if isa(destination,Integer)
+        @assert size(rcv[destination]) == size(snd)
+        for i in eachindex(snd)
+            rcv[destination][i] = snd[i]
+        end
+    else
+        @assert destination === :all
+        for j in eachindex(rcv)
+            for i in eachindex(snd)
+                rcv[j][i] = snd[i]
+            end
+        end
     end
     rcv
 end
@@ -141,8 +157,13 @@ function allocate_gather(snd;destination=1)
     T = eltype(snd)
     N = ndims(snd)
     f = (snd)->Array{T,N}(undef,s)
-    g = (snd)->Array{T,N}(undef,ntuple(i->0,N))
-    rcv = map_one(f,snd;otherwise=g,source=destination)
+    if isa(destination,Integer)
+        g = (snd)->Array{T,N}(undef,ntuple(i->0,N))
+        rcv = map_one(f,snd;otherwise=g,source=destination)
+    else
+        @assert destination === :all
+        rcv = map(f,snd)
+    end
     rcv
 end
 
@@ -155,12 +176,17 @@ function allocate_gather(snd::AbstractVector{<:AbstractVector};destination=1)
         data = Vector{eltype(snd)}(undef,ndata)
         JaggedArray{eltype(snd),Int32}(data,ptrs)
     end
-    function g(l,snd)
-        ptrs = Vector{Int32}(undef,1)
-        data = Vector{eltype(snd)}(undef,0)
-        JaggedArray(data,ptrs)
+    if isa(destination,Integer)
+        function g(l,snd)
+            ptrs = Vector{Int32}(undef,1)
+            data = Vector{eltype(snd)}(undef,0)
+            JaggedArray(data,ptrs)
+        end
+        rcv = map_one(f,l_dest,snd;otherwise=g,source=destination)
+    else
+        @assert destination === :all
+        rcv = map(f,l_dest,snd)
     end
-    rcv = map_one(f,l_dest,snd;otherwise=g,source=destination)
     rcv
 end
 
@@ -170,6 +196,8 @@ end
 Return an array whose first entry contains a copy of the elements of array `snd`.
 Another component different from the
 first one can be used to store the result by setting the optional key-word argument `destination`.
+Setting `destination=:all`, will store the result in all entries of `rcv` resulting in a "gather all"
+operation.
 
 # Examples
 
@@ -185,6 +213,12 @@ first one can be used to store the result by setting the optional key-word argum
     3-element Vector{Vector{Int64}}:
      []
      []
+     [1, 2, 3]
+
+    julia> gather(snd,destination=:all)
+    3-element Vector{Vector{Int64}}:
+     [1, 2, 3]
+     [1, 2, 3]
      [1, 2, 3]
 """
 function gather(snd;destination=1)

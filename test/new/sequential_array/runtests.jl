@@ -1,4 +1,4 @@
-module SequentialArrayTests
+module SequentialArrayRunTests
 
 using Test
 using PartitionedArrays
