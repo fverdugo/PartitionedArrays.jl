@@ -36,13 +36,35 @@ function primitives_tests(distribute)
    snd = b
    rcv = gather(snd;destination=2)
    map_one(rcv;index=2) do rcv
-     @test rcv == [10 30; 20 40]
+     @test rcv == [10,20,30,40]
    end
+
+   snd2 = scatter(rcv;source=2)
+   map(snd,snd2) do snd,snd2
+       @test snd == snd2
+   end
+   @test typeof(snd) == typeof(snd2)
 
    snd = b
    rcv = gather(snd;destination=:all)
    map(rcv) do rcv
-     @test rcv == [10 30; 20 40]
+     @test rcv == [10,20,30,40]
    end
+
+   snd = map(rank) do rank
+     collect(1:rank)
+   end
+   rcv = gather(snd)
+   snd2 = scatter(rcv)
+   map(snd,snd2) do snd,snd2
+       @test snd == snd2
+   end
+   @test typeof(snd) == typeof(snd2)
+
+   rcv = emit(snd,source=2)
+   map(rcv) do rcv
+       @test rcv == rcv
+   end
+   @test typeof(snd) == typeof(rcv)
 
 end

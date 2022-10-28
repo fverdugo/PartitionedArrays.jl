@@ -55,6 +55,10 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialArray)
     end
 end
 
+function Base.similar(a::SequentialArray,::Type{T},dims::Dims) where T
+  SequentialArray(similar(a.items,T,dims))
+end
+
 function Base.map(f,args::SequentialArray...)
     SequentialArray(map(f,map(i->i.items,args)...))
 end
@@ -64,5 +68,19 @@ function Base.map!(f,args::SequentialArray...)
 end
 
 function gather!(rcv::SequentialArray,snd::SequentialArray;destination=1)
-    gather!(rcv.items,deepcopy(snd.items);destination)
+    gather!(rcv.items,snd.items;destination)
+    rcv
 end
+
+function scatter!(rcv::SequentialArray,snd::SequentialArray;source=1)
+    scatter!(rcv.items,snd.items;source)
+    rcv
+end
+
+function emit!(rcv::SequentialArray,snd::SequentialArray;source=1)
+    emit!(rcv.items,snd.items;source)
+    rcv
+end
+
+
+

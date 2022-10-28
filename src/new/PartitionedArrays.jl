@@ -7,7 +7,6 @@ import IterativeSolvers
 import Distances
 
 export exclusive_scan!
-export inclusive_scan!
 export rewind!
 export jagged_array
 export GenericJaggedArray
@@ -23,6 +22,9 @@ export allocate_gather
 export scatter
 export scatter!
 export allocate_scatter
+export emit
+export emit!
+export allocate_emit
 include("primitives.jl")
 
 export SequentialArray
