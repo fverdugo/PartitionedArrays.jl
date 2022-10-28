@@ -1,16 +1,4 @@
 
-struct SequentialBackend end
-
-function linear_indices(a::SequentialBackend,shape)
-    SequentialArray(collect(LinearIndices(shape)))
-end
-
-function cartesian_indices(a::SequentialBackend,shape)
-    SequentialArray(collect(CartesianIndices(shape)))
-end
-
-with_backend(f,a::SequentialBackend) = f(a)
-
 # Auxiliary array type
 # This new array type is not strictly needed
 # but it is useful for testing purposes since
@@ -18,6 +6,14 @@ with_backend(f,a::SequentialBackend) = f(a)
 # when using the MPI backend
 struct SequentialArray{T,N} <: AbstractArray{T,N}
     items::Array{T,N}
+    function SequentialArray{T,N}(a) where {T,N}
+      new{T,N}(convert(Array{T,N},a))
+    end
+    function SequentialArray(a)
+      T = eltype(a)
+      N = ndims(a)
+      new{T,N}(convert(Array{T,N},a))
+    end
 end
 
 Base.size(a::SequentialArray) = size(a.items)

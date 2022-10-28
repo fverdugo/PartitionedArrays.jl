@@ -3,6 +3,7 @@ module SequentialBackendInterfacesTests
 using PartitionedArrays
 
 include(joinpath("..","interfaces_tests.jl"))
-with_backend(interfaces_tests,SequentialBackend())
+
+interfaces_tests(SequentialArray)
 
 end # module

@@ -14,9 +14,6 @@ export GenericJaggedArray
 export JaggedArray
 include("jagged_array.jl")
 
-export with_backend
-export linear_indices
-export cartesian_indices
 export unpack
 export map_one
 export gather!
@@ -24,6 +21,7 @@ export allocate_gather
 export gather
 include("interfaces.jl")
 
+export SequentialArray
 export SequentialBackend
 include("sequential_backend.jl")
 

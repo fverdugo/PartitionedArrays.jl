@@ -1,9 +1,9 @@
 
 using Test
 
-function interfaces_tests(backend)
+function interfaces_tests(distribute)
 
-   rank = linear_indices(backend,(2,2))
+   rank = distribute(LinearIndices((2,2)))
 
    a_and_b = map(rank) do rank
        (2*rank,10*rank)
@@ -29,7 +29,5 @@ function interfaces_tests(backend)
    snd = b
    rcv = gather(snd;destination=2)
    display(rcv)
-
-
 
 end

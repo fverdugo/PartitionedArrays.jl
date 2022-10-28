@@ -1,5 +1,5 @@
 
-const SCALAR_INDEXING = Ref(:warn)
+const SCALAR_INDEXING = Ref(:error)
 
 function scalar_indexing(b)
     @assert b in (:warn,:error,:allow)
@@ -14,57 +14,6 @@ function scalar_indexing_error(a)
         error("Scalar indexing on $(nameof(typeof(a))) is not allowed for performance reasons.")
     end
     nothing
-end
-
-"""
-    linear_indices(backend,shape)
-
-Generate an array equal to `LinearIndices(shape)`, but whose type
-can depend on the given back-end `backend`.
-Return `LinearIndices(shape)` by default.
-"""
-function linear_indices(backend,shape)
-    LinearIndices(shape)
-end
-
-"""
-    cartesian_indices(backend,shape)
-
-Generate an array equal to `CartesianIndices(shape)`, but whose type
-can depend on the given back-end `backend`.
-Return `CartesianIndices(shape)` by default.
-"""
-function cartesian_indices(backend,shape)
-    CartesianIndices(shape)
-end
-
-"""
-    linear_indices(a)
-
-Generate an array equal to `LinearIndices(a)`, but whose type
-and can depend on `a`. Return `LinearIndices(a)` by default.
-"""
-linear_indices(a) = LinearIndices(a)
-
-"""
-    cartesian_indices(a)
-
-Generate an array equal to `CartesianIndices(a)`, but whose type
-and can depend on `a`. Return `CartesianIndices(a)` by default.
-"""
-cartesian_indices(a) = CartesianIndices(a)
-
-"""
-    with_backend(f,backend)
-
-Run all initialization steps required by the back-end `backend`,
-call `f(backend)`, and finally run all finalization steps required for
-the back-end `backend`. Return the result of `f(backend)`.
-
-This is the safest way of running `f(backned)`.
-"""
-function with_backend(f,backend)
-    f(backend)
 end
 
 """

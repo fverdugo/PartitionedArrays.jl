@@ -3,30 +3,26 @@ module SequentialBackendTests
 using PartitionedArrays
 using Test
 
-PartitionedArrays.scalar_indexing(:error)
+distribute(x) = SequentialArray(x)
 
-r = with_backend(SequentialBackend()) do backend
+parts = distribute(CartesianIndices((3,)))
+display(parts)
 
-    parts = cartesian_indices(backend,(3,))
-    display(parts)
+@test length(parts) == 3
 
-    @test length(parts) == 3
+msg = "Scalar indexing on SequentialArray is not allowed for performance reasons."
 
-    @test_throws ErrorException("Scalar indexing on SequentialArray is not allowed for performance reasons.") parts[end]
+@test_throws ErrorException(msg) parts[end]
 
-    parts = linear_indices(backend,(3,4))
-    display(parts)
+parts = distribute(LinearIndices((3,4)))
+display(parts)
 
-    @test length(parts) == 12
+@test length(parts) == 12
 
-    a = map(-,parts)
-    map(a,parts) do a,part
-        @test a == -part
-    end
-
-    -1
+a = map(-,parts)
+map(a,parts) do a,part
+    @test a == -part
 end
 
-@test r == -1
 
 end # module
