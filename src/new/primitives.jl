@@ -17,6 +17,22 @@ function scalar_indexing_error(a)
 end
 
 """
+    linear_indices(a)
+
+Generate an array equal to `LinearIndices(a)`, but whose type
+and can depend on `a`. Return `LinearIndices(a)` by default.
+"""
+linear_indices(a) = LinearIndices(a)
+
+"""
+    cartesian_indices(a)
+
+Generate an array equal to `CartesianIndices(a)`, but whose type
+and can depend on `a`. Return `CartesianIndices(a)` by default.
+"""
+cartesian_indices(a) = CartesianIndices(a)
+
+"""
     unpack(a)
 
 Convert the array of tuples `a` into a tuple of arrays.
@@ -193,7 +209,7 @@ function allocate_gather(snd::AbstractArray{<:AbstractVector};destination=1)
     l = map(length,snd)
     l_dest = gather(l;destination)
     function f(l,snd)
-        ptrs = exclusive_scan!(pushfirst!(l,zero(eltype(l))))
+        ptrs = prefix_sum!(pushfirst!(l,one(eltype(l))))
         ndata = ptrs[end]-1
         data = Vector{eltype(snd)}(undef,ndata)
         JaggedArray{eltype(snd),Int32}(data,ptrs)
@@ -366,4 +382,113 @@ function emit(snd;source=1)
     rcv
 end
 
+"""
+    inclusive_scan!(op,b,a;init=nothing,destination=1)
+
+In-place version of [`inclusive_scan`](@ref).
+The result `b` can be allocated with [allocate_gather](@ref).
+"""
+function inclusive_scan!(op,b,a;init=nothing,destination=1)
+    gather!(b,a;destination)
+    map_one(b;index=destination) do b
+        if init !== nothing
+            b[1] = op(b[1],init)
+        end
+        n = length(b)
+        for i in 1:(n-1)
+            b[i+1] = op(b[i+1],b[i])
+        end
+    end
+    b
+end
+
+"""
+    inclusive_scan(op,a;init=nothing,destination=1)
+
+Do the inclusive scan of the values in `a`. The result is stored
+in the entry `destination` of the resulting array. If `init` is provided,
+it will be added to all items in the result.
+
+# Examples
+
+    julia> using PartitionedArrays
+
+    julia> a = [2,4,1,3]
+    4-element Vector{Int64}:
+     2
+     4
+     1
+     3
+    
+    julia> inclusive_scan(+,a,init=10,destination=3)
+    4-element Vector{Vector{Int64}}:
+     []
+     []
+     [12, 16, 17, 20]
+     []
+    
+    julia> inclusive_scan(+,a,init=10,destination=:all)
+    4-element Vector{Vector{Int64}}:
+     [12, 16, 17, 20]
+     [12, 16, 17, 20]
+     [12, 16, 17, 20]
+     [12, 16, 17, 20]
+"""
+function inclusive_scan(op,a;init=nothing,destination=1)
+    b = allocate_gather(a;destination)
+    inclusive_scan!(op,b,a;init,destination)
+end
+
+"""
+    exclusive_scan!(op,b,a;init,destination=1)
+
+In-place version of [`exclusive_scan`](@ref).
+The result `b` can be allocated with [allocate_gather](@ref).
+"""
+function exclusive_scan!(op,b,a;init,destination=1)
+    inclusive_scan!(op,b,a;init,destination)
+    map_one(b;index=destination) do b
+        right_shift!(b)
+        b[1] = init
+    end
+    b
+end
+
+"""
+    exclusive_scan(op,a;init,destination=1)
+
+Do the inclusive scan of the values in `a`. The result is stored
+in the entry `destination` of the resulting array.
+The value `init` should be provided. It will be added to all items in the result
+except for the first one that will set to `init`.
+
+# Examples
+
+    julia> using PartitionedArrays
+
+    julia> a = [2,4,1,3]
+    4-element Vector{Int64}:
+     2
+     4
+     1
+     3
+    
+    julia> exclusive_scan(+,a,init=10,destination=3)
+    4-element Vector{Vector{Int64}}:
+     []
+     []
+     [10, 12, 16, 17]
+     []
+    
+    julia> exclusive_scan(+,a,init=10,destination=:all)
+    4-element Vector{Vector{Int64}}:
+     [10, 12, 16, 17]
+     [10, 12, 16, 17]
+     [10, 12, 16, 17]
+     [10, 12, 16, 17]
+"""
+function exclusive_scan(op,a;init,destination=1)
+    b = allocate_gather(a;destination)
+    exclusive_scan!(op,b,a;init,destination)
+end
 

@@ -1,11 +1,11 @@
 
 """
-    exclusive_scan!(a;seed=one(eltype(a)))
+    prefix_sum!(a)
 
-Sets `a[1]=seed` and then `a[i+1]+=a[i]` for `i in 1:length(a)`. Return `a`.
+Compute the inclusive prefix sum of the elements in `a`.
+The result is provided by overwriting `a`. Return `a`.
 """
-function exclusive_scan!(a;seed=one(eltype(a)))
-  a[1] = seed
+function prefix_sum!(a)
   n = length(a)
   @inbounds for i in 1:(n-1)
     a[i+1] += a[i]
@@ -14,16 +14,16 @@ function exclusive_scan!(a;seed=one(eltype(a)))
 end
 
 """
-    rewind!(a;seed=one(eltype(a)))
+    right_shift!(a)
 
-Sets `a[i+1]=a[i]` for `i in (length(a)-1):-1:1` and finally `a[1]=seed`. Return `a`.
+Sets `a[i+1]=a[i]` for `i in (length(a)-1):-1:1`.
+The first entry is untouched. Return `a`.
 """
-function rewind!(a;seed=one(eltype(a)))
+function right_shift!(a)
   n = length(a)
   @inbounds for i in (n-1):-1:1
     a[i+1] = a[i]
   end
-  a[1] = seed
   a
 end
 
@@ -121,7 +121,8 @@ function JaggedArray{T,Ti}(a::AbstractArray{<:AbstractArray}) where {T,Ti}
     ai = a[i]
     ptrs[i+1] = length(ai)
   end
-  exclusive_scan!(ptrs)
+  ptrs[1] = 1
+  prefix_sum!(ptrs)
   ndata = ptrs[end]-u
   data = Vector{T}(undef,ndata)
   p = 1

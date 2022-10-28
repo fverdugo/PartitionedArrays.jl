@@ -67,4 +67,14 @@ function primitives_tests(distribute)
    end
    @test typeof(snd) == typeof(rcv)
 
+   a = map(rank) do rank
+       3*mod(rank,3)
+   end
+   b = inclusive_scan(+,a,destination=3)
+
+   c = exclusive_scan(+,a,init=1,destination=:all)
+   map(c) do c
+       @test c == [1,4,10,10]
+   end
+
 end
