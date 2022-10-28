@@ -16,7 +16,12 @@ function primitives_tests(distribute)
        @test b == 10*rank
    end
 
-   a = map_one(+,b,rank;source=2)
+   map!(a_and_b,rank) do rank
+       (2*rank,10*rank)
+   end
+
+   a = map_one(+,b,rank;index=2)
+   map_one!(+,a,b,rank;index=2)
 
    map(a,b,rank) do a,b,rank
        if rank == 2
@@ -26,11 +31,11 @@ function primitives_tests(distribute)
        end
    end
 
-   a = map_one(+,b,rank;source=:all)
+   a = map_one(+,b,rank;index=:all)
 
    snd = b
    rcv = gather(snd;destination=2)
-   map_one(rcv;source=2) do rcv
+   map_one(rcv;index=2) do rcv
      @test rcv == [10 30; 20 40]
    end
 

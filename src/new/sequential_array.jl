@@ -59,6 +59,10 @@ function Base.map(f,args::SequentialArray...)
     SequentialArray(map(f,map(i->i.items,args)...))
 end
 
+function Base.map!(f,args::SequentialArray...)
+    SequentialArray(map!(f,map(i->i.items,args)...))
+end
+
 function gather!(rcv::SequentialArray,snd::SequentialArray;destination=1)
     gather!(rcv.items,deepcopy(snd.items);destination)
 end

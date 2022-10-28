@@ -16,9 +16,13 @@ include("jagged_array.jl")
 
 export unpack
 export map_one
+export map_one!
+export gather
 export gather!
 export allocate_gather
-export gather
+export scatter
+export scatter!
+export allocate_scatter
 include("primitives.jl")
 
 export SequentialArray
