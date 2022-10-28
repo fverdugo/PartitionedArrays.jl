@@ -1,9 +1,9 @@
-module SequentialBackendInterfacesTests
+module SequentialArrayPrimitivesTests
 
 using PartitionedArrays
 
-include(joinpath("..","interfaces_tests.jl"))
+include(joinpath("..","primitives_tests.jl"))
 
-interfaces_tests(SequentialArray)
+primitives_tests(SequentialArray)
 
 end # module

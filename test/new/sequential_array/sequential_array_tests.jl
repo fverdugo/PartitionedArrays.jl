@@ -1,4 +1,4 @@
-module SequentialBackendTests
+module SequentialArrayTests
 
 using PartitionedArrays
 using Test

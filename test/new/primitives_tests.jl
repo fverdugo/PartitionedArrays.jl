@@ -1,7 +1,7 @@
 
 using Test
 
-function interfaces_tests(distribute)
+function primitives_tests(distribute)
 
    rank = distribute(LinearIndices((2,2)))
 

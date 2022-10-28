@@ -19,9 +19,8 @@ export map_one
 export gather!
 export allocate_gather
 export gather
-include("interfaces.jl")
+include("primitives.jl")
 
 export SequentialArray
-export SequentialBackend
-include("sequential_backend.jl")
+include("sequential_array.jl")
 
