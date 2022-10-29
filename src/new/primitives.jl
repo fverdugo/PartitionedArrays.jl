@@ -470,11 +470,10 @@ function emit_impl(snd,source,::Type{T}) where T<:AbstractVector
 end
 
 """
-    scan(op,a;,type=:inclusive,init=nothing)
+    scan(op,a;init,type)
 
 Return the scan of the values in `a` for the operation `op`.
 Use `type=:inclusive` or `type=:exclusive` to use an inclusive or exclusive scan.
-If `init` is provided (and it is different from `nothing`),
 `init` will be added to all items in the result. Additionally, for exclusive scans,
 the first item in the result will be set to `init`.
 
@@ -489,7 +488,7 @@ the first item in the result will be set to `init`.
      1
      3
 
-    julia> scan(+,a,type=:inclusive)
+    julia> scan(+,a,type=:inclusive,init=0)
     4-element Vector{Int64}:
       2
       6
@@ -510,7 +509,7 @@ the first item in the result will be set to `init`.
      7
      8
 """
-function scan(op,a;type=:inclusive,init=nothing)
+function scan(op,a;init,type)
     @assert type in(:inclusive,:exclusive)
     b = gather(a)
     map(b) do b
@@ -522,11 +521,40 @@ function scan(op,a;type=:inclusive,init=nothing)
             b[i+1] = op(b[i+1],b[i])
         end
         if type === :exclusive && n > 0
-            @assert init !== nothing "Key-word argument init with a numeric value is mandatory for exclusive scans."
             right_shift!(b)
             b[1] = init
         end
     end
     scatter(b)
+end
+
+"""
+    reduction(op,a;init,destination=1)
+
+Reduce the values in array `a` according with operation
+`op` and the initial value `init` and store the result in
+a new array of the same size as `a` at index `destination`.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> a = [1,3,2,4]
+    4-element Vector{Int64}:
+     1
+     3
+     2
+     4
+    
+    julia> reduction(+,a;init=0,destination=2)
+    4-element Vector{Int64}:
+      0
+     10
+      0
+      0
+"""
+function reduction(op,a;init,destination=1)
+  b = gather(a;destination)
+  map(i->reduce(op,i;init=init),b)
 end
 

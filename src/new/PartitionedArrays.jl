@@ -27,6 +27,7 @@ export emit
 export emit!
 export allocate_emit
 export scan
+export reduction
 include("primitives.jl")
 
 export SequentialArray

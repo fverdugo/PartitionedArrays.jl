@@ -65,8 +65,7 @@ function primitives_tests(distribute)
    a = map(rank) do rank
        3*mod(rank,3)
    end
-   b = scan(+,a)
-   b = scan(+,a,init=10)
+   b = scan(+,a,type=:inclusive,init=0)
    b = scan(+,a,type=:exclusive,init=1)
 
 end
