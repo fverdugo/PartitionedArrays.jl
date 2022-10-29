@@ -113,6 +113,19 @@ function map_one(f,args...;otherwise=(args...)->nothing,index=1)
 end
 
 """
+    loop(f,args...;index=:all)
+
+Call `f` element-wise on the arrays in `args`, but return `nothing`
+instead of the result. The optional key-word argument `index`
+can be set to a linear index if we just want to visit a single
+index in the loop.
+"""
+function loop(f,args...;index=:all)
+    map_one(f,args...;index)
+    nothing
+end
+
+"""
     map_one!(f,dest,args...;kwargs...)
 
 Like [`map_one`](@ref) but store the result in-place in `dest`.
