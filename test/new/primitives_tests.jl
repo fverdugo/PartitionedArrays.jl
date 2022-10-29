@@ -65,11 +65,8 @@ function primitives_tests(distribute)
    a = map(rank) do rank
        3*mod(rank,3)
    end
-   b = inclusive_scan(+,a,destination=3)
-
-   c = exclusive_scan(+,a,init=1,destination=:all)
-   map(c) do c
-       @test c == [1,4,10,10]
-   end
+   b = scan(+,a)
+   b = scan(+,a,init=10)
+   b = scan(+,a,type=:exclusive,init=1)
 
 end

@@ -469,114 +469,64 @@ function emit_impl(snd,source,::Type{T}) where T<:AbstractVector
     rcv
 end
 
-
 """
-    inclusive_scan!(op,b,a;init=nothing,destination=1)
+    scan(op,a;,type=:inclusive,init=nothing)
 
-In-place version of [`inclusive_scan`](@ref).
-The result `b` can be allocated with [allocate_gather](@ref).
+Return the scan of the values in `a` for the operation `op`.
+Use `type=:inclusive` or `type=:exclusive` to use an inclusive or exclusive scan.
+If `init` is provided (and it is different from `nothing`),
+`init` will be added to all items in the result. Additionally, for exclusive scans,
+the first item in the result will be set to `init`.
+
+# Examples
+
+    julia> using PartitionedArrays
+
+    julia> a = [2,4,1,3]
+    4-element Vector{Int64}:
+     2
+     4
+     1
+     3
+
+    julia> scan(+,a,type=:inclusive)
+    4-element Vector{Int64}:
+      2
+      6
+      7
+     10
+    
+    julia> scan(+,a,type=:exclusive,init=0)
+    4-element Vector{Int64}:
+     0
+     2
+     6
+     7
+
+    julia> scan(+,a,type=:exclusive,init=1)
+    4-element Vector{Int64}:
+     1
+     3
+     7
+     8
 """
-function inclusive_scan!(op,b,a;init=nothing,destination=1)
-    gather!(b,a;destination)
-    map_one(b;index=destination) do b
-        if init !== nothing
+function scan(op,a;type=:inclusive,init=nothing)
+    @assert type in(:inclusive,:exclusive)
+    b = gather(a)
+    map(b) do b
+        n = length(b)
+        if init !== nothing && n > 0
             b[1] = op(b[1],init)
         end
-        n = length(b)
         for i in 1:(n-1)
             b[i+1] = op(b[i+1],b[i])
         end
+        if type === :exclusive && n > 0
+            @assert init !== nothing "Key-word argument init with a numeric value is mandatory for exclusive scans."
+            right_shift!(b)
+            b[1] = init
+        end
     end
-    b
-end
-
-"""
-    inclusive_scan(op,a;init=nothing,destination=1)
-
-Do the inclusive scan of the values in `a`. The result is stored
-in the entry `destination` of the resulting array. If `init` is provided,
-it will be added to all items in the result.
-
-# Examples
-
-    julia> using PartitionedArrays
-
-    julia> a = [2,4,1,3]
-    4-element Vector{Int64}:
-     2
-     4
-     1
-     3
-    
-    julia> inclusive_scan(+,a,init=10,destination=3)
-    4-element Vector{Vector{Int64}}:
-     []
-     []
-     [12, 16, 17, 20]
-     []
-    
-    julia> inclusive_scan(+,a,init=10,destination=:all)
-    4-element Vector{Vector{Int64}}:
-     [12, 16, 17, 20]
-     [12, 16, 17, 20]
-     [12, 16, 17, 20]
-     [12, 16, 17, 20]
-"""
-function inclusive_scan(op,a;init=nothing,destination=1)
-    b = allocate_gather(a;destination)
-    inclusive_scan!(op,b,a;init,destination)
-end
-
-"""
-    exclusive_scan!(op,b,a;init,destination=1)
-
-In-place version of [`exclusive_scan`](@ref).
-The result `b` can be allocated with [allocate_gather](@ref).
-"""
-function exclusive_scan!(op,b,a;init,destination=1)
-    inclusive_scan!(op,b,a;init,destination)
-    map_one(b;index=destination) do b
-        right_shift!(b)
-        b[1] = init
-    end
-    b
-end
-
-"""
-    exclusive_scan(op,a;init,destination=1)
-
-Do the inclusive scan of the values in `a`. The result is stored
-in the entry `destination` of the resulting array.
-The value `init` should be provided. It will be added to all items in the result
-except for the first one that will set to `init`.
-
-# Examples
-
-    julia> using PartitionedArrays
-
-    julia> a = [2,4,1,3]
-    4-element Vector{Int64}:
-     2
-     4
-     1
-     3
-    
-    julia> exclusive_scan(+,a,init=10,destination=3)
-    4-element Vector{Vector{Int64}}:
-     []
-     []
-     [10, 12, 16, 17]
-     []
-    
-    julia> exclusive_scan(+,a,init=10,destination=:all)
-    4-element Vector{Vector{Int64}}:
-     [10, 12, 16, 17]
-     [10, 12, 16, 17]
-     [10, 12, 16, 17]
-     [10, 12, 16, 17]
-"""
-function exclusive_scan(op,a;init,destination=1)
-    b = allocate_gather(a;destination)
-    exclusive_scan!(op,b,a;init,destination)
+    scatter(b)
 end
 

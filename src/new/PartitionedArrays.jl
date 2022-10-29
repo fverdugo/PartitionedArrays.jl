@@ -26,10 +26,7 @@ export allocate_scatter
 export emit
 export emit!
 export allocate_emit
-export inclusive_scan
-export inclusive_scan!
-export exclusive_scan
-export exclusive_scan!
+export scan
 include("primitives.jl")
 
 export SequentialArray
