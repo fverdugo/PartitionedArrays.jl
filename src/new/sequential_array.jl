@@ -23,8 +23,8 @@ function Base.getindex(a::SequentialArray,i::Int)
     a.items[i]
 end
 function Base.setindex!(a::SequentialArray,v,i::Int)
-    scalar_indexing_error(a)
-    a.items[i] = v
+    msg = "setindex! is not allowed on SequentialArray to emulate the behaviour of MPIArray."
+    error(msg)
 end
 linear_indices(a::SequentialArray) = SequentialArray(collect(LinearIndices(a)))
 cartesian_indices(a::SequentialArray) = SequentialArray(collect(CartesianIndices(a)))
@@ -63,23 +63,40 @@ function Base.map(f,args::SequentialArray...)
     SequentialArray(map(f,map(i->i.items,args)...))
 end
 
-function Base.map!(f,args::SequentialArray...)
-    SequentialArray(map!(f,map(i->i.items,args)...))
+function gather_impl!(
+    rcv::SequentialArray, snd::SequentialArray,
+    destination, ::Type{T}) where T<:Number
+    gather_impl!(rcv.items,snd.items,destination,T)
 end
 
-function gather!(rcv::SequentialArray,snd::SequentialArray;destination=1)
-    gather!(rcv.items,snd.items;destination)
-    rcv
+function gather_impl!(
+    rcv::SequentialArray, snd::SequentialArray,
+    destination, ::Type{T}) where T <: AbstractVector
+    gather_impl!(rcv.items,snd.items,destination,T)
 end
 
-function scatter!(rcv::SequentialArray,snd::SequentialArray;source=1)
-    scatter!(rcv.items,snd.items;source)
-    rcv
+function scatter_impl!(
+    rcv::SequentialArray,snd::SequentialArray,
+    source,::Type{T}) where T<:AbstractVector
+    scatter_impl!(rcv.items,snd.items,source,T)
 end
 
-function emit!(rcv::SequentialArray,snd::SequentialArray;source=1)
-    emit!(rcv.items,snd.items;source)
-    rcv
+function scatter_impl(
+    snd::SequentialArray,source,::Type{T}) where T<:Number
+    items = scatter_impl(snd.items,source,T)
+    SequentialArray(items)
+end
+
+function emit_impl!(
+    rcv::SequentialArray,snd::SequentialArray,
+    source,::Type{T}) where T<:AbstractVector
+    emit_impl!(rcv.items,snd.items,source,T)
+end
+
+function emit_impl(
+    snd::SequentialArray,source,::Type{T}) where T<:Number
+    items = emit_impl(snd.items,source,T)
+    SequentialArray(items)
 end
 
 

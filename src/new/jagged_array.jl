@@ -28,6 +28,76 @@ function right_shift!(a)
 end
 
 """
+    length_to_ptrs!(ptrs)
+
+Compute the field `ptrs` of a [`JaggedArray`](@ref).
+`length(ptrs)` should be the number of sub-vectors in the jagged array plus one.
+At input, `ptrs[i+1]` is the length of the i-th sub-vector.
+At output, `ptrs[i]:(ptrs[i+1]-1)` contains the range where the i-th sub-vector is
+stored in the `data` field of the jagged array.
+
+This function is equivalent to
+    ptrs[1] = one(eltype(ptrs))
+    prefix_sum!(ptrs)
+"""
+function length_to_ptrs!(ptrs)
+    ptrs[1] = one(eltype(ptrs))
+    prefix_sum!(ptrs)
+end
+
+"""
+    counts_to_ptrs(counts)
+"""
+function counts_to_ptrs(counts)
+    n = length(counts)
+    ptrs = Vector{Int32}(undef,n+1)
+    @inbounds for i in 1:n
+        ptrs[i+1] = counts[i]
+    end
+    length_to_ptrs!(ptrs)
+    ptrs
+end
+
+"""
+    ptrs_to_counts(ptrs)
+"""
+function ptrs_to_counts(ptrs)
+    counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
+    @inbounds for i in 1:length(counts)
+        counts[i] = ptrs[i+1]-ptrs[i]
+    end
+    counts
+end
+
+"""
+    rewind_ptrs(ptrs)!
+
+Equivalent to
+
+    right_shift!(ptrs)
+    ptrs[1] = one(eltype(ptrs))
+
+"""
+function rewind_ptrs!(ptrs)
+    right_shift!(ptrs)
+    ptrs[1] = one(eltype(ptrs))
+end
+
+"""
+    get_ptrs(a)
+
+Return `a.ptrs`
+"""
+get_ptrs(a) = a.ptrs
+
+"""
+    get_data(a)
+
+Return `a.data`
+"""
+get_data(a) = a.data
+
+"""
     struct GenericJaggedArray{V,A,B}
 
 Generalization of `JaggedArray`, where the fields `data` and `ptrs` are allowed to be any array-like

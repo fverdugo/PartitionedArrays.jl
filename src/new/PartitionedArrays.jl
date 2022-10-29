@@ -17,7 +17,6 @@ export linear_indices
 export cartesian_indices
 export unpack
 export map_one
-export map_one!
 export gather
 export gather!
 export allocate_gather

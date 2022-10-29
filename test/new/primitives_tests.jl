@@ -16,12 +16,7 @@ function primitives_tests(distribute)
        @test b == 10*rank
    end
 
-   map!(a_and_b,rank) do rank
-       (2*rank,10*rank)
-   end
-
    a = map_one(+,b,rank;index=2)
-   map_one!(+,a,b,rank;index=2)
 
    map(a,b,rank) do a,b,rank
        if rank == 2
