@@ -113,6 +113,94 @@ function map_one(f,args...;otherwise=(args...)->nothing,index=1)
 end
 
 """
+    gather(snd;destination=1)
+
+Return an array whose first entry contains a copy of the elements of array `snd` collected in a vector.
+Another component different from the
+first one can be used to store the result by setting the optional key-word argument `destination`.
+Setting `destination=:all`, will store the result in all entries of `rcv` resulting in a "gather all"
+operation.
+
+# Examples
+
+    julia> using PartitionedArrays
+
+    julia> snd = collect(1:3)
+    3-element Vector{Int64}:
+     1
+     2
+     3
+
+    julia> gather(snd,destination=3)
+    3-element Vector{Vector{Int64}}:
+     []
+     []
+     [1, 2, 3]
+
+    julia> gather(snd,destination=:all)
+    3-element Vector{Vector{Int64}}:
+     [1, 2, 3]
+     [1, 2, 3]
+     [1, 2, 3]
+"""
+function gather(snd;destination=1)
+    T = eltype(snd)
+    gather_impl(snd,destination,T)
+end
+
+function gather_impl(snd,destination,::Type{T}) where T
+    rcv = allocate_gather(snd;destination)
+    gather!(rcv,snd;destination)
+    rcv
+end
+
+"""
+    allocate_gather(snd;destination=1)
+
+Allocate an array to be used in the first argument of [`gather!`](@ref).
+"""
+function allocate_gather(snd;destination=1)
+    T = eltype(snd)
+    allocate_gather_impl(snd,destination,T)
+end
+
+function allocate_gather_impl(snd,destination,::Type{T}) where T
+    n = length(snd)
+    f = (snd)->Vector{T}(undef,n)
+    if isa(destination,Integer)
+        g = (snd)->Vector{T}(undef,0)
+        rcv = map_one(f,snd;otherwise=g,index=destination)
+    else
+        @assert destination === :all
+        rcv = map(f,snd)
+    end
+    rcv
+end
+
+function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
+    l = map(length,snd)
+    l_dest = gather(l;destination)
+    function f(l,snd)
+        ptrs = prefix_sum!(pushfirst!(l,one(eltype(l))))
+        ndata = ptrs[end]-1
+        data = Vector{eltype(snd)}(undef,ndata)
+        JaggedArray{eltype(snd),Int32}(data,ptrs)
+    end
+    if isa(destination,Integer)
+        function g(l,snd)
+            ptrs = Vector{Int32}(undef,1)
+            data = Vector{eltype(snd)}(undef,0)
+            JaggedArray(data,ptrs)
+        end
+        rcv = map_one(f,l_dest,snd;otherwise=g,index=destination)
+    else
+        @assert destination === :all
+        rcv = map(f,l_dest,snd)
+    end
+    rcv
+end
+
+"""
     gather!(rcv,snd;destination=1)
 
 Copy the elements of array `snd` into the first component of the array of arrays `rcv` and return `rcv`.
@@ -151,7 +239,7 @@ function gather!(rcv,snd;destination=1)
     gather_impl!(rcv,snd,destination,T)
 end
 
-function gather_impl!(rcv,snd,destination,::Type{T}) where T<:Number
+function gather_impl!(rcv,snd,destination,::Type{T}) where T
     if isa(destination,Integer)
         @assert length(rcv[destination]) == length(snd)
         for i in 1:length(snd)
@@ -164,163 +252,6 @@ function gather_impl!(rcv,snd,destination,::Type{T}) where T<:Number
                 rcv[j][i] = snd[i]
             end
         end
-    end
-    rcv
-end
-
-function gather_impl!(rcv,snd,destination,::Type{T}) where T<:AbstractVector
-    if isa(destination,Integer)
-        @assert length(rcv[destination]) == length(snd)
-        for i in 1:length(snd)
-            rcv[destination][i] .= snd[i]
-        end
-    else
-        @assert destination === :all
-        for j in eachindex(rcv)
-            for i in 1:length(snd)
-                rcv[j][i] .= snd[i]
-            end
-        end
-    end
-    rcv
-end
-
-"""
-    allocate_gather(snd;destination=1)
-
-Allocate an array to be used in the first argument of [`gather!`](@ref).
-"""
-function allocate_gather(snd;destination=1)
-    T = eltype(snd)
-    allocate_gather_impl(snd,destination,T)
-end
-
-function allocate_gather_impl(snd,destination,::Type{T}) where T<:Number
-    n = length(snd)
-    f = (snd)->Vector{T}(undef,n)
-    if isa(destination,Integer)
-        g = (snd)->Vector{T}(undef,0)
-        rcv = map_one(f,snd;otherwise=g,index=destination)
-    else
-        @assert destination === :all
-        rcv = map(f,snd)
-    end
-    rcv
-end
-
-function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
-    l = map(length,snd)
-    l_dest = gather(l;destination)
-    function f(l,snd)
-        ptrs = prefix_sum!(pushfirst!(l,one(eltype(l))))
-        ndata = ptrs[end]-1
-        data = Vector{eltype(snd)}(undef,ndata)
-        JaggedArray{eltype(snd),Int32}(data,ptrs)
-    end
-    if isa(destination,Integer)
-        function g(l,snd)
-            ptrs = Vector{Int32}(undef,1)
-            data = Vector{eltype(snd)}(undef,0)
-            JaggedArray(data,ptrs)
-        end
-        rcv = map_one(f,l_dest,snd;otherwise=g,index=destination)
-    else
-        @assert destination === :all
-        rcv = map(f,l_dest,snd)
-    end
-    rcv
-end
-
-"""
-    gather(snd;destination=1)
-
-Return an array whose first entry contains a copy of the elements of array `snd` collected in a vector.
-Another component different from the
-first one can be used to store the result by setting the optional key-word argument `destination`.
-Setting `destination=:all`, will store the result in all entries of `rcv` resulting in a "gather all"
-operation.
-
-# Examples
-
-    julia> using PartitionedArrays
-
-    julia> snd = collect(1:3)
-    3-element Vector{Int64}:
-     1
-     2
-     3
-
-    julia> gather(snd,destination=3)
-    3-element Vector{Vector{Int64}}:
-     []
-     []
-     [1, 2, 3]
-
-    julia> gather(snd,destination=:all)
-    3-element Vector{Vector{Int64}}:
-     [1, 2, 3]
-     [1, 2, 3]
-     [1, 2, 3]
-"""
-function gather(snd;destination=1)
-  rcv = allocate_gather(snd;destination)
-  gather!(rcv,snd;destination)
-  rcv
-end
-
-"""
-    allocate_scatter(snd;source=1)
-
-Allocate an array to be used in the first argument of [`scatter!`](@ref).
-"""
-function allocate_scatter(snd;source=1)
-    @assert source !== :all "All to all not implemented"
-    T = eltype(eltype(snd))
-    allocate_scatter_impl(snd,source,T)
-end
-
-function allocate_scatter_impl(snd,source,::Type{T}) where T<:Number
-    similar(snd,T)
-end
-
-function allocate_scatter_impl(snd,source,::Type{T}) where T <:AbstractVector
-    counts = map(snd) do snd
-        map(length,snd)
-    end
-    counts_scat = scatter(counts;source)
-    S = eltype(T)
-    map(counts_scat) do count
-        Vector{S}(undef,count)
-    end
-end
-
-"""
-    scatter!(rcv,snd;source=1)
-
-In-place version of [`scatter`](@ref). The destination array `rcv`
-can be generated with the helper function [`allocate_scatter`](@ref).
-
-!!! note
-    This function can be used only if `eltype(eltype(snd)) <: AbstractVector`,
-    i.e., when scattering vectors, not scalars. Use [`scatter`](@ref) in the latter case.
-    Some back-ends can be implemented as immutable array types, which will not allow to
-    mutate the indices of `rcv`.
-"""
-function scatter!(rcv,snd;source=1)
-    T = eltype(eltype(snd))
-    scatter_impl!(rcv,snd,source,T)
-end
-
-function scatter_impl!(rcv,snd,source,::Type{T}) where T<:Number
-    msg = "scatter! cannot be used when scatering scalars. Use scatter instead."
-    error(msg)
-end
-
-function scatter_impl!(rcv,snd,source,::Type{T}) where T<:AbstractVector
-    @assert source !== :all "Scatter all not implemented"
-    @assert length(snd[source]) == length(rcv)
-    for i in 1:length(snd)
-        rcv[i] .= snd[source][i]
     end
     rcv
 end
@@ -354,16 +285,7 @@ function scatter(snd;source=1)
     scatter_impl(snd,source,T)
 end
 
-function scatter_impl(snd,source,::Type{T}) where T<:Number
-    @assert source !== :all "Scatter all not implemented"
-    rcv = similar(snd,T)
-    for i in 1:length(snd)
-        rcv[i] = snd[source][i]
-    end
-    rcv
-end
-
-function scatter_impl(snd,source,::Type{T}) where T<:AbstractVector
+function scatter_impl(snd,source,::Type{T}) where T
     @assert source !== :all "Scatter all not implemented"
     rcv = allocate_scatter(snd;source)
     scatter!(rcv,snd;source)
@@ -371,58 +293,55 @@ function scatter_impl(snd,source,::Type{T}) where T<:AbstractVector
 end
 
 """
-    emit!(rcv,snd;source=1)
+    allocate_scatter(snd;source=1)
 
-In-place version of [`emit`](@ref). The destination array `rcv`
-can be generated with the helper function [`allocate_emit`](@ref).
+Allocate an array to be used in the first argument of [`scatter!`](@ref).
+"""
+function allocate_scatter(snd;source=1)
+    @assert source !== :all "All to all not implemented"
+    T = eltype(eltype(snd))
+    allocate_scatter_impl(snd,source,T)
+end
+
+function allocate_scatter_impl(snd,source,::Type{T}) where T
+    similar(snd,T)
+end
+
+function allocate_scatter_impl(snd,source,::Type{T}) where T <:AbstractVector
+    counts = map(snd) do snd
+        map(length,snd)
+    end
+    counts_scat = scatter(counts;source)
+    S = eltype(T)
+    map(counts_scat) do count
+        Vector{S}(undef,count)
+    end
+end
+
+"""
+    scatter!(rcv,snd;source=1)
+
+In-place version of [`scatter`](@ref). The destination array `rcv`
+can be generated with the helper function [`allocate_scatter`](@ref).
 
 !!! note
-    This function can be used only if `eltype(snd) <: AbstractVector`,
-    i.e., when sending vectors, not scalars. Use [`emit`](@ref) in the latter case.
+    This function can be used only if `eltype(eltype(snd)) <: AbstractVector`,
+    i.e., when scattering vectors, not scalars. Use [`scatter`](@ref) in the latter case.
     Some back-ends can be implemented as immutable array types, which will not allow to
     mutate the indices of `rcv`.
 """
-function emit!(rcv,snd;source=1)
-    T = eltype(snd)
-    emit_impl!(rcv,snd,source,T)
+function scatter!(rcv,snd;source=1)
+    T = eltype(eltype(snd))
+    scatter_impl!(rcv,snd,source,T)
 end
 
-function emit_impl!(rcv,snd,source,::Type{T}) where T<:Number
-    msg = "emit! cannot be used when sending scalars. Use scatter instead."
-    error(msg)
-end
-
-function emit_impl!(rcv,snd,source,::Type{T}) where T<:AbstractVector
-    @assert source !== :all "Emit all not implemented"
-    for i in eachindex(rcv)
-        rcv[i] .= snd[source]
+function scatter_impl!(rcv,snd,source,::Type{T}) where T
+    @assert source !== :all "Scatter all not implemented"
+    @assert length(snd[source]) == length(rcv)
+    for i in 1:length(snd)
+        rcv[i] = snd[source][i]
     end
     rcv
-end
-
-"""
-    allocate_emit(snd;source=1)
-
-Allocate an array to be used in the first argument of [`emit!`](@ref).
-"""
-function allocate_emit(snd;source=1)
-    T = eltype(snd)
-    allocate_emit_impl(snd,source,T)
-end
-
-function allocate_emit_impl(snd,source,::Type{T}) where T<:Number
-    @assert source !== :all "Scatter all not implemented"
-    similar(snd)
-end
-
-function allocate_emit_impl(snd,source,::Type{T}) where T<:AbstractVector
-    @assert source !== :all "Scatter all not implemented"
-    n = map(length,snd)
-    n_all = emit(n;source)
-    S = eltype(T)
-    map(n_all) do n
-        Vector{S}(undef,n)
-    end
 end
 
 """
@@ -453,19 +372,60 @@ function emit(snd;source=1)
     emit_impl(snd,source,T)
 end
 
-function emit_impl(snd,source,::Type{T}) where T<:Number
-    @assert source !== :all "All to all not implemented"
-    rcv = similar(snd)
-    for i in eachindex(rcv)
-        rcv[i] = snd[source]
-    end
-    rcv
-end
-
-function emit_impl(snd,source,::Type{T}) where T<:AbstractVector
+function emit_impl(snd,source,::Type{T}) where T
     @assert source !== :all "All to all not implemented"
     rcv = allocate_emit(snd;source)
     emit!(rcv,snd;source)
+    rcv
+end
+
+"""
+    allocate_emit(snd;source=1)
+
+Allocate an array to be used in the first argument of [`emit!`](@ref).
+"""
+function allocate_emit(snd;source=1)
+    T = eltype(snd)
+    allocate_emit_impl(snd,source,T)
+end
+
+function allocate_emit_impl(snd,source,::Type{T}) where T
+    @assert source !== :all "Scatter all not implemented"
+    similar(snd)
+end
+
+function allocate_emit_impl(snd,source,::Type{T}) where T<:AbstractVector
+    @assert source !== :all "Scatter all not implemented"
+    n = map(length,snd)
+    n_all = emit(n;source)
+    S = eltype(T)
+    map(n_all) do n
+        Vector{S}(undef,n)
+    end
+end
+
+"""
+    emit!(rcv,snd;source=1)
+
+In-place version of [`emit`](@ref). The destination array `rcv`
+can be generated with the helper function [`allocate_emit`](@ref).
+
+!!! note
+    This function can be used only if `eltype(snd) <: AbstractVector`,
+    i.e., when sending vectors, not scalars. Use [`emit`](@ref) in the latter case.
+    Some back-ends can be implemented as immutable array types, which will not allow to
+    mutate the indices of `rcv`.
+"""
+function emit!(rcv,snd;source=1)
+    T = eltype(snd)
+    emit_impl!(rcv,snd,source,T)
+end
+
+function emit_impl!(rcv,snd,source,::Type{T}) where T
+    @assert source !== :all "Emit all not implemented"
+    for i in eachindex(rcv)
+        rcv[i] = snd[source]
+    end
     rcv
 end
 

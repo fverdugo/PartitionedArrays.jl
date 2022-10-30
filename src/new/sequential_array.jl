@@ -65,7 +65,7 @@ end
 
 function gather_impl!(
     rcv::SequentialArray, snd::SequentialArray,
-    destination, ::Type{T}) where T<:Number
+    destination, ::Type{T}) where T
     gather_impl!(rcv.items,snd.items,destination,T)
 end
 
@@ -77,14 +77,35 @@ end
 
 function scatter_impl!(
     rcv::SequentialArray,snd::SequentialArray,
+    source,::Type{T}) where T
+    scatter_impl!(rcv.items,snd.items,source,T)
+    msg = "scatter! cannot be used when scatering scalars. Use scatter instead."
+    error(msg)
+end
+
+function scatter_impl!(
+    rcv::SequentialArray,snd::SequentialArray,
     source,::Type{T}) where T<:AbstractVector
     scatter_impl!(rcv.items,snd.items,source,T)
 end
 
 function scatter_impl(
-    snd::SequentialArray,source,::Type{T}) where T<:Number
+    snd::SequentialArray,source,::Type{T}) where T
     items = scatter_impl(snd.items,source,T)
     SequentialArray(items)
+end
+
+function scatter_impl(
+    snd::SequentialArray,source,::Type{T}) where T<:AbstractVector
+    items = scatter_impl(snd.items,source,T)
+    SequentialArray(items)
+end
+
+function emit_impl!(
+    rcv::SequentialArray,snd::SequentialArray,
+    source,::Type{T}) where T
+    msg = "emit! cannot be used when sending scalars. Use scatter instead."
+    error(msg)
 end
 
 function emit_impl!(
@@ -94,10 +115,14 @@ function emit_impl!(
 end
 
 function emit_impl(
-    snd::SequentialArray,source,::Type{T}) where T<:Number
+    snd::SequentialArray,source,::Type{T}) where T
     items = emit_impl(snd.items,source,T)
     SequentialArray(items)
 end
 
-
+function emit_impl(
+    snd::SequentialArray,source,::Type{T}) where T<:AbstractVector
+    items = emit_impl(snd.items,source,T)
+    SequentialArray(items)
+end
 
