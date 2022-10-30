@@ -30,6 +30,6 @@ export scan
 export reduction
 include("primitives.jl")
 
-export SequentialArray
-include("sequential_array.jl")
+export SequentialData
+include("sequential_data.jl")
 

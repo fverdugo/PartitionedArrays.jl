@@ -4,31 +4,31 @@
 # but it is useful for testing purposes since
 # it mimics the warning and errors one would get
 # when using the MPI backend
-struct SequentialArray{T,N} <: AbstractArray{T,N}
+struct SequentialData{T,N} <: AbstractArray{T,N}
     items::Array{T,N}
-    function SequentialArray{T,N}(a) where {T,N}
+    function SequentialData{T,N}(a) where {T,N}
       new{T,N}(convert(Array{T,N},a))
     end
-    function SequentialArray(a)
+    function SequentialData(a)
       T = eltype(a)
       N = ndims(a)
       new{T,N}(convert(Array{T,N},a))
     end
 end
 
-Base.size(a::SequentialArray) = size(a.items)
-Base.IndexStyle(::Type{<:SequentialArray}) = IndexLinear()
-function Base.getindex(a::SequentialArray,i::Int)
+Base.size(a::SequentialData) = size(a.items)
+Base.IndexStyle(::Type{<:SequentialData}) = IndexLinear()
+function Base.getindex(a::SequentialData,i::Int)
     scalar_indexing_error(a)
     a.items[i]
 end
-function Base.setindex!(a::SequentialArray,v,i::Int)
-    msg = "setindex! is not allowed on SequentialArray to emulate the behaviour of MPIArray."
+function Base.setindex!(a::SequentialData,v,i::Int)
+    msg = "setindex! is not allowed on SequentialData to emulate the behaviour of MPIArray."
     error(msg)
 end
-linear_indices(a::SequentialArray) = SequentialArray(collect(LinearIndices(a)))
-cartesian_indices(a::SequentialArray) = SequentialArray(collect(CartesianIndices(a)))
-function Base.show(io::IO,k::MIME"text/plain",data::SequentialArray)
+linear_indices(a::SequentialData) = SequentialData(collect(LinearIndices(a)))
+cartesian_indices(a::SequentialData) = SequentialData(collect(CartesianIndices(a)))
+function Base.show(io::IO,k::MIME"text/plain",data::SequentialData)
     header = ""
     if ndims(data) == 1
         header *= "$(length(data))-element"
@@ -55,28 +55,28 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialArray)
     end
 end
 
-function Base.similar(a::SequentialArray,::Type{T},dims::Dims) where T
-  SequentialArray(similar(a.items,T,dims))
+function Base.similar(a::SequentialData,::Type{T},dims::Dims) where T
+  SequentialData(similar(a.items,T,dims))
 end
 
-function Base.map(f,args::SequentialArray...)
-    SequentialArray(map(f,map(i->i.items,args)...))
+function Base.map(f,args::SequentialData...)
+    SequentialData(map(f,map(i->i.items,args)...))
 end
 
 function gather_impl!(
-    rcv::SequentialArray, snd::SequentialArray,
+    rcv::SequentialData, snd::SequentialData,
     destination, ::Type{T}) where T
     gather_impl!(rcv.items,snd.items,destination,T)
 end
 
 function gather_impl!(
-    rcv::SequentialArray, snd::SequentialArray,
+    rcv::SequentialData, snd::SequentialData,
     destination, ::Type{T}) where T <: AbstractVector
     gather_impl!(rcv.items,snd.items,destination,T)
 end
 
 function scatter_impl!(
-    rcv::SequentialArray,snd::SequentialArray,
+    rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T
     scatter_impl!(rcv.items,snd.items,source,T)
     msg = "scatter! cannot be used when scatering scalars. Use scatter instead."
@@ -84,45 +84,45 @@ function scatter_impl!(
 end
 
 function scatter_impl!(
-    rcv::SequentialArray,snd::SequentialArray,
+    rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T<:AbstractVector
     scatter_impl!(rcv.items,snd.items,source,T)
 end
 
 function scatter_impl(
-    snd::SequentialArray,source,::Type{T}) where T
+    snd::SequentialData,source,::Type{T}) where T
     items = scatter_impl(snd.items,source,T)
-    SequentialArray(items)
+    SequentialData(items)
 end
 
 function scatter_impl(
-    snd::SequentialArray,source,::Type{T}) where T<:AbstractVector
+    snd::SequentialData,source,::Type{T}) where T<:AbstractVector
     items = scatter_impl(snd.items,source,T)
-    SequentialArray(items)
+    SequentialData(items)
 end
 
 function emit_impl!(
-    rcv::SequentialArray,snd::SequentialArray,
+    rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T
     msg = "emit! cannot be used when sending scalars. Use scatter instead."
     error(msg)
 end
 
 function emit_impl!(
-    rcv::SequentialArray,snd::SequentialArray,
+    rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T<:AbstractVector
     emit_impl!(rcv.items,snd.items,source,T)
 end
 
 function emit_impl(
-    snd::SequentialArray,source,::Type{T}) where T
+    snd::SequentialData,source,::Type{T}) where T
     items = emit_impl(snd.items,source,T)
-    SequentialArray(items)
+    SequentialData(items)
 end
 
 function emit_impl(
-    snd::SequentialArray,source,::Type{T}) where T<:AbstractVector
+    snd::SequentialData,source,::Type{T}) where T<:AbstractVector
     items = emit_impl(snd.items,source,T)
-    SequentialArray(items)
+    SequentialData(items)
 end
 
