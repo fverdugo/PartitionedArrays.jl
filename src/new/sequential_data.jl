@@ -4,11 +4,42 @@
 # but it is useful for testing purposes since
 # it mimics the warning and errors one would get
 # when using the MPI backend
+"""
+    struct SequentialData{T,N}
+
+Data structure that emulates the behavior of [`MPIData`](@ref), but that can be
+used on a standard sequential (a.k.a. serial) Julia session. This struct implements
+the Julia array interface, but it is immutable. I.e., [`setindex!`](@ref) is not
+available for this struct.
+
+# Properties
+
+The fields of this struct are private.
+
+# Supertype hierarchy
+
+    SequentialData{T,N} <: AbstractArray{T,N}
+"""
 struct SequentialData{T,N} <: AbstractArray{T,N}
     items::Array{T,N}
+    @doc """
+        SequentialData{T,N}(a) where {T,N}
+
+    Create a `SequentialData{T,N}` data object from the items in collection
+    `a`. If `a::Array{T,N}`, then the result takes ownership of the input.
+    Otherwise, a copy of the input is created.
+    """
     function SequentialData{T,N}(a) where {T,N}
       new{T,N}(convert(Array{T,N},a))
     end
+    @doc """
+        SequentialData(a)
+
+    Create a `SequentialData{T,N}` data object from the items in collection
+    `a`, where `T=eltype(a)` and `N=ndims(a)` .
+    If `a::Array{T,N}`, then the result takes ownership of the input.
+    Otherwise, a copy of the input is created.
+    """
     function SequentialData(a)
       T = eltype(a)
       N = ndims(a)
