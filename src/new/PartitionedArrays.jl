@@ -31,5 +31,11 @@ export reduction
 include("primitives.jl")
 
 export SequentialData
+export with_sequential_data
 include("sequential_data.jl")
+
+export MPIData
+export mpi_data
+export with_mpi_data
+include("mpi_data.jl")
 

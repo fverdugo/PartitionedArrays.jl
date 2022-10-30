@@ -6,4 +6,6 @@ using Test
 
 @testset "sequential_data" begin include("sequential_data/runtests.jl") end
 
+@testset "mpi_data" begin include("mpi_data/runtests.jl") end
+
 end # module

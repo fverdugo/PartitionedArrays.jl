@@ -4,6 +4,6 @@ using PartitionedArrays
 
 include(joinpath("..","primitives_tests.jl"))
 
-primitives_tests(SequentialData)
+with_sequential_data(primitives_tests)
 
 end # module

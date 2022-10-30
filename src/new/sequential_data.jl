@@ -1,4 +1,13 @@
 
+"""
+    with_sequential_data(f)
+
+Call `f(SequentialData)`.
+"""
+function with_sequential_data(f)
+    f(SequentialData)
+end
+
 # Auxiliary array type
 # This new array type is not strictly needed
 # but it is useful for testing purposes since
@@ -54,7 +63,7 @@ function Base.getindex(a::SequentialData,i::Int)
     a.items[i]
 end
 function Base.setindex!(a::SequentialData,v,i::Int)
-    msg = "setindex! is not allowed on SequentialData to emulate the behaviour of MPIArray."
+    msg = "setindex! is not allowed on SequentialData to emulate the behaviour of MPIData."
     error(msg)
 end
 linear_indices(a::SequentialData) = SequentialData(collect(LinearIndices(a)))
