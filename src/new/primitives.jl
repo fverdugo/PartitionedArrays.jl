@@ -323,12 +323,6 @@ end
 
 In-place version of [`scatter`](@ref). The destination array `rcv`
 can be generated with the helper function [`allocate_scatter`](@ref).
-
-!!! note
-    This function can be used only if `eltype(eltype(snd)) <: AbstractVector`,
-    i.e., when scattering vectors, not scalars. Use [`scatter`](@ref) in the latter case.
-    Some back-ends can be implemented as immutable array types, which will not allow to
-    mutate the indices of `rcv`.
 """
 function scatter!(rcv,snd;source=1)
     T = eltype(eltype(snd))
@@ -409,12 +403,6 @@ end
 
 In-place version of [`emit`](@ref). The destination array `rcv`
 can be generated with the helper function [`allocate_emit`](@ref).
-
-!!! note
-    This function can be used only if `eltype(snd) <: AbstractVector`,
-    i.e., when sending vectors, not scalars. Use [`emit`](@ref) in the latter case.
-    Some back-ends can be implemented as immutable array types, which will not allow to
-    mutate the indices of `rcv`.
 """
 function emit!(rcv,snd;source=1)
     T = eltype(snd)

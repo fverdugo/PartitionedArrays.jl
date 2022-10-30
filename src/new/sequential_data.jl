@@ -18,8 +18,9 @@ end
 
 Data structure that emulates the behavior of [`MPIData`](@ref), but that can be
 used on a standard sequential (a.k.a. serial) Julia session. This struct implements
-the Julia array interface, but it is immutable. I.e., [`setindex!`](@ref) is not
-available for this struct.
+the Julia array interface.
+However, using [`setindex!`](@ref) and [`getindex!`](@ref) is strongly discouraged
+since this will not be efficient in actual parallel runs (communication cost).
 
 # Properties
 
@@ -63,8 +64,9 @@ function Base.getindex(a::SequentialData,i::Int)
     a.items[i]
 end
 function Base.setindex!(a::SequentialData,v,i::Int)
-    msg = "setindex! is not allowed on SequentialData to emulate the behaviour of MPIData."
-    error(msg)
+    scalar_indexing_error(a)
+    a.items[i] = v
+    v
 end
 linear_indices(a::SequentialData) = SequentialData(collect(LinearIndices(a)))
 cartesian_indices(a::SequentialData) = SequentialData(collect(CartesianIndices(a)))
@@ -119,8 +121,6 @@ function scatter_impl!(
     rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T
     scatter_impl!(rcv.items,snd.items,source,T)
-    msg = "scatter! cannot be used when scatering scalars. Use scatter instead."
-    error(msg)
 end
 
 function scatter_impl!(
@@ -129,40 +129,15 @@ function scatter_impl!(
     scatter_impl!(rcv.items,snd.items,source,T)
 end
 
-function scatter_impl(
-    snd::SequentialData,source,::Type{T}) where T
-    items = scatter_impl(snd.items,source,T)
-    SequentialData(items)
-end
-
-function scatter_impl(
-    snd::SequentialData,source,::Type{T}) where T<:AbstractVector
-    items = scatter_impl(snd.items,source,T)
-    SequentialData(items)
-end
-
 function emit_impl!(
     rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T
-    msg = "emit! cannot be used when sending scalars. Use scatter instead."
-    error(msg)
+    emit_impl!(rcv.items,snd.items,source,T)
 end
 
 function emit_impl!(
     rcv::SequentialData,snd::SequentialData,
     source,::Type{T}) where T<:AbstractVector
     emit_impl!(rcv.items,snd.items,source,T)
-end
-
-function emit_impl(
-    snd::SequentialData,source,::Type{T}) where T
-    items = emit_impl(snd.items,source,T)
-    SequentialData(items)
-end
-
-function emit_impl(
-    snd::SequentialData,source,::Type{T}) where T<:AbstractVector
-    items = emit_impl(snd.items,source,T)
-    SequentialData(items)
 end
 
