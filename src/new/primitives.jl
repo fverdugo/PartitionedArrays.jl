@@ -286,7 +286,7 @@ function scatter(snd;source=1)
 end
 
 function scatter_impl(snd,source,::Type{T}) where T
-    @assert source !== :all "Scatter all not implemented"
+    @assert source !== :all "All to all not implemented"
     rcv = allocate_scatter(snd;source)
     scatter!(rcv,snd;source)
     rcv

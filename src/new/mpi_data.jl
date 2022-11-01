@@ -14,7 +14,7 @@ Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
 !!! note
 
     Initialize MPI with `MPI.Init()` before using this function,
-    or use [`with_mpi_data`](@ref). 
+    or use [`with_mpi_data`](@ref).
 
 # Examples
 
@@ -80,7 +80,8 @@ end
 Represent an array of element type `T` and number of dimensions `N`, where
 each item in the array is stored in a separate MPI process. I.e., each MPI
 rank stores only one item. For arrays that can store more than one item per
-rank see [`PVector`](@ref) or [`PSparseMatrix`](@ref).
+rank see [`PVector`](@ref) or [`PSparseMatrix`](@ref). This struct implements
+the Julia array interface.
 However, using [`setindex!`](@ref) and [`getindex!`](@ref) is strongly discouraged
 for performance reasons (communication cost).
 
@@ -176,7 +177,7 @@ function Base.map(f,args::MPIData...)
     a = first(args)
     @assert all(i->size(a)==size(i),args)
     item = Ref(f(map(i->i.item[],args)...))
-    MPIData(item,a.comm,a.dims)
+    MPIData(item,a.comm,a.size)
 end
 
 function gather_impl!(
@@ -198,7 +199,7 @@ function gather_impl!(
         @assert destination === :all
         @assert length(rcv.item[]) == MPI.Comm_size(comm)
         rcv_buffer = MPI.UBuffer(rcv.item[],1)
-        MPI.Allgather!(snd.item[],rcv_buffer,snd.comm)
+        MPI.Allgather!(snd.item,rcv_buffer,snd.comm)
     end
     rcv
 end
@@ -233,27 +234,61 @@ end
 function scatter_impl!(
     rcv::MPIData,snd::MPIData,
     source,::Type{T}) where T
-    scatter_impl!(rcv.items,snd.items,source,T)
-    msg = "scatter! cannot be used when scatering scalars. Use scatter instead."
-    error(msg)
+    @assert source !== :all "All to all not implemented"
+    @assert rcv.comm === snd.comm
+    @assert eltype(snd.item[]) == typeof(rcv.item[])
+    comm = snd.comm
+    root = source - 1
+    if MPI.Comm_rank(comm) == root
+        snd_buffer = MPI.UBuffer(snd.item[],1)
+        rcv.item[] = snd.item[][source]
+        MPI.Scatter!(snd_buffer,MPI.IN_PLACE,root,comm)
+    else
+        MPI.Scatter!(nothing,rcv.item,root,comm)
+    end
+    rcv
 end
 
 function scatter_impl!(
     rcv::MPIData,snd::MPIData,
     source,::Type{T}) where T<:AbstractVector
-    scatter_impl!(rcv.items,snd.items,source,T)
+    @assert source !== :all "All to all not implemented"
+    @assert rcv.comm === snd.comm
+    @assert isa(snd.item[],JaggedArray)
+    @assert eltype(eltype(snd.item[])) == eltype(rcv.item[])
+    comm = snd.comm
+    root = source - 1
+    if MPI.Comm_rank(comm) == root
+        counts = ptrs_to_counts(snd.item[].ptrs)
+        snd_buffer = MPI.VBuffer(snd.item[].data,counts)
+        rcv.item[] .= snd.item[][source]
+        MPI.Scatterv!(snd_buffer,MPI.IN_PLACE,root,comm)
+    else
+        # This void Vbuffer is required to circumvent a deadlock
+        # that we found with OpenMPI 4.1.X on Gadi. In particular, the
+        # deadlock arises whenever buf is set to nothing
+        S = eltype(eltype(snd.item[]))
+        snd_buffer = MPI.VBuffer(S[],Int[])
+        MPI.Scatterv!(snd_buffer,rcv.item[],root,comm)
+    end
+    rcv
 end
 
 function emit_impl!(
     rcv::MPIData,snd::MPIData,
     source,::Type{T}) where T
-    msg = "emit! cannot be used when sending scalars. Use scatter instead."
-    error(msg)
+    @assert rcv.comm === snd.comm
+    comm = snd.comm
+    root = source - 1
+    MPI.Bcast!(snd.item,comm,root)
 end
 
 function emit_impl!(
     rcv::MPIData,snd::MPIData,
     source,::Type{T}) where T<:AbstractVector
-    emit_impl!(rcv.items,snd.items,source,T)
+    @assert rcv.comm === snd.comm
+    comm = snd.comm
+    root = source - 1
+    MPI.Bcast!(snd.item[],comm,root)
 end
 
