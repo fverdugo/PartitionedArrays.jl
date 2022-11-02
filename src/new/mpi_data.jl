@@ -226,7 +226,7 @@ function gather_impl!(
         @assert length(rcv.item[]) == MPI.Comm_size(comm)
         counts = ptrs_to_counts(rcv.item[].ptrs)
         rcv_buffer = MPI.VBuffer(rcv.item[].data,counts)
-        MPI.Allgatherv!(snd.item,rcv_buffer,comm)
+        MPI.Allgatherv!(snd.item[],rcv_buffer,comm)
     end
     rcv
 end
@@ -280,7 +280,10 @@ function emit_impl!(
     @assert rcv.comm === snd.comm
     comm = snd.comm
     root = source - 1
-    MPI.Bcast!(snd.item,comm,root)
+    if MPI.Comm_rank(comm) == root
+        rcv.item[] = snd.item[]
+    end
+    MPI.Bcast!(rcv.item,root,comm)
 end
 
 function emit_impl!(
@@ -289,6 +292,48 @@ function emit_impl!(
     @assert rcv.comm === snd.comm
     comm = snd.comm
     root = source - 1
-    MPI.Bcast!(snd.item[],comm,root)
+    if MPI.Comm_rank(comm) == root
+        rcv.item[] = snd.item[]
+    end
+    MPI.Bcast!(rcv.item[],root,comm)
 end
+
+function scan(op,a::MPIData;init,type)
+    @assert type in (:inclusive,:exclusive)
+    b = similar(a)
+    T = eltype(a)
+    comm = a.comm
+    opr = MPI.Op(op,T)
+    if type === :inclusive
+        MPI.Scan!(a.item,b.item,opr,comm)
+        b.item[] = op(b.item[],init)
+    else
+        MPI.Exscan!(a.item,b.item,opr,comm)
+        if MPI.Comm_rank(comm) == 0
+            b.item[] = init
+        else
+            b.item[] = op(b.item[],init)
+        end
+    end
+    b
+end
+
+function reduction(op,a::MPIData;init,destination=1)
+    b = similar(a)
+    T = eltype(a)
+    comm = a.comm
+    opr = MPI.Op(op,T)
+    if destination !== :all
+        root = destination-1
+        MPI.Reduce!(a.item,b.item,opr,root,comm)
+        if MPI.Comm_rank(comm) == root
+            b.item[] = op(b.item[],init)
+        end
+    else
+        MPI.Allreduce!(a.item,b.item,opr,comm)
+        b.item[] = op(b.item[],init)
+    end
+    b
+end
+
 

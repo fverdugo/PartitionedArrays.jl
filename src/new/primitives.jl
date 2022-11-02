@@ -458,7 +458,7 @@ the first item in the result will be set to `init`.
      8
 """
 function scan(op,a;init,type)
-    @assert type in(:inclusive,:exclusive)
+    @assert type in (:inclusive,:exclusive)
     b = gather(a)
     map(b) do b
         n = length(b)

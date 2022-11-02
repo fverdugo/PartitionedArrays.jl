@@ -56,6 +56,16 @@ function primitives_tests(distribute)
    end
    @test typeof(snd) == typeof(snd2)
 
+   rcv = gather(snd,destination=:all)
+   map(rcv) do rcv
+       @test rcv == [[1],[1,2],[1,2,3],[1,2,3,4]]
+   end
+
+   rcv = emit(rank,source=2)
+   map(rcv) do rcv
+       @test rcv == 2
+   end
+
    rcv = emit(snd,source=2)
    map(rcv) do rcv
      @test rcv == [1,2]
@@ -66,6 +76,24 @@ function primitives_tests(distribute)
        3*mod(rank,3)
    end
    b = scan(+,a,type=:inclusive,init=0)
+   c = gather(b)
+   map_one(c) do c
+       @test c == [3,9,9,12]
+   end
    b = scan(+,a,type=:exclusive,init=1)
+   c = gather(b)
+   map_one(c) do c
+       @test c == [1,4,10,10]
+   end
+
+   r = reduction(+,rank,init=0)
+   map_one(r) do r
+       @test r == 10
+   end
+   r = reduction(+,rank,init=10,destination=:all)
+   map(r) do r
+       @test r == 20
+   end
+
 
 end
