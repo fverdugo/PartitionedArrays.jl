@@ -458,22 +458,33 @@ the first item in the result will be set to `init`.
      8
 """
 function scan(op,a;init,type)
+    b = similar(a)
+    scan!(op,b,a;init,type)
+end
+
+"""
+    scan!(op,b,a;init,type)
+
+In-place version of [`scan`](@ref) on the result `b`.
+"""
+function scan!(op,b,a;init,type)
     @assert type in (:inclusive,:exclusive)
-    b = gather(a)
-    map(b) do b
-        n = length(b)
+    c = gather(a)
+    map(c) do c
+        n = length(c)
         if init !== nothing && n > 0
-            b[1] = op(b[1],init)
+            c[1] = op(c[1],init)
         end
         for i in 1:(n-1)
-            b[i+1] = op(b[i+1],b[i])
+            c[i+1] = op(c[i+1],c[i])
         end
         if type === :exclusive && n > 0
-            right_shift!(b)
-            b[1] = init
+            right_shift!(c)
+            c[1] = init
         end
     end
-    scatter(b)
+    scatter!(b,c)
+    b
 end
 
 """
@@ -502,7 +513,18 @@ a new array of the same size as `a` at index `destination`.
       0
 """
 function reduction(op,a;init,destination=1)
-  b = gather(a;destination)
-  map(i->reduce(op,i;init=init),b)
+    b = similar(a)
+    reduction!(op,b,a;init,destination)
+end
+
+"""
+    reduction!(op,b,a;init,destination=1)
+
+In-place version of [`reduction`](@ref) on the result `b`.
+"""
+function reduction!(op,b,a;init,destination=1)
+  c = gather(a;destination)
+  map!(i->reduce(op,i;init=init),b,c)
+  b
 end
 

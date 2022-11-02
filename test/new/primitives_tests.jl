@@ -80,7 +80,22 @@ function primitives_tests(distribute)
    map_one(c) do c
        @test c == [3,9,9,12]
    end
+
    b = scan(+,a,type=:exclusive,init=1)
+   c = gather(b)
+   map_one(c) do c
+       @test c == [1,4,10,10]
+   end
+
+   b = copy(a)
+   scan!(+,b,b,type=:inclusive,init=0)
+   c = gather(b)
+   map_one(c) do c
+       @test c == [3,9,9,12]
+   end
+
+   b = copy(a)
+   scan!(+,b,b,type=:exclusive,init=1)
    c = gather(b)
    map_one(c) do c
        @test c == [1,4,10,10]
@@ -91,6 +106,18 @@ function primitives_tests(distribute)
        @test r == 10
    end
    r = reduction(+,rank,init=10,destination=:all)
+   map(r) do r
+       @test r == 20
+   end
+
+   r = copy(rank)
+   reduction!(+,r,r,init=0,destination=2)
+   map_one(r,index=2) do r
+       @test r == 10
+   end
+
+   r = copy(rank)
+   reduction!(+,r,r,init=10,destination=:all)
    map(r) do r
        @test r == 20
    end

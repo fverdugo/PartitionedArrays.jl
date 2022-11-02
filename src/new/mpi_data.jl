@@ -173,11 +173,23 @@ function Base.similar(a::MPIData,::Type{T},dims::Dims) where T
     MPIData(Ref{T}(),a.comm,dims)
 end
 
+function Base.copyto!(b::MPIData,a::MPIData)
+    b.item[] = a.item[]
+    b
+end
+
 function Base.map(f,args::MPIData...)
     a = first(args)
     @assert all(i->size(a)==size(i),args)
     item = Ref(f(map(i->i.item[],args)...))
     MPIData(item,a.comm,a.size)
+end
+
+function Base.map!(f,r::MPIData,args::MPIData...)
+    a = first(args)
+    @assert all(i->size(a)==size(i),args)
+    r.item[] = f(map(i->i.item[],args)...)
+    r
 end
 
 function gather_impl!(
@@ -298,17 +310,26 @@ function emit_impl!(
     MPI.Bcast!(rcv.item[],root,comm)
 end
 
-function scan(op,a::MPIData;init,type)
+function scan!(op,b::MPIData,a::MPIData;init,type)
+    @assert b.comm === a.comm
     @assert type in (:inclusive,:exclusive)
-    b = similar(a)
     T = eltype(a)
+    @assert eltype(b) == T
     comm = a.comm
     opr = MPI.Op(op,T)
     if type === :inclusive
-        MPI.Scan!(a.item,b.item,opr,comm)
+        if a.item !== b.item
+            MPI.Scan!(a.item,b.item,opr,comm)
+        else
+            MPI.Scan!(b.item,opr,comm)
+        end
         b.item[] = op(b.item[],init)
     else
-        MPI.Exscan!(a.item,b.item,opr,comm)
+        if a.item !== b.item
+            MPI.Exscan!(a.item,b.item,opr,comm)
+        else
+            MPI.Exscan!(b.item,opr,comm)
+        end
         if MPI.Comm_rank(comm) == 0
             b.item[] = init
         else
@@ -318,19 +339,28 @@ function scan(op,a::MPIData;init,type)
     b
 end
 
-function reduction(op,a::MPIData;init,destination=1)
-    b = similar(a)
+function reduction!(op,b::MPIData,a::MPIData;init,destination=1)
+    @assert b.comm === a.comm
     T = eltype(a)
+    @assert eltype(b) == T
     comm = a.comm
     opr = MPI.Op(op,T)
     if destination !== :all
         root = destination-1
-        MPI.Reduce!(a.item,b.item,opr,root,comm)
+        if a.item !== b.item
+            MPI.Reduce!(a.item,b.item,opr,root,comm)
+        else
+            MPI.Reduce!(b.item,opr,root,comm)
+        end
         if MPI.Comm_rank(comm) == root
             b.item[] = op(b.item[],init)
         end
     else
-        MPI.Allreduce!(a.item,b.item,opr,comm)
+        if a.item !== b.item
+            MPI.Allreduce!(a.item,b.item,opr,comm)
+        else
+            MPI.Allreduce!(b.item,opr,comm)
+        end
         b.item[] = op(b.item[],init)
     end
     b
