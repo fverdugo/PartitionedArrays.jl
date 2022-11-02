@@ -30,6 +30,10 @@ export scan
 export scan!
 export reduction
 export reduction!
+export ExchangeGraph
+export exchange
+export exchange!
+export allocate_exchange
 include("primitives.jl")
 
 export SequentialData

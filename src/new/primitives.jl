@@ -528,3 +528,120 @@ function reduction!(op,b,a;init,destination=1)
   b
 end
 
+struct ExchangeGraph{A}
+    snd::A
+    rcv::A
+end
+Base.reverse(g::ExchangeGraph) = ExchangeGraph(g.rcv,g.snd)
+
+function ExchangeGraph(snd;neighbors=nothing)
+    ExchangeGraph_impl(snd,neighbors)
+end
+
+# Discover snd parts from rcv assuming that snd is a subset of neighbors
+function ExchangeGraph_impl(snd,neighbors::ExchangeGraph)
+end
+
+# If neighbors not provided, we need to gather in main
+function ExchangeGraph_impl(snd,neighbors::Nothing)
+end
+
+function is_consistent(graph::ExchangeGraph)
+    snd = graph.snd
+    rcv = graph.rcv
+    @assert length(rcv) == length(snd)
+    for part in 1:length(rcv)
+        for i in rcv[part]
+            length(findall(k->k==part,snd[i])) == 1 || return false
+        end
+        for i in snd[part]
+            length(findall(k->k==part,rcv[i])) == 1 || return false
+        end
+    end
+    true
+end
+
+function exchange(snd,graph::ExchangeGraph)
+    rcv = allocate_exchange(snd,graph)
+    tasks = exchange!(rcv,snd,graph)
+    map(wait,tasks)
+    rcv
+end
+
+function allocate_exchange(snd,graph::ExchangeGraph)
+    T = eltype(eltype(snd))
+    allocate_exchange_impl(snd,graph,T)
+end
+
+function allocate_exchange_impl(snd,graph,::Type{T}) where T
+    rcv = map(snd,graph.rcv) do snd,rcv_ids
+        similar(snd,eltype(snd),length(rcv_ids))
+    end
+    rcv
+end
+
+function allocate_exchange_impl(snd,graph,::Type{T}) where T<:AbstractVector
+    n_snd = map(snd) do snd
+        map(length,snd)
+    end
+    n_rcv = exchange(n_snd,graph)
+    S = eltype(eltype(snd))
+    rcv = map(n_rcv) do n_rcv
+        prts = zeros(Int32,length(n_rcv)+1)
+        ptrs[2:end] = n_rcv
+        length_to_ptrs!(ptrs)
+        n_data = prts[end]-1
+        data = Vector{S}(undef,n_data)
+        JaggedArray(data,prts)
+    end
+    rcv
+end
+
+function exchange!(rcv,snd,graph::ExchangeGraph)
+    T = eltype(eltype(snd))
+    exchange_impl!(rcv,snd,graph,T)
+end
+
+function exchange_impl!(rcv,snd,graph,::Type{T}) where T
+    @assert is_consistent(graph)
+    snd_ids = graph.snd
+    rcv_ids = graph.rcv
+    @assert length(rcv_ids) == length(rcv)
+    @assert length(rcv_ids) == length(snd)
+    for rcv_id in 1:length(rcv_ids)
+        for (i, snd_id) in enumerate(rcv_ids[rcv_id])
+            j = first(findall(k->k==rcv_id,snd_ids[snd_id]))
+            rcv[rcv_id][i] = snd[snd_id][j]
+        end
+    end
+    map(snd) do snd
+        @async nothing
+    end
+end
+
+function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
+    @assert is_consistent(graph)
+    @assert eltype(snd) <: JaggedArray
+    snd_ids = graph.snd
+    rcv_ids = graph.rcv
+    @assert length(rcv_ids) == length(rcv)
+    @assert length(rcv_ids) == length(snd)
+    for rcv_id in 1:length(rcv_ids)
+        for (i, snd_id) in enumerate(rcv_ids[rcv_id])
+            j = first(findall(k->k==rcv_id,snd_ids[snd_id]))
+            ptrs_rcv = rcv[rcv_id].ptrs
+            ptrs_snd = snd[snd_id].ptrs
+            @assert ptrs_rcv[i+1]-ptrs_rcv[i] == ptrs_snd[j+1]-ptrs_snd[j]
+            for p in 1:(ptrs_rcv[i+1]-ptrs_rcv[i])
+                p_rcv = p+ptrs_rcv[i]-1
+                p_snd = p+ptrs_snd[j]-1
+                rcv[rcv_id].data[p_rcv] = snd[snd_id].data[p_snd]
+            end
+        end
+    end
+    map(snd) do snd
+        @async nothing
+    end
+end
+
+

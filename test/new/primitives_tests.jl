@@ -122,5 +122,46 @@ function primitives_tests(distribute)
        @test r == 20
    end
 
+   rcv_ids = map(rank) do rank
+       if rank == 1
+           [2,3]
+       elseif rank == 2
+           [4,]
+       elseif rank == 3
+           [1,2]
+       else
+           [1,3]
+       end
+   end
+
+   snd_ids = map(rank) do rank
+       if rank == 1
+           [3,4]
+       elseif rank == 2
+           [1,3]
+       elseif rank == 3
+           [1,4]
+       else
+           [2]
+       end
+   end
+
+   graph = ExchangeGraph(snd_ids,rcv_ids)
+
+   snd = map(i->10*i,snd_ids)
+   rcv = exchange(snd,graph)
+
+   map(rank,rcv) do rank, rcv
+       if rank == 1
+           r = [10,10]
+       elseif rank == 2
+           r = [20]
+       elseif rank == 3
+           r = [30,30]
+       else
+           r= [40,40]
+       end
+       @test r == rcv
+   end
 
 end

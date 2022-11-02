@@ -151,3 +151,26 @@ function emit_impl!(
     emit_impl!(rcv.items,snd.items,source,T)
 end
 
+function is_consistent(graph::ExchangeGraph{<:SequentialData})
+    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
+    is_consistent(g)
+end
+
+function exchange_impl!(
+    rcv::SequentialData,
+    snd::SequentialData,
+    graph::ExchangeGraph{<:SequentialData},
+    ::Type{T}) where T
+    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
+    exchange_impl!(rcv.items,snd.items,g,T)
+end
+
+function exchange_impl!(
+    rcv::SequentialData,
+    snd::SequentialData,
+    graph::ExchangeGraph{<:SequentialData},
+    ::Type{T}) where T <: AbstractVector
+    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
+    exchange_impl!(rcv.items,snd.items,g,T)
+end
+
