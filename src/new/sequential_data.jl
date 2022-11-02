@@ -101,8 +101,18 @@ function Base.similar(a::SequentialData,::Type{T},dims::Dims) where T
   SequentialData(similar(a.items,T,dims))
 end
 
+function Base.copyto!(b::SequentialData,a::SequentialData)
+    copyto!(b.items,a.items)
+    b
+end
+
 function Base.map(f,args::SequentialData...)
     SequentialData(map(f,map(i->i.items,args)...))
+end
+
+function Base.map!(f,r::SequentialData,args::SequentialData...)
+    map!(f,r.items,map(i->i.items,args)...)
+    r
 end
 
 function gather_impl!(
