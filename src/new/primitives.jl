@@ -539,11 +539,31 @@ function ExchangeGraph(snd;neighbors=nothing)
 end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
-function ExchangeGraph_impl(snd,neighbors::ExchangeGraph)
+function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
+  rank = linear_indices(snd_ids)
+  # Tell the neighbors whether I want to send to them
+  data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors.snd, snd_ids
+    dict_snd = Dict(( n=>Int32(-1) for n in neighbors.snd))
+    for i in snd_ids
+      dict_snd[i] = rank
+    end
+    [ dict_snd[n] for n in neighbors.snd ]
+  end
+  data_rcv = exchange(data_snd,reverse(neighbors))
+  # build rcv_ids
+  rcv_ids = map(data_rcv) do data_rcv
+    k = findall(j->j>0,data_rcv)
+    data_rcv[k]
+  end
+  rcv_ids
 end
 
 # If neighbors not provided, we need to gather in main
 function ExchangeGraph_impl(snd,neighbors::Nothing)
+    snd_main = gather(snd)
+    rcv_main = map(_snd_to_rcv,snd_main)
+    rcv = scatter(rcv_main)
+    rcv
 end
 
 function is_consistent(graph::ExchangeGraph)
