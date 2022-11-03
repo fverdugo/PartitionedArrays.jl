@@ -60,11 +60,11 @@ end
 Base.size(a::SequentialData) = size(a.items)
 Base.IndexStyle(::Type{<:SequentialData}) = IndexLinear()
 function Base.getindex(a::SequentialData,i::Int)
-    scalar_indexing_error(a)
+    scalar_indexing_action(a)
     a.items[i]
 end
 function Base.setindex!(a::SequentialData,v,i::Int)
-    scalar_indexing_error(a)
+    scalar_indexing_action(a)
     a.items[i] = v
     v
 end

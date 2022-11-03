@@ -164,4 +164,26 @@ function primitives_tests(distribute)
        @test r == rcv
    end
 
+   graph2 = ExchangeGraph(snd_ids)
+   map(==,graph2.rcv,graph.rcv)
+
+   graph2 = ExchangeGraph(snd_ids,neighbors=graph)
+   map(==,graph2.rcv,graph.rcv)
+
+   snd = map(i->map(j->collect(1:j),i),snd_ids)
+   rcv = exchange(snd,graph)
+
+   map(rank,rcv) do rank,rcv
+       if rank == 1
+           r = [[1],[1]]
+       elseif rank == 2
+           r = [[1,2]]
+       elseif rank == 3
+           r = [[1,2,3],[1,2,3]]
+       else
+           r= [[1,2,3,4],[1,2,3,4]]
+       end
+       @test r == rcv
+   end
+
 end

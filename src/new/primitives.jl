@@ -1,16 +1,10 @@
 
-const SCALAR_INDEXING = Ref(:error)
+const SCALAR_INDEXING_ACTION = Ref(:error)
 
-function scalar_indexing(b)
-    @assert b in (:warn,:error,:allow)
-    SCALAR_INDEXING[] = b
-    b
-end
-
-function scalar_indexing_error(a)
-    if SCALAR_INDEXING[] === :warn
+function scalar_indexing_action(a)
+    if SCALAR_INDEXING_ACTION[] === :warn
         @warn "Scalar indexing on $(nameof(typeof(a))) is discuraged for performance reasons."
-    elseif SCALAR_INDEXING[] === :error
+    elseif SCALAR_INDEXING_ACTION[] === :error
         error("Scalar indexing on $(nameof(typeof(a))) is not allowed for performance reasons.")
     end
     nothing
@@ -528,42 +522,126 @@ function reduction!(op,b,a;init,destination=1)
   b
 end
 
+"""
+    struct ExchangeGraph{A}
+
+Type representing a directed graph to be used in exchanges,
+see function [`exchange!`](@ref) and [`exchange`](@ref).
+
+# Properties
+    snd::A
+    rcv::A
+
+`snd[i]` contains a list of the outgoing neighbors of node `i`.
+`rcv[i]` contains a list of the incomming neighbors of node `i`.
+`A` is a vector-like container type.
+
+# Supertype hierarchy
+    ExchangeGraph <: Any
+
+This type has enough information to implement the `AbstractGraph` interface
+of the  `Graphs.jl` package. However, we do not really need the functionallity
+of this package here.
+"""
 struct ExchangeGraph{A}
     snd::A
     rcv::A
 end
 Base.reverse(g::ExchangeGraph) = ExchangeGraph(g.rcv,g.snd)
 
+function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
+    println(io,typeof(data)," with $(length(data.snd)) nodes")
+
+end
+
+"""
+    ExchangeGraph(snd;neighbors=nothing)
+
+Create an `ExchangeGraph` object only from the lists of outgoing 
+neighbors in `snd`. The optional `neighbors` is also an `ExchangeGraph`
+that contains a super set of the outgoing and incoming neighbors
+associated with `snd`. It is used to find the incoming neighbors `rcv`
+efficiently.
+"""
 function ExchangeGraph(snd;neighbors=nothing)
     ExchangeGraph_impl(snd,neighbors)
 end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
 function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
-  rank = linear_indices(snd_ids)
-  # Tell the neighbors whether I want to send to them
-  data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors.snd, snd_ids
-    dict_snd = Dict(( n=>Int32(-1) for n in neighbors.snd))
-    for i in snd_ids
-      dict_snd[i] = rank
+    rank = linear_indices(snd_ids)
+    # Tell the neighbors whether I want to send to them
+    data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors_snd, snd_ids
+        dict_rcv = Dict(( n=>Int(-1) for n in neighbors_snd))
+        for i in snd_ids
+            dict_rcv[i] = rank
+        end
+        [ dict_rcv[n] for n in neighbors_snd ]
     end
-    [ dict_snd[n] for n in neighbors.snd ]
-  end
-  data_rcv = exchange(data_snd,reverse(neighbors))
-  # build rcv_ids
-  rcv_ids = map(data_rcv) do data_rcv
-    k = findall(j->j>0,data_rcv)
-    data_rcv[k]
-  end
-  rcv_ids
+    data_rcv = exchange(data_snd,neighbors)
+    # build rcv_ids
+    rcv_ids = map(data_rcv) do data_rcv
+        k = findall(j->j>0,data_rcv)
+        data_rcv[k]
+    end
+    ExchangeGraph(snd_ids,rcv_ids)
 end
 
 # If neighbors not provided, we need to gather in main
-function ExchangeGraph_impl(snd,neighbors::Nothing)
-    snd_main = gather(snd)
-    rcv_main = map(_snd_to_rcv,snd_main)
-    rcv = scatter(rcv_main)
-    rcv
+function ExchangeGraph_impl(snd_ids,neighbors::Nothing)
+    discover_rcv_neighbors_action()
+    snd_ids_main = gather(snd_ids)
+    rcv_ids_main = map(snd_ids_main) do snd_ids_main
+        snd = JaggedArray(snd_ids_main)
+        I = Int32[]
+        J = Int32[]
+        np = length(snd)
+        for p in 1:np
+            kini = snd.ptrs[p]
+            kend = snd.ptrs[p+1]-1
+            for k in kini:kend
+                push!(I,p)
+                push!(J,snd.data[k])
+            end
+        end
+        adjmat = sparse(I,J,I,np,np)
+        ptrs = similar(snd.ptrs)
+        fill!(ptrs,zero(eltype(ptrs)))
+        for (i,j,_) in nziterator(adjmat)
+            ptrs[j+1] += 1
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = similar(snd.data,eltype(snd.data),ndata)
+        for (i,j,_) in nziterator(adjmat)
+            data[ptrs[j]] = i
+            ptrs[j] += 1
+        end
+        rewind_ptrs!(ptrs)
+        rcv = JaggedArray(data,ptrs)
+    end
+    rcv_ids = scatter(rcv_ids_main)
+    ExchangeGraph(snd_ids,rcv_ids)
+end
+
+const DISCOVER_RCV_NEIGHBORS_ACTION = Ref(:allow)
+
+function discover_rcv_neighbors_action()
+    DISCOVER_RCV_NEIGHBORS_ACTION[] === :allow && return nothing
+    msg =
+    """
+    [PartitionedArrays.jl] Using a non-scalable implementation
+    to discover the incoming neighbours of a `ExchangeGraph`.
+    This might cause trouble when running the code at medium/large scales.
+    You can avoid this using the Exchanger constructor with a superset of
+    the actual receivers/senders
+    """
+    if DISCOVER_RCV_NEIGHBORS_ACTION[] === :error
+        error(msg)
+    elseif DISCOVER_RCV_NEIGHBORS_ACTION[] === :warn
+        @warn msg
+    end
+    nothing
 end
 
 function is_consistent(graph::ExchangeGraph)
@@ -581,6 +659,45 @@ function is_consistent(graph::ExchangeGraph)
     true
 end
 
+"""
+    exchange(snd,graph::ExchangeGraph)
+
+Send the data in `snd` according the directed graph `graph`.
+The object `snd` and the return of this function `rcv`
+are array of vectors. The  value `snd[i][j]` is sent
+to node `graph.snd[i][j]`. The value `rcv[i][j]` is the one
+received from  node `graph.rcv[i][j]`.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> snd_ids = [[3,4],[1,3],[1,4],[2]]
+    4-element Vector{Vector{Int64}}:
+     [3, 4]
+     [1, 3]
+     [1, 4]
+     [2]
+    
+    julia> graph = ExchangeGraph(snd_ids)
+    ExchangeGraph{Vector{Vector{Int64}}} with 4 nodes
+    
+    
+    julia> snd = [[10,10],[20,20],[30,30],[40]]
+    4-element Vector{Vector{Int64}}:
+     [10, 10]
+     [20, 20]
+     [30, 30]
+     [40]
+    
+    julia> rcv = exchange(snd,graph)
+    4-element Vector{Vector{Int64}}:
+     [20, 30]
+     [40]
+     [10, 20]
+     [10, 30]
+    
+"""
 function exchange(snd,graph::ExchangeGraph)
     rcv = allocate_exchange(snd,graph)
     tasks = exchange!(rcv,snd,graph)
@@ -588,6 +705,12 @@ function exchange(snd,graph::ExchangeGraph)
     rcv
 end
 
+"""
+    allocate_exchange(snd,graph::ExchangeGraph)
+
+Allocate the result to be used in the first argument
+of [`exchange`](@ref).
+"""
 function allocate_exchange(snd,graph::ExchangeGraph)
     T = eltype(eltype(snd))
     allocate_exchange_impl(snd,graph,T)
@@ -605,18 +728,71 @@ function allocate_exchange_impl(snd,graph,::Type{T}) where T<:AbstractVector
         map(length,snd)
     end
     n_rcv = exchange(n_snd,graph)
-    S = eltype(eltype(snd))
+    S = eltype(eltype(eltype(snd)))
     rcv = map(n_rcv) do n_rcv
-        prts = zeros(Int32,length(n_rcv)+1)
+        ptrs = zeros(Int32,length(n_rcv)+1)
         ptrs[2:end] = n_rcv
         length_to_ptrs!(ptrs)
-        n_data = prts[end]-1
+        n_data = ptrs[end]-1
         data = Vector{S}(undef,n_data)
-        JaggedArray(data,prts)
+        JaggedArray(data,ptrs)
     end
     rcv
 end
 
+"""
+    exchange!(rcv,snd,graph::ExchangeGraph)
+
+In-place and asynchronous version of [`exchange`](@ref). This function
+returns immediately and provides an array of tasks `t`.
+When task `t[i]` is done, then the
+results in `rcv[i]`  can be consumed, not before.
+The result `rcv` can be allocated with [`allocate_exchange`](@ref).
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> snd = [[10,10],[20,20],[30,30],[40]]
+    4-element Vector{Vector{Int64}}:
+     [10, 10]
+     [20, 20]
+     [30, 30]
+     [40]
+    
+    julia> graph = ExchangeGraph(snd_ids)
+    ExchangeGraph{Vector{Vector{Int64}}} with 4 nodes
+    
+    
+    julia> rcv = allocate_exchange(snd,graph)
+    4-element Vector{Vector{Int64}}:
+     [140477703842832, 140480236018064]
+     [0]
+     [140477373823312, 140477373823344]
+     [140477691773008, 140480035219440]
+    
+    julia> t = exchange!(rcv,snd,graph)
+    4-element Vector{Task}:
+     Task (done) @0x00007fc36dd27de0
+     Task (done) @0x00007fc36f8c4010
+     Task (done) @0x00007fc36f8c4180
+     Task (done) @0x00007fc36f8c42f0
+
+    julia> map(wait,t)
+    4-element Vector{Nothing}:
+     nothing
+     nothing
+     nothing
+     nothing
+    
+    julia> rcv
+    4-element Vector{Vector{Int64}}:
+     [20, 30]
+     [40]
+     [10, 20]
+     [10, 30]
+
+"""
 function exchange!(rcv,snd,graph::ExchangeGraph)
     T = eltype(eltype(snd))
     exchange_impl!(rcv,snd,graph,T)
@@ -641,21 +817,22 @@ end
 
 function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
     @assert is_consistent(graph)
-    @assert eltype(snd) <: JaggedArray
+    @assert eltype(rcv) <: JaggedArray
     snd_ids = graph.snd
     rcv_ids = graph.rcv
     @assert length(rcv_ids) == length(rcv)
     @assert length(rcv_ids) == length(snd)
     for rcv_id in 1:length(rcv_ids)
         for (i, snd_id) in enumerate(rcv_ids[rcv_id])
+            snd_snd_id = JaggedArray(snd[snd_id])
             j = first(findall(k->k==rcv_id,snd_ids[snd_id]))
             ptrs_rcv = rcv[rcv_id].ptrs
-            ptrs_snd = snd[snd_id].ptrs
+            ptrs_snd = snd_snd_id.ptrs
             @assert ptrs_rcv[i+1]-ptrs_rcv[i] == ptrs_snd[j+1]-ptrs_snd[j]
             for p in 1:(ptrs_rcv[i+1]-ptrs_rcv[i])
                 p_rcv = p+ptrs_rcv[i]-1
                 p_snd = p+ptrs_snd[j]-1
-                rcv[rcv_id].data[p_rcv] = snd[snd_id].data[p_snd]
+                rcv[rcv_id].data[p_rcv] = snd_snd_id.data[p_snd]
             end
         end
     end

@@ -117,7 +117,7 @@ end
 Base.size(a::MPIData) = a.size
 Base.IndexStyle(::Type{<:MPIData}) = IndexLinear()
 function Base.getindex(a::MPIData,i::Int)
-    scalar_indexing_error(a)
+    scalar_indexing_action(a)
     if i == MPI.Comm_rank(a.comm)+1
         a.item[]
     else
@@ -125,7 +125,7 @@ function Base.getindex(a::MPIData,i::Int)
     end
 end
 function Base.setindex!(a::MPIData,v,i::Int)
-    scalar_indexing_error(a)
+    scalar_indexing_action(a)
     if i == MPI.Comm_rank(a.comm)+1
         a.item[]=v
     else
@@ -366,4 +366,92 @@ function reduction!(op,b::MPIData,a::MPIData;init,destination=1)
     b
 end
 
+# This is just a workaround to
+# https://discourse.julialang.org/t/how-to-combine-mpi-non-blocking-isend-irecv-and-julia-tasks/52524
+struct MPITask
+    task::Task
+end
+
+function Base.wait(t::MPITask)
+    schedule(t.task)
+    wait(t.task)
+    t
+end
+
+function exchange_impl!(
+    rcv::MPIData,
+    snd::MPIData,
+    graph::ExchangeGraph{<:MPIData},
+    ::Type{T}) where T
+
+    @assert size(rcv) == size(snd)
+    @assert graph.rcv.comm === graph.rcv.comm
+    @assert graph.rcv.comm === graph.snd.comm
+    comm = graph.rcv.comm
+    req_all = MPI.Request[]
+    for (i,id_rcv) in enumerate(graph.rcv.item[])
+        rank_rcv = id_rcv-1
+        buff_rcv = view(rcv.item[],i:i)
+        tag_rcv = rank_rcv
+        reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+        push!(req_all,reqr)
+    end
+    for (i,id_snd) in enumerate(graph.snd.item[])
+        rank_snd = id_snd-1
+        buff_snd = view(snd.item[],i:i)
+        tag_snd = MPI.Comm_rank(comm)
+        reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+        push!(req_all,reqs)
+    end
+    task = @task begin
+        @static if isdefined(MPI,:Waitall)
+            MPI.Waitall(req_all,MPI.Status)
+        else
+            MPI.Waitall!(req_all)
+        end
+    end
+    t = MPITask(task)
+    MPIData(Ref(t),comm,snd.size)
+end
+
+function exchange_impl!(
+    rcv::MPIData,
+    snd::MPIData,
+    graph::ExchangeGraph{<:MPIData},
+    ::Type{T}) where T <: AbstractVector
+
+    @assert size(rcv) == size(snd)
+    @assert graph.rcv.comm === graph.rcv.comm
+    @assert graph.rcv.comm === graph.snd.comm
+    comm = graph.rcv.comm
+    req_all = MPI.Request[]
+    data_snd = JaggedArray(snd.item[])
+    data_rcv = rcv.item[]
+    @assert isa(data_rcv,JaggedArray)
+    for (i,id_rcv) in enumerate(graph.rcv.item[])
+        rank_rcv = id_rcv-1
+        ptrs_rcv = data_rcv.ptrs
+        buff_rcv = view(data_rcv.data,ptrs_rcv[i]:(ptrs_rcv[i+1]-1))
+        tag_rcv = rank_rcv
+        reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+        push!(req_all,reqr)
+    end
+    for (i,id_snd) in enumerate(graph.snd.item[])
+        rank_snd = id_snd-1
+        ptrs_snd = data_snd.ptrs
+        buff_snd = view(data_snd.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))
+        tag_snd = MPI.Comm_rank(comm)
+        reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+        push!(req_all,reqs)
+    end
+    task = @task begin
+        @static if isdefined(MPI,:Waitall)
+            MPI.Waitall(req_all,MPI.Status)
+        else
+            MPI.Waitall!(req_all)
+        end
+    end
+    t = MPITask(task)
+    MPIData(Ref(t),comm,snd.size)
+end
 
