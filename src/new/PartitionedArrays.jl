@@ -48,3 +48,6 @@ export mpi_data
 export with_mpi_data
 include("mpi_data.jl")
 
+export local_range
+include("partition.jl")
+

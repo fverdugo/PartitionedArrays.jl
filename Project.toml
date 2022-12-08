@@ -4,6 +4,7 @@ authors = ["Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors"]
 version = "0.2.11"
 
 [deps]
+CircularArrays = "7a955b69-7140-5f4e-a0ed-f168c5e2e749"
 Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
