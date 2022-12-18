@@ -13,4 +13,25 @@ using Test
 @test 3:7 == local_range(2,10,3,true,true)
 @test 6:11 == local_range(3,10,3,true,true)
 
+partition = UniformBlockPartition((3,),(10,))
+@test size(partition) == (3,)
+@test partition[2] == CartesianIndices((4:6,))
+@test eltype(partition)  == typeof(partition[2])
+
+partition = UniformBlockPartition((3,3),(10,10))
+@test size(partition) == (3,3)
+@test partition[2,1] == CartesianIndices((4:6, 1:3))
+@test eltype(partition)  == typeof(partition[2,1])
+
+partition = BlockPartition(([1,3,7,11],[1,5,8,11]))
+@test size(partition) == (3,3)
+@test partition[2,1] == CartesianIndices((3:6, 1:4))
+@test eltype(partition)  == typeof(partition[2,1])
+
+partition = BlockPartition(([1,3,7,11],))
+@test size(partition) == (3,)
+@test partition[2] == CartesianIndices((3:6,))
+@test eltype(partition)  == typeof(partition[2])
+
+
 end # module

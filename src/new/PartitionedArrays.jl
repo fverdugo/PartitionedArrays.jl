@@ -48,3 +48,8 @@ export mpi_data
 export with_mpi_data
 include("mpi_data.jl")
 
+export local_range
+export UniformBlockPartition
+export BlockPartition
+include("partition.jl")
+
