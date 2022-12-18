@@ -153,6 +153,7 @@ end
 
 Base.reduce(op,a::SequentialData;kwargs...) = reduce(op,a.items;kwargs...)
 Base.sum(a::SequentialData) = reduce(+,a)
+Base.collect(a::SequentialData) = collect(a.items)
 
 function is_consistent(graph::ExchangeGraph{<:SequentialData})
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)

@@ -375,6 +375,14 @@ function Base.reduce(op,a::MPIData;kwargs...)
    r.item[]
 end
 Base.sum(a::MPIData) = reduce(+,a)
+function Base.collect(a::MPIData)
+    T = eltype(a)
+    N = ndims(a)
+    b = Array{T,N}(undef,size(a))
+    c = MPIData(Ref(b),a.comm,size(a))
+    gather!(c,a,destination=:all)
+    c.item[]
+end
 
 # This is just a workaround to
 # https://discourse.julialang.org/t/how-to-combine-mpi-non-blocking-isend-irecv-and-julia-tasks/52524
