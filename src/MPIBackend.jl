@@ -69,7 +69,7 @@ function _get_part_ids_body(root_comm,rank,size,need,nparts)
       comm = MPI.Comm_split(root_comm, 0, 0)
       MPIData(get_part_id(comm),comm,Tuple(nparts))
     else
-      comm = MPI.Comm_split(root_comm, MPI.API.MPI_UNDEFINED, MPI.API.MPI_UNDEFINED)
+      comm = MPI.Comm_split(root_comm, MPI.API.MPI_UNDEFINED[], MPI.API.MPI_UNDEFINED[])
       MPIData(get_part_id(comm),comm,(-1,))
     end
   else
