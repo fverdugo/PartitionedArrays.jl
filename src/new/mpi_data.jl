@@ -339,7 +339,7 @@ function scan!(op,b::MPIData,a::MPIData;init,type)
     b
 end
 
-function reduction!(op,b::MPIData,a::MPIData;init,destination=1)
+function reduction!(op,b::MPIData,a::MPIData;destination=1,init=nothing)
     @assert b.comm === a.comm
     T = eltype(a)
     @assert eltype(b) == T
@@ -353,7 +353,9 @@ function reduction!(op,b::MPIData,a::MPIData;init,destination=1)
             MPI.Reduce!(b.item,opr,root,comm)
         end
         if MPI.Comm_rank(comm) == root
-            b.item[] = op(b.item[],init)
+            if init !== nothing
+                b.item[] = op(b.item[],init)
+            end
         end
     else
         if a.item !== b.item
@@ -361,10 +363,18 @@ function reduction!(op,b::MPIData,a::MPIData;init,destination=1)
         else
             MPI.Allreduce!(b.item,opr,comm)
         end
-        b.item[] = op(b.item[],init)
+        if init !== nothing
+            b.item[] = op(b.item[],init)
+        end
     end
     b
 end
+
+function Base.reduce(op,a::MPIData;kwargs...)
+   r = reduction(op,a;destination=:all,kwargs...)
+   r.item[]
+end
+Base.sum(a::MPIData) = reduce(+,a)
 
 # This is just a workaround to
 # https://discourse.julialang.org/t/how-to-combine-mpi-non-blocking-isend-irecv-and-julia-tasks/52524

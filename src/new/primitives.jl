@@ -482,7 +482,7 @@ function scan!(op,b,a;init,type)
 end
 
 """
-    reduction(op,a;init,destination=1)
+    reduction(op,a;destination=1[,init])
 
 Reduce the values in array `a` according with operation
 `op` and the initial value `init` and store the result in
@@ -506,19 +506,19 @@ a new array of the same size as `a` at index `destination`.
       0
       0
 """
-function reduction(op,a;init,destination=1)
+function reduction(op,a;kwargs...)
     b = similar(a)
-    reduction!(op,b,a;init,destination)
+    reduction!(op,b,a;kwargs...)
 end
 
 """
-    reduction!(op,b,a;init,destination=1)
+    reduction!(op,b,a;destination=1[,init])
 
 In-place version of [`reduction`](@ref) on the result `b`.
 """
-function reduction!(op,b,a;init,destination=1)
+function reduction!(op,b,a;destination=1,kwargs...)
   c = gather(a;destination)
-  map!(i->reduce(op,i;init=init),b,c)
+  map!(i->reduce(op,i;kwargs...),b,c)
   b
 end
 

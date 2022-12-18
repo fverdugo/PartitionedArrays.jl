@@ -151,6 +151,9 @@ function emit_impl!(
     emit_impl!(rcv.items,snd.items,source,T)
 end
 
+Base.reduce(op,a::SequentialData;kwargs...) = reduce(op,a.items;kwargs...)
+Base.sum(a::SequentialData) = reduce(+,a)
+
 function is_consistent(graph::ExchangeGraph{<:SequentialData})
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
     is_consistent(g)

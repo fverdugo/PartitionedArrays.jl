@@ -109,6 +109,9 @@ function primitives_tests(distribute)
    map(r) do r
        @test r == 20
    end
+   @test reduce(+,rank) == 10
+   @test reduce(+,rank,init=2) == 12
+   @test sum(rank) == 10
 
    r = copy(rank)
    reduction!(+,r,r,init=0,destination=2)
