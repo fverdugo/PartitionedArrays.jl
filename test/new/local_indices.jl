@@ -55,10 +55,11 @@ function Base.getindex(a::OwnToOwner,own_id::Int)
     a.owner
 end
 
-struct GlobalToLocal{A} <: AbstractVector{Int32}
-    n_own::Int32
+struct GlobalToLocal{A,B,C} <: AbstractVector{Int32}
     global_to_own::A
     global_to_ghost::SparseVector{Int32,Int32}
+    own_to_local::B
+    ghost_to_local::C
 end
 Base.size(a::GlobalToLocal) = size(a.global_to_own)
 Base.IndexStyle(::Type{<:GlobalToLocal}) = IndexLinear()
@@ -66,39 +67,40 @@ function Base.getindex(a::GlobalToLocal,global_id::Int)
     own_id = a.global_to_own[global_id]
     z = Int32(0)
     if own_id != z
-        return own_id
+        return a.own_to_local[own_id]
     end
     ghost_id = a.global_to_ghost[global_id]
     if ghost_id != z
-        return ghost_id + a.n_own
+        return a.ghost_to_local[ghost_id]
     end
     return z
 end
 
-
-struct LocalToOwn <: AbstractVector{Int32}
+struct LocalToOwn{A} <: AbstractVector{Int32}
     n_own::Int
-    n_local::Int
+    perm::A
 end
-Base.size(a::LocalToOwn) = (a.n_local,)
+Base.size(a::LocalToOwn) = (length(a.perm),)
 Base.IndexStyle(::Type{<:LocalToOwn}) = IndexLinear()
 function Base.getindex(a::LocalToOwn,local_id::Int)
-    if local_id > a.n_own
+    i = a.perm[local_id]
+    if i > a.n_own
         Int32(0)
     else
-        Int32(local_id)
+        Int32(i)
     end
 end
 
-struct LocalToGhost <: AbstractVector{Int32}
+struct LocalToGhost{A} <: AbstractVector{Int32}
     n_own::Int
-    n_local::Int
+    perm::A
 end
-Base.size(a::LocalToGhost) = (a.n_local,)
+Base.size(a::LocalToGhost) = (length(a.perm),)
 Base.IndexStyle(::Type{<:LocalToGhost}) = IndexLinear()
 function Base.getindex(a::LocalToGhost,local_id::Int)
-    if local_id > a.n_own
-        Int32(local_id-a.n_own)
+    i = a.perm[local_id]
+    if i > a.n_own
+        Int32(i-a.n_own)
     else
         Int32(0)
     end
@@ -112,10 +114,10 @@ end
 Base.IndexStyle(::Type{<:LocalToGlobal}) = IndexLinear()
 Base.size(a::LocalToGlobal) = (length(a.own_to_global)+length(a.ghost_to_global),)
 function Base.getindex(a::LocalToGlobal,local_id::Int)
-    offset = length(a.own_to_global)
+    n_own = length(a.own_to_global)
     j = a.perm[local_id]
-    if j > offset
-        a.ghost_to_global[j-offset]
+    if j > n_own
+        a.ghost_to_global[j-n_own]
     else
         a.own_to_global[j]
     end
@@ -129,10 +131,10 @@ end
 Base.IndexStyle(::Type{<:LocalToOwner}) = IndexLinear()
 Base.size(a::LocalToOwner) = (length(a.own_to_owner)+length(a.ghost_to_owner),)
 function Base.getindex(a::LocalToOwner,local_id::Int)
-    offset = length(a.own_to_owner)
+    n_own = length(a.own_to_owner)
     j = a.perm[local_id]
-    if j > offset
-        a.ghost_to_owner[j-offset]
+    if j > n_own
+        a.ghost_to_owner[j-n_own]
     else
         a.own_to_owner[j]
     end
@@ -184,7 +186,8 @@ end
 function indices(a::BlockPartitionLocalIndices,::Own,::Owner)
     lis = LinearIndices(a.n)
     owner = Int32(lis[a.p])
-    OwnToOwner(owner,length(lis))
+    n_own = prod(map(length,a.ranges))
+    OwnToOwner(owner,n_own)
 end
 
 function indices(a::BlockPartitionLocalIndices,::Global,::Own)
@@ -205,34 +208,39 @@ end
 
 function indices(a::BlockPartitionLocalIndices,::Own,::Local)
     n_own = prod(map(length,a.ranges))
-    1:n_own
+    Int32.(1:n_own)
 end
 
 function indices(a::BlockPartitionLocalIndices,::Ghost,::Local)
     n_own = prod(map(length,a.ranges))
     n_ghost = length(a.ghost.ghost_to_global)
-    (1:n_ghost).+n_own
+    Int32.((1:n_ghost).+n_own)
 end
 
 function indices(a::BlockPartitionLocalIndices,::Local,::Own)
-    n_own = prod(map(length,a.ranges))
-    n_ghost = length(a.ghost.ghost_to_global)
+    own_to_local = indices(a,OWN,LOCAL)
+    ghost_to_local = indices(a,GHOST,LOCAL)
+    n_own = length(own_to_local)
+    n_ghost = length(ghost_to_local)
     n_local = n_own + n_ghost
-    LocalToOwn(n_own,n_local)
+    LocalToOwn(n_own,1:n_local)
 end
 
 function indices(a::BlockPartitionLocalIndices,::Local,::Ghost)
-    n_own = prod(map(length,a.ranges))
-    n_ghost = length(a.ghost.ghost_to_global)
+    own_to_local = indices(a,OWN,LOCAL)
+    ghost_to_local = indices(a,GHOST,LOCAL)
+    n_own = length(own_to_local)
+    n_ghost = length(ghost_to_local)
     n_local = n_own + n_ghost
-    LocalToGhost(n_own,n_local)
+    LocalToGhost(n_own,1:n_local)
 end
 
 function indices(a::BlockPartitionLocalIndices,::Global,::Local)
-    n_own = Int32(prod(map(length,a.ranges)))
     global_to_own = indices(a,GLOBAL,OWN)
     global_to_ghost = indices(a,GLOBAL,GHOST)
-    GlobalToLocal(n_own,global_to_own,global_to_ghost)
+    own_to_local = indices(a,OWN,LOCAL)
+    ghost_to_local = indices(a,GHOST,LOCAL)
+    GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
 end
 
 function indices(a::BlockPartitionLocalIndices,::Local,::Global)
@@ -253,6 +261,99 @@ function indices(a::BlockPartitionLocalIndices,::Local,::Owner)
     n_local = n_own + n_ghost
     perm = 1:n_local
     LocalToOwner(own_to_owner,ghost_to_owner,perm)
+end
+
+
+struct Permuted{A}
+    ids::A
+    perm::Vector{Int32}
+    own_to_local::Vector{Int32}
+    ghost_to_local::Vector{Int32}
+end
+
+function Permuted(ids,perm)
+    n_own = length(indices(ids,OWN,OWNER))
+    n_local = length(perm)
+    n_ghost = n_local - n_own
+    own_to_local = zeros(Int32,n_own)
+    ghost_to_local = zeros(Int32,n_ghost)
+    for i_local in 1:n_local
+        k = perm[i_local]
+        if k > n_own
+            i_ghost = k - n_own
+            ghost_to_local[i_ghost] = i_local
+        else
+            i_own = k
+            own_to_local[i_own] = i_local
+        end
+    end
+    Permuted(ids,perm,own_to_local,ghost_to_local)
+end
+
+function indices(a::Permuted,::Own,::Global)
+    indices(a.ids,OWN,GLOBAL)
+end
+
+function indices(a::Permuted,::Own,::Owner)
+    indices(a.ids,OWN,OWNER)
+end
+
+function indices(a::Permuted,::Global,::Own)
+    indices(a.ids,GLOBAL,OWN)
+end
+
+function indices(a::Permuted,::Ghost,::Global)
+    indices(a.ids,GHOST,GLOBAL)
+end
+
+function indices(a::Permuted,::Ghost,::Owner)
+    indices(a.ids,GHOST,OWNER)
+end
+
+function indices(a::Permuted,::Global,::Ghost)
+    indices(a.ids,GLOBAL,GHOST)
+end
+
+function indices(a::Permuted,::Own,::Local)
+    a.own_to_local
+end
+
+function indices(a::Permuted,::Ghost,::Local)
+    a.ghost_to_local
+end
+
+function indices(a::Permuted,::Local,::Own)
+    own_to_local = indices(a,OWN,LOCAL)
+    ghost_to_local = indices(a,GHOST,LOCAL)
+    n_own = length(own_to_local)
+    LocalToOwn(n_own,a.perm)
+end
+
+function indices(a::Permuted,::Local,::Ghost)
+    own_to_local = indices(a,OWN,LOCAL)
+    ghost_to_local = indices(a,GHOST,LOCAL)
+    n_own = length(own_to_local)
+    LocalToGhost(n_own,a.perm)
+end
+
+function indices(a::Permuted,::Global,::Local)
+    global_to_own = indices(a,GLOBAL,OWN)
+    global_to_ghost = indices(a,GLOBAL,GHOST)
+    own_to_local = indices(a,OWN,LOCAL)
+    ghost_to_local = indices(a,GHOST,LOCAL)
+    GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
+end
+
+function indices(a::Permuted,::Local,::Global)
+    own_to_global = indices(a,OWN,GLOBAL)
+    ghost_to_global = indices(a,GHOST,GLOBAL)
+    LocalToGlobal(own_to_global,ghost_to_global,a.perm)
+end
+
+function indices(a::Permuted,::Local,::Owner)
+    own_to_owner = indices(a,OWN,OWNER)
+    ghost_to_owner = indices(a,GHOST,OWNER)
+    LocalToOwner(own_to_owner,ghost_to_owner,a.perm)
 end
 
 function block(rank::Integer,np::Integer,n::Integer)
@@ -327,7 +428,8 @@ function block_with_ghost(
         end
     end
     ghostids = GhostIndices(prod(n),ghost_to_global,ghost_to_owner)
-    BlockPartitionLocalIndices(p,np,n,own_ranges,ghostids)
+    ids = BlockPartitionLocalIndices(p,np,n,own_ranges,ghostids)
+    Permuted(ids,perm)
 end
 
 myblock = block_with_ghost(2,(2,2),(4,4))
@@ -367,9 +469,9 @@ lid_to_owner = indices(myblock,LOCAL,OWNER)
 
 #display(lid_to_oid)
 #display(lid_to_hid)
-#display(gid_to_lid)
-display(lid_to_gid)
-display(lid_to_owner)
+display(gid_to_lid)
+#display(lid_to_gid)
+#display(lid_to_owner)
 
 
 #prange = Prange(block,ranks,3,10)
