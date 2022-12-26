@@ -66,5 +66,6 @@ export get_own_to_local
 export get_ghost_to_local
 export get_local_to_own
 export get_local_to_ghost
+export get_global_to_owner
 include("p_range.jl")
 

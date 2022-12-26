@@ -97,6 +97,13 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialData)
     end
 end
 
+function getany(a::SequentialData)
+    if eltype(a) <: Integer
+        @assert all(i->first(a.items)==i,a.items)
+    end
+    first(a.items)
+end
+
 function Base.similar(a::SequentialData,::Type{T},dims::Dims) where T
   SequentialData(similar(a.items,T,dims))
 end

@@ -35,8 +35,16 @@ function p_range_tests(distribute)
    n_own = map(rank) do rank
        mod(rank,3) + 2
    end
-
    pr = PRange(VariableBlockSize(),n_own)
+
+   @show length(pr)
+   @show size(get_global_to_owner(pr))
+   @show get_global_to_owner(pr)[1]
+   display(get_global_to_owner(pr))
+
+   @show typeof(pr)
+   display(get_local_to_global(pr))
+   display(get_ghost_to_global(pr))
 
 
 

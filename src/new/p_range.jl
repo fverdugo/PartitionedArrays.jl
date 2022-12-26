@@ -48,6 +48,28 @@ struct PRange{A} <: AbstractUnitRange{Int}
         new{A}(Int(n_global),parts)
     end
 end
+Base.first(a::PRange) = 1
+Base.last(a::PRange) = a.n_global
+
+get_local_to_global(pr::PRange) = map(get_local_to_global,pr.parts)
+get_own_to_global(pr::PRange) = map(get_own_to_global,pr.parts)
+get_ghost_to_global(pr::PRange) = map(get_ghost_to_global,pr.parts)
+get_local_to_owner(pr::PRange) = map(get_local_to_owner,pr.parts)
+get_own_to_owner(pr::PRange) = map(get_own_to_owner,pr.parts)
+get_ghost_to_owner(pr::PRange) = map(get_ghost_to_owner,pr.parts)
+get_global_to_local(pr::PRange) = map(get_global_to_local,pr.parts)
+get_global_to_own(pr::PRange) = map(get_global_to_own,pr.parts)
+get_global_to_ghost(pr::PRange) = map(get_global_to_ghost,pr.parts)
+get_own_to_local(pr::PRange) = map(get_own_to_local,pr.parts)
+get_ghost_to_local(pr::PRange) = map(get_ghost_to_local,pr.parts)
+get_local_to_own(pr::PRange) = map(get_local_to_own,pr.parts)
+get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.parts)
+function get_global_to_owner(pr::PRange)
+    get_global_to_owner(pr,eltype(pr.parts))
+end
+function get_global_to_owner(pr::PRange,pt)
+    error("get_global_to_owner not implemented for parts of type $pt")
+end
 
 struct ConstantBlockSize end
 
@@ -417,6 +439,19 @@ function Base.getindex(a::BlockPartitionGlobalToOwn,global_id::Int)
     return Int32(0)
 end
 
+struct BlockPartitionGlobalToOwner{N} <: AbstractVector{Int32}
+    start::NTuple{N,Vector{Int}}
+end
+Base.size(a::BlockPartitionGlobalToOwner) = (prod(map(i->i[end]-1,a.start)),)
+Base.IndexStyle(::Type{<:BlockPartitionGlobalToOwner}) = IndexLinear()
+function Base.getindex(a::BlockPartitionGlobalToOwner,i::Int)
+    n = map(i->i[end]-1,a.start)
+    np = map(i->length(i)-1,a.start)
+    i_ci = CartesianIndices(n)[i]
+    j = map(searchsortedlast,a.start,Tuple(i_ci))
+    LinearIndices(np)[CartesianIndex(j)]
+end
+
 struct BlockPartitionPart{N}
     p::CartesianIndex{N}
     np::NTuple{N,Int}
@@ -484,7 +519,7 @@ end
 function get_global_to_local(a::BlockPartitionPart)
     global_to_own = get_global_to_own(a)
     global_to_ghost = get_global_to_ghost(a)
-    own_to_local = get_own_to_local(a,OWN)
+    own_to_local = get_own_to_local(a)
     ghost_to_local = get_ghost_to_local(a)
     GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
 end
@@ -508,6 +543,23 @@ function get_local_to_owner(a::BlockPartitionPart)
     perm = 1:n_local
     LocalToOwner(own_to_owner,ghost_to_owner,perm)
 end
+
+function get_global_to_owner(pr::PRange,::Type{<:BlockPartitionPart})
+    a = map(pr.parts) do part
+        map(first,part.ranges)
+    end |> collect
+    n = getany(map(part->part.n,pr.parts))
+    push!(a,n.+1)
+    start = unpack(a)
+    BlockPartitionGlobalToOwner(start,)
+end
+
+#function get_global_to_owner(pr::PRange,::Type{<:BlockPartitionPart{1}})
+#    own_to_global = get_own_to_global(pr)
+#    start = collect(map(first,own_to_global))
+#    push!(start,length(pr)+1)
+#    BlockPartitionGlobalToOwner((start,))
+#end
 
 """
     local_range(p, np, n, ghost=false, periodic=false)
