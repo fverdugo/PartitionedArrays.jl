@@ -61,8 +61,6 @@ function unpack_first_and_tail(a)
   x, y
 end
 
-getany(a) = first(a)
-
 """
     map_one(f,args...;kwargs...)
 

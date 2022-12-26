@@ -169,8 +169,6 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
     end
 end
 
-getany(a::MPIData) = a.item[]
-
 function Base.similar(a::MPIData,::Type{T},dims::Dims) where T
     MPIData(Ref{T}(),a.comm,dims)
 end
