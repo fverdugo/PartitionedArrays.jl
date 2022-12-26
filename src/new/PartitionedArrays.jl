@@ -2,6 +2,7 @@ using SparseArrays
 using SparseMatricesCSR
 using LinearAlgebra
 using Printf
+using CircularArrays
 import MPI
 import IterativeSolvers
 import Distances
@@ -49,7 +50,21 @@ export with_mpi_data
 include("mpi_data.jl")
 
 export local_range
-export UniformBlockPartition
-export BlockPartition
-include("partition.jl")
+export PRange
+export ConstantBlockSize
+export VariableBlockSize
+export get_local_to_global
+export get_own_to_global
+export get_ghost_to_global
+export get_local_to_owner
+export get_own_to_owner
+export get_ghost_to_owner
+export get_global_to_local
+export get_global_to_own
+export get_global_to_ghost
+export get_own_to_local
+export get_ghost_to_local
+export get_local_to_own
+export get_local_to_ghost
+include("p_range.jl")
 
