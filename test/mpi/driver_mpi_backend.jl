@@ -23,7 +23,7 @@ function main(parts)
   end
 
   @test size(values) == size(parts)
-  
+
   map_parts(parts,values) do part, value
     @test 10*part == value
   end
@@ -39,7 +39,7 @@ function main(parts)
       [1,3]
     end
   end
-  
+
   parts_snd = map_parts(parts) do part
     if part == 1
       [3,4]
@@ -51,7 +51,7 @@ function main(parts)
       [2]
     end
   end
-  
+
   data_snd = map_parts(i->10*i,parts_snd)
   data_rcv = map_parts(similar,parts_rcv)
 
@@ -60,11 +60,11 @@ function main(parts)
     data_snd,
     parts_rcv,
     parts_snd)
-  
+
   map_parts(i->isa(i,Task),t)
   map_parts(schedule,t)
   map_parts(wait,t)
-  
+
   map_parts(parts,data_rcv) do part, data_rcv
     if part == 1
       r = [10,10]
@@ -83,7 +83,7 @@ function main(parts)
   end
 
   @test size(data_snd) == size(parts)
-  
+
   data_rcv = exchange(data_snd,parts_rcv,parts_snd)
 
   map_parts(parts,data_rcv) do part, data_rcv
@@ -121,7 +121,7 @@ function main(parts)
       [7,8,9,10]
     end
   end
-  rcv = gather(snd) 
+  rcv = gather(snd)
   map_parts(parts,rcv) do part, rcv
     if part == MAIN
       @test rcv == [[1,2],[2,3,4],[5,6],[7,8,9,10]]
@@ -131,15 +131,15 @@ function main(parts)
     @test isa(rcv,Table)
   end
 
-  rcv = gather_all(snd) 
+  rcv = gather_all(snd)
   map_parts(rcv) do rcv
     @test rcv == [[1,2],[2,3,4],[5,6],[7,8,9,10]]
     @test isa(rcv,Table)
   end
 
-  rcv = gather(parts) 
+  rcv = gather(parts)
   @test size(rcv) == size(parts)
-  
+
   map_parts(parts,rcv) do part, rcv
     if part == MAIN
       @test rcv == collect(1:nparts)
@@ -147,7 +147,7 @@ function main(parts)
       @test length(rcv) == 0
     end
   end
-  
+
   rcv = scatter(rcv)
   map_parts(parts,rcv) do part, rcv
     @test part == rcv
@@ -196,13 +196,13 @@ function main(parts)
     end
     @test r == rcv
   end
-  
-  rcv = gather_all(parts) 
-  
+
+  rcv = gather_all(parts)
+
   map_parts(rcv) do rcv
     @test rcv == collect(1:nparts)
   end
-  
+
   @test get_part(rcv) == collect(1:nparts)
 
   snd = map_parts(parts) do part
@@ -217,17 +217,17 @@ function main(parts)
   map_parts(rcv) do rcv
     @test rcv == [20,30,40]
   end
-  
+
   rcv = emit(parts)
 
   @test size(rcv) == size(parts)
-  
+
   map_parts(rcv) do rcv
     @test rcv == 1
   end
-  
+
   @test get_main_part(rcv) == MAIN
-  
+
   @test get_part(parts,3) == 3
 
 end
@@ -242,3 +242,14 @@ main(get_part_ids(MPIBackend(),nparts))
 nparts = (2,2)
 main(get_part_ids(MPIBackend(),nparts))
 
+nparts = 2
+_parts = get_part_ids(MPIBackend(),nparts)
+if i_am_in(_parts)
+  values = map_parts(_parts) do part
+    10*part
+  end
+  @test size(values) == size(_parts)
+  map_parts(_parts,values) do part, value
+    @test 10*part == value
+  end
+end
