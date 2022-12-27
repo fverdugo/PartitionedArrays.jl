@@ -19,6 +19,8 @@ Sub-types must implement the following interface:
 - [`get_local_to_own`](@ref)
 - [`get_local_to_ghost`](@ref)
 - [`get_global_to_owner`](@ref)
+- [`append!`](@ref)
+- [`union!`](@ref)
 
 """
 abstract type AbstractPartInPRange end
@@ -92,6 +94,46 @@ function get_local_to_ghost end
     get_global_to_owner(part)
 """
 function get_global_to_owner end
+
+function append!(part::AbstractPartInPRange,new_ghost_to_global)
+    global_to_owner = get_global_to_owner(part)
+    new_ghost_to_owner = view(global_to_owner,new_ghost_to_global)
+    append!(part,new_ghost_to_global,new_ghost_to_owner)
+end
+
+function union!(part::AbstractPartInPRange,gids,owners)
+    part_owner = get_owner(part)
+    n_new_ghost = 0
+    global_to_ghost = get_global_to_ghost(part)
+    for (global_i,owner) in zip(gids,owners)
+        if owner != part_owner
+            ghost_i = global_to_ghost[global_i]
+            if ghost_i == 0
+                n_new_ghost += 1
+            end
+        end
+    end
+    new_ghost_to_global = zeros(Int,n_new_ghost)
+    new_ghost_to_owner = zeros(Int32,n_new_ghost)
+    new_ghost_i = 0
+    for (global_i,owner) in zip(gids,owners)
+        if owner != part_owner
+            ghost_i = global_to_ghost[global_i]
+            if ghost_i == 0
+                new_ghost_i += 1
+                new_ghost_to_global[new_ghost_i] = global_i
+                new_ghost_to_owner[new_ghost_i] = owner
+            end
+        end
+    end
+    append!(part,new_ghost_to_global,new_ghost_to_owner)
+end
+
+function union!(part::AbstractPartInPRange,gids)
+    global_to_owner = get_global_to_owner(part)
+    owners = view(global_to_owner,gids)
+    union!(part,gids,owners)
+end
 
 """
     struct PRange{A}
@@ -265,36 +307,42 @@ end
 struct VariableBlockSize end
 
 """
-    PRange(VariableBlockSize(),n_own[,n[,offset]])
+    PRange(VariableBlockSize(),ranges[,n[,start]])
 
 """
 function PRange(::VariableBlockSize,
-    n_own,n_global=sum(n_own),
-    offset=scan(+,n_own,type=:exclusive,init=zero(eltype(n_own))))
-    start = collect(map(i->i+1,offset))
-    push!(start,n_global+1)
-    ranks = linear_indices(n_own)
-    n_parts = length(n_own)
-    parts = map(ranks,n_own,offset) do rank,n_own,offset
+    ranges,
+    n_global=sum(map(r->1+last(r)-first(r),ranges)),
+    start=begin
+       s = collect(map(first,ranges))
+       push!(s,n_global+1)
+       s
+    end)
+    ranks = linear_indices(ranges)
+    n_parts = length(ranges)
+    parts = map(ranks,ranges) do rank,r
         p = CartesianIndex((rank,))
+        np = (n_parts,)
+        n = (n_global,)
+        ranges = (r,)
         ghost = GhostIndices(n_global)
-        PartWithVariableBlockSize(p,(start,),ghost)
+        PartWithVariableBlockSize(p,np,n,ghost,(start,))
     end
     PRange(n_global,parts)
 end
 
 struct OwnIndices
     n_global::Int
-    own_to_global::Vector{Int}
     owner::Int32
+    own_to_global::Vector{Int}
     global_to_own::SparseVector{Int32,Int}
 end
 
-function OwnIndices(n_global::Int,own_to_global::Vector{Int},owner::Integer)
+function OwnIndices(n_global::Int,owner::Integer,own_to_global::Vector{Int})
     n_own = length(own_to_global)
     global_to_own = sparsevec(
       own_to_global,Int32.(1:n_own),n_global)
-    OwnIndices(n_global,own_to_global,Int32(owner),global_to_own)
+    OwnIndices(n_global,Int32(owner),own_to_global,global_to_own)
 end
 
 struct GhostIndices
@@ -317,6 +365,15 @@ function GhostIndices(n_global)
     ghost_to_global = Int[]
     ghost_to_owner = Int32[]
     GhostIndices(n_global,ghost_to_global,ghost_to_owner)
+end
+
+function append!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
+    n_ghost = length(a.ghost_to_global)
+    n_new_ghost = length(new_ghost_to_global)
+    append!(a.ghost_to_global,new_ghost_to_global)
+    append!(a.ghost_to_owner,new_ghost_to_owner)
+    a.global_to_ghost[new_ghost_to_global] = (1:n_new_ghost) .+ n_ghost
+    a
 end
 
 # This is essentially a FillArray
@@ -416,54 +473,209 @@ function Base.getindex(a::LocalToOwner,local_id::Int)
     end
 end
 
-struct PartInPRange{A} <: AbstractPartInPRange
+struct GlobalToOwn{A} <: AbstractVector{Int32}
+    n_own::Int32
+    global_to_local::SparseVector{Int32,Int}
+    perm::A
+end
+Base.IndexStyle(::Type{<:GlobalToOwn}) = IndexLinear()
+Base.size(a::GlobalToOwn) = size(a.global_to_local)
+function Base.getindex(a::GlobalToOwn,global_i::Int)
+    local_i = a.global_to_local[global_i]
+    z = Int32(0)
+    local_i == z && return z
+    i = a.perm[local_i]
+    i > a.n_own && return z
+    return Int32(i)
+end
+
+struct GlobalToGhost{A} <: AbstractVector{Int32}
+    n_own::Int
+    global_to_local::SparseVector{Int32,Int}
+    perm::A
+end
+Base.IndexStyle(::Type{<:GlobalToGhost}) = IndexLinear()
+Base.size(a::GlobalToGhost) = size(a.global_to_local)
+function Base.getindex(a::GlobalToGhost,global_i::Int)
+    local_i = a.global_to_local[global_i]
+    z = Int32(0)
+    local_i == z && return z
+    i = a.perm[local_i]
+    i <= a.n_own && return z
+    return Int32(i-a.n_own)
+end
+
+struct LocalIndices{A} <: AbstractPartInPRange
+    n_global::Int
+    owner::Int32
+    local_to_global::Vector{Int}
+    local_to_owner::Vector{Int32}
+    global_to_owner::A
+    perm::Vector{Int32}
+    own_to_local::Vector{Int32}
+    ghost_to_local::Vector{Int32}
+    global_to_local::SparseVector{Int32,Int}
+end
+
+function LocalIndices(
+    n_global::Integer,
+    owner::Integer,
+    local_to_global::Vector{Int},
+    local_to_owner::Vector{Int32},
+    global_to_owner=nothing)
+
+    own_to_local = findall(i->i==owner,local_to_owner)
+    ghost_to_local = findall(i->i!=owner,local_to_owner)
+    n_local = length(local_to_global)
+    n_own = length(own_to_local)
+    n_ghost = length(ghost_to_local)
+    perm = zeros(Int32,n_local)
+    perm[own_to_local] .= (1:n_own)
+    perm[ghost_to_local] .= (1:n_ghost) .+ n_own
+    global_to_local = sparsevec(local_to_global,Int32.(1:n_local),n_global)
+
+    LocalIndices(
+        n_global,
+        owner,
+        local_to_global,
+        local_to_owner,
+        global_to_owner,
+        perm,
+        own_to_local,
+        ghost_to_local
+        global_to_local)
+end
+
+function append!(a::LocalIndices,new_ghost_to_global,new_ghost_to_owner)
+    n_local = length(a.local_to_global)
+    n_new_ghost = length(new_ghost_to_global)
+    r = (1:n_new_ghost).+n_local
+    append!(a.local_to_global,new_ghost_to_global)
+    append!(a.local_to_owner,new_ghost_to_owner)
+    append!(a.perm,r)
+    append!(a.ghost_to_local,r)
+    a.global_to_local[new_ghost_to_global] = r
+    a
+end
+
+get_owner(a::LocalIndices) = a.owner
+
+function get_own_to_global(a::LocalIndices)
+    view(a.local_to_global,a.own_to_local)
+end
+
+function get_own_to_owner(a::LocalIndices)
+    n_own = length(a.own_to_local)
+    OwnToOwner(a.owner,n_own)
+end
+
+function get_global_to_own(a::LocalIndices)
+    n_own = legnth(a.own_to_local)
+    GlobalToOwn(n_own,a.global_to_local,a.perm)
+end
+
+function get_ghost_to_global(a::LocalIndices)
+    view(a.local_to_global,a.ghost_to_local)
+end
+
+function get_ghost_to_owner(a::LocalIndices)
+    view(a.local_to_owner,a.ghost_to_local)
+end
+
+function get_global_to_ghost(a::LocalIndices)
+    n_own = legnth(a.own_to_local)
+    GlobalToGhost(n_own,a.global_to_local,a.perm)
+end
+
+function get_own_to_local(a::LocalIndices)
+    a.own_to_local
+end
+
+function get_ghost_to_local(a::LocalIndices)
+    a.ghost_to_local
+end
+
+function get_local_to_own(a::LocalIndices)
+    n_own = legnth(a.own_to_local)
+    LocalToOwn(n_own,a.perm)
+end
+
+function get_local_to_ghost(a::LocalIndices)
+    n_own = legnth(a.own_to_local)
+    LocalToGhost(n_own,a.perm)
+end
+
+function get_global_to_local(a::LocalIndices)
+    a.global_to_local
+end
+
+function get_local_to_global(a::LocalIndices)
+    a.local_to_global
+end
+
+function get_local_to_owner(a::LocalIndices)
+    a.local_to_owner
+end
+
+function get_global_to_owner(a::LocalIndices)
+    a.global_to_owner
+end
+
+struct OwnAndGhostIndices{A} <: AbstractPartInPRange
     own::OwnIndices
     ghost::GhostIndices
     global_to_owner::A
 end
 
-function PartInPRange(own::OwnIndices,ghost::GhostIndices)
-    PartInPRange(own,ghost,nothing)
+function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
+    OwnAndGhostIndices(own,ghost,nothing)
 end
 
-function get_own_to_global(a::PartInPRange)
+function append!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_owner)
+    append!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
+    a
+end
+
+get_owner(a::OwnAndGhostIndices) = a.own.owner
+
+function get_own_to_global(a::OwnAndGhostIndices)
     a.own.own_to_global
 end
 
-function get_own_to_owner(a::PartInPRange)
+function get_own_to_owner(a::OwnAndGhostIndices)
     owner = Int32(a.own.owner)
     n_own = length(a.own.own_to_global)
     OwnToOwner(owner,n_own)
 end
 
-function get_global_to_own(a::PartInPRange)
+function get_global_to_own(a::OwnAndGhostIndices)
     a.own.global_to_own
 end
 
-function get_ghost_to_global(a::PartInPRange)
+function get_ghost_to_global(a::OwnAndGhostIndices)
     a.ghost.ghost_to_global
 end
 
-function get_ghost_to_owner(a::PartInPRange)
+function get_ghost_to_owner(a::OwnAndGhostIndices)
     a.ghost.ghost_to_owner
 end
 
-function get_global_to_ghost(a::PartInPRange)
+function get_global_to_ghost(a::OwnAndGhostIndices)
     a.ghost.global_to_ghost
 end
 
-function get_own_to_local(a::PartInPRange)
+function get_own_to_local(a::OwnAndGhostIndices)
     n_own = length(a.own.own_to_global)
     Int32.(1:n_own)
 end
 
-function get_ghost_to_local(a::PartInPRange)
+function get_ghost_to_local(a::OwnAndGhostIndices)
     n_own = length(a.own.own_to_global)
     n_ghost = length(a.ghost.ghost_to_global)
     Int32.((1:n_ghost).+n_own)
 end
 
-function get_local_to_own(a::PartInPRange)
+function get_local_to_own(a::OwnAndGhostIndices)
     own_to_local = get_own_to_local(a)
     ghost_to_local = get_ghost_to_local(a)
     n_own = length(own_to_local)
@@ -472,7 +684,7 @@ function get_local_to_own(a::PartInPRange)
     LocalToOwn(n_own,1:n_local)
 end
 
-function get_local_to_ghost(a::PartInPRange)
+function get_local_to_ghost(a::OwnAndGhostIndices)
     own_to_local = get_own_to_local(a)
     ghost_to_local = get_ghost_to_local(a)
     n_own = length(own_to_local)
@@ -481,7 +693,7 @@ function get_local_to_ghost(a::PartInPRange)
     LocalToGhost(n_own,1:n_local)
 end
 
-function get_global_to_local(a::PartInPRange)
+function get_global_to_local(a::OwnAndGhostIndices)
     global_to_own = get_global_to_own(a)
     global_to_ghost = get_global_to_ghost(a)
     own_to_local = get_own_to_local(a)
@@ -489,7 +701,7 @@ function get_global_to_local(a::PartInPRange)
     GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
 end
 
-function get_local_to_global(a::PartInPRange)
+function get_local_to_global(a::OwnAndGhostIndices)
     own_to_global = get_own_to_global(a)
     ghost_to_global = get_ghost_to_global(a)
     n_own = length(own_to_global)
@@ -499,7 +711,7 @@ function get_local_to_global(a::PartInPRange)
     LocalToGlobal(own_to_global,ghost_to_global,perm)
 end
 
-function get_local_to_owner(a::PartInPRange)
+function get_local_to_owner(a::OwnAndGhostIndices)
     own_to_owner = get_own_to_owner(a)
     ghost_to_owner = get_ghost_to_owner(a)
     n_own = length(own_to_owner)
@@ -509,10 +721,7 @@ function get_local_to_owner(a::PartInPRange)
     LocalToOwner(own_to_owner,ghost_to_owner,perm)
 end
 
-function get_global_to_owner(a::PartInPRange)
-    if a.own.global_to_owner === nothing
-        error("We don't have enought information to discover owners. Provide all data when creating the PartInPRange object.")
-    end
+function get_global_to_owner(a::OwnAndGhostIndices)
     a.own.global_to_owner
 end
 
@@ -521,6 +730,16 @@ struct PermutedPart{A} <: AbstractPartInPRange
     perm::Vector{Int32}
     own_to_local::Vector{Int32}
     ghost_to_local::Vector{Int32}
+end
+
+function append!(a::PermutedPart,new_ghost_to_global,new_ghost_to_owner)
+    n_local = length(a.perm)
+    n_new_ghost = length(new_ghost_to_global)
+    r = (1:n_new_ghost).+n_local
+    append!(a.part,new_ghost_to_global,new_ghost_to_owner)
+    append!(a.perm,r)
+    append!(a.ghost_to_local,r)
+    a
 end
 
 function PermutedPart(part,perm)
@@ -541,6 +760,8 @@ function PermutedPart(part,perm)
     end
     PermutedPart(part,perm,own_to_local,ghost_to_local)
 end
+
+get_owner(a::PermutedPart) = get_owner(a.part)
 
 function get_own_to_global(a::PermutedPart)
     get_own_to_global(a.part)
@@ -681,35 +902,27 @@ function Base.propertynames(x::PartWithConstantBlockSize, private::Bool=false)
   (fieldnames(typeof(x))...,:ranges,:start)
 end
 
+
 struct PartWithVariableBlockSize{N} <: AbstractPartInPRange
     p::CartesianIndex{N}
-    start::NTuple{N,Vector{Int}}
+    np::NTuple{N,Int}
+    n::NTuple{N,Int}
+    ranges::NTuple{N,Int}
     ghost::GhostIndices
-end
-
-function Base.getproperty(a::PartWithVariableBlockSize, sym::Symbol)
-    if sym === :ranges
-        map(Tuple(a.p),a.start) do p,start
-            start[p]:(start[p+1]-1)
-        end
-    elseif sym === :n
-        map(a.start) do start
-            start[end]-1
-        end
-    elseif sym === :np
-        map(a.start) do start
-            length(start)-1
-        end
-    else
-        getfield(a,sym)
-    end
-end
-
-function Base.propertynames(x::PartWithVariableBlockSize, private::Bool=false)
-  (fieldnames(typeof(x))...,:ranges,:n,:np)
+    start::NTuple{N,Vector{Int}}
 end
 
 const PartInBlockParition = Union{PartWithConstantBlockSize,PartWithVariableBlockSize}
+
+function append!(a::PartInBlockParition,new_ghost_to_global,new_ghost_to_owner)
+    append!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
+    a
+end
+
+function get_owner(a::PartInBlockParition)
+    owner = LinearIndices(a.np)[a.p]
+    Int32(owner)
+end
 
 function get_own_to_global(a::PartInBlockParition)
     BlockPartitionOwnToGlobal(a.n,a.ranges)
