@@ -77,5 +77,6 @@ export get_local_to_ghost
 export set_ghost!
 export append_ghost!
 export union_ghost!
+export find_owner
 include("p_range.jl")
 

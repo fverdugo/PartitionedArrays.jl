@@ -31,80 +31,149 @@ The following functions form the `AbstractLocalIndices` interface:
 """
 abstract type AbstractLocalIndices end
 
+"""
+    get_n_local(local_indices)
+
+Get number of local ids in `local_indices`.
+"""
 get_n_local(a) = get_n_own(a) + get_n_ghost(a)
+
+"""
+    get_n_own(local_indices)
+
+Get number of own ids in `local_indices`.
+"""
 get_n_own(a) = length(get_own_to_owner(a))
+
+"""
+    get_n_ghost(local_indices)
+
+Get number of ghost ids in `local_indices`.
+"""
 get_n_ghost(a) = length(get_ghost_to_global(a))
+
+"""
+    get_n_global(local_indices)
+
+Get number of global ids associated with `local_indices`.
+"""
 get_n_global(a) = length(get_global_to_own(a))
 
 """
     get_local_to_global(local_indices)
+
+Return an array with the global indices of the local indices in `local_indices`.
 """
 function get_local_to_global end
 
 """
     get_own_to_global(local_indices)
+
+Return an array with the global indices of the own indices in `local_indices`.
 """
 function get_own_to_global end
 
 """
     get_ghost_to_global(local_indices)
+
+Return an array with the global indices of the ghost indices in `local_indices`.
 """
 function get_ghost_to_global end
 
 """
     get_local_to_owner(local_indices)
+
+Return an array with the owners of the local indices in `local_indices`.
 """
 function get_local_to_owner end
 
 """
     get_own_to_owner(local_indices)
+
+Return an array with the owners of the own indices in `local_indices`.
 """
 function get_own_to_owner end
 
 """
     get_ghost_to_owner(local_indices)
+
+Return an array with the owners of the ghost indices in `local_indices`.
 """
 function get_ghost_to_owner end
 
 """
     get_global_to_local(local_indices)
+
+Return an array with the inverse index map of `get_local_to_global(local_indices)`.
 """
 function get_global_to_local end
 
 """
     get_global_to_own(local_indices)
+
+Return an array with the inverse index map of `get_own_to_global(local_indices)`.
 """
 function get_global_to_own end
 
 """
     get_global_to_ghost(local_indices)
+
+Return an array with the inverse index map of `get_ghost_to_global(local_indices)`.
 """
 function get_global_to_ghost end
 
 """
     get_own_to_local(local_indices)
+
+Return an array with the local ids of the own indices in `local_indices`.
 """
 function get_own_to_local end
 
 """
     get_ghost_to_local(local_indices)
+
+Return an array with the local ids of the ghost indices in `local_indices`.
 """
 function get_ghost_to_local end
 
 """
     get_local_to_own(local_indices)
+
+Return an array with the inverse index map of `get_own_to_local(local_indices)`.
 """
 function get_local_to_own end
 
 """
     get_local_to_ghost(local_indices)
+Return an array with the inverse index map of `get_ghost_to_local(local_indices)`.
 """
 function get_local_to_ghost end
 
+"""
+    set_ghost!(local_indices,gids,owners)
+
+Set the ghost indices in `local_indices` with global ids in `gids` and owners in 
+ `owners`. `local_indices` takes ownership of `gids`  and `owners`. This method 
+only makes sense if `local_indices` stores ghost ids in separate vectors like in
+[`OwnAndGhostIndices`](@ref). `gids` should be unique and not being owned by
+ `local_indices`.
+"""
 function set_ghost! end
 
+"""
+    set_ghost!(local_indices,gids,owners)
+
+Append the global indices `gids` and owners `owners` in the ghost indices in `local_indices`. `local_indices` does not take ownership of `gids`  and `owners`. 
+ `gids` should be unique and not being already present in `local_indices`.
+"""
 function append_ghost! end
 
+"""
+    union_ghost!(local_indices,gids,owners)
+
+Make the union of the ghost indices in `local_indices` with 
+ the global indices `gids` and owners `owners` and store the result in `local_indices`. `local_indices` does not take ownership of `gids`  and `owners`. 
+"""
 function union_ghost!(local_indices,gids,owners)
     part_owner = get_owner(local_indices)
     n_new_ghost = 0
@@ -206,33 +275,169 @@ end
 Base.first(a::PRange) = 1
 Base.last(a::PRange) = a.n_global
 
+"""
+    get_n_global(pr::PRange)
+
+Return `pr.n_global`
+"""
 get_n_global(pr::PRange) = a.n_global
+
+"""
+    get_n_local(pr::PRange)
+
+Equivalent to `map(get_n_local,pr.local_indices)`.
+"""
 get_n_local(pr::PRange) = map(get_n_local,pr.local_indices)
+
+"""
+    get_n_own(pr::PRange)
+
+Equivalent to `map(get_n_own,pr.local_indices)`.
+"""
 get_n_own(pr::PRange) = map(get_n_own,pr.local_indices)
+
+"""
+    get_local_to_global(pr::PRange)
+
+Equivalent to `map(get_local_to_global,pr.local_indices)`.
+"""
 get_local_to_global(pr::PRange) = map(get_local_to_global,pr.local_indices)
+
+"""
+    get_own_to_global(pr::PRange)
+
+Equivalent to `map(get_own_to_global,pr.local_indices)`.
+"""
 get_own_to_global(pr::PRange) = map(get_own_to_global,pr.local_indices)
+
+"""
+    get_ghost_to_global(pr::PRange)
+
+Equivalent to `map(get_ghost_to_global,pr.local_indices)`.
+"""
 get_ghost_to_global(pr::PRange) = map(get_ghost_to_global,pr.local_indices)
+
+"""
+    get_local_to_owner(pr::PRange)
+
+Equivalent to `map(get_local_to_owner,pr.local_indices)`.
+"""
 get_local_to_owner(pr::PRange) = map(get_local_to_owner,pr.local_indices)
+
+"""
+    get_own_to_owner(pr::PRange)
+
+Equivalent to `map(get_own_to_owner,pr.local_indices)`.
+"""
 get_own_to_owner(pr::PRange) = map(get_own_to_owner,pr.local_indices)
+
+"""
+    get_ghost_to_owner(pr::PRange)
+
+Equivalent to `map(get_ghost_to_owner,pr.local_indices)`.
+"""
 get_ghost_to_owner(pr::PRange) = map(get_ghost_to_owner,pr.local_indices)
+
+"""
+    get_global_to_local(pr::PRange)
+
+Equivalent to `map(get_global_to_local,pr.local_indices)`.
+"""
 get_global_to_local(pr::PRange) = map(get_global_to_local,pr.local_indices)
+
+"""
+    get_global_to_own(pr::PRange)
+
+Equivalent to `map(get_global_to_own,pr.local_indices)`.
+"""
 get_global_to_own(pr::PRange) = map(get_global_to_own,pr.local_indices)
+
+"""
+    get_global_to_ghost(pr::PRange)
+
+Equivalent to `map(get_global_to_ghost,pr.local_indices)`.
+"""
 get_global_to_ghost(pr::PRange) = map(get_global_to_ghost,pr.local_indices)
+
+"""
+    get_own_to_local(pr::PRange)
+
+Equivalent to `map(get_own_to_local,pr.local_indices)`.
+"""
 get_own_to_local(pr::PRange) = map(get_own_to_local,pr.local_indices)
+
+"""
+    get_ghost_to_local(pr::PRange)
+
+Equivalent to `map(get_ghost_to_local,pr.local_indices)`.
+"""
 get_ghost_to_local(pr::PRange) = map(get_ghost_to_local,pr.local_indices)
+
+"""
+    get_local_to_own(pr::PRange)
+
+Equivalent to `map(get_local_to_own,pr.local_indices)`.
+"""
 get_local_to_own(pr::PRange) = map(get_local_to_own,pr.local_indices)
+
+"""
+    get_local_to_ghost(pr::PRange)
+
+Equivalent to `map(get_local_to_ghost,pr.local_indices)`.
+"""
 get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.local_indices)
 
+"""
+    find_owner(pr::PRange,global_ids)
+
+Find the owners of the global ids in `global_ids`. The input `global_ids` is
+a vector of vectors distributed over the same parts as `pr`. Each part will
+look for the owners in parallel, when using a parallel back-end.
+
+# Example
+
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((4,));
+    
+    julia> pr = PRange(ConstantBlockSize(),rank,4,10)
+    1:1:10
+    
+    julia> gids = [[3],[4,5],[7,2],[9,10,1]];
+    
+    julia> find_owner(pr,gids)
+    4-element Vector{Vector{Int32}}:
+     [2]
+     [2, 3]
+     [3, 1]
+     [4, 4, 1]
+"""
 find_owner(pr::PRange,global_ids) = find_owner(pr.local_indices,global_ids)
 
+"""
+    set_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
+
+Equivalent to `map(set_ghost!,pr.local_indices,gids,owners)`.
+"""
 function set_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
     map(set_ghost!,pr.local_indices,gids,owners)
 end
 
+"""
+    append_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
+
+Equivalent to `map(append_ghost!,pr.local_indices,gids,owners)`.
+"""
 function append_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
     map(append_ghost!,pr.local_indices,gids,owners)
 end
 
+"""
+    union_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
+
+Equivalent to `map(union_ghost!,pr.local_indices,gids,owners)`.
+"""
 function union_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
     map(union_ghost!,pr.local_indices,gids,owners)
 end
@@ -1205,7 +1410,7 @@ end
 function find_owner(local_indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSize})
     map(local_indices,global_ids) do local_indices,global_ids
         start = map(local_indices.np,local_indices.n) do np,n
-            start = [ local_range(p,np,n) for p in 1:np ]
+            start = [ first(local_range(p,np,n)) for p in 1:np ]
             push!(start,n+1)
             start
         end
