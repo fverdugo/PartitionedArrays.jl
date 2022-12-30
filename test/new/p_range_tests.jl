@@ -18,7 +18,7 @@ function p_range_tests(distribute)
 
    # Uniform linear partition without ghost
    np = 4
-   n = 100
+   n = 10
    pr = PRange(ConstantBlockSize(),rank,np,n)
 
    # Uniform linear partition with one layer of ghost
