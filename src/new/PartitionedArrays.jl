@@ -50,7 +50,7 @@ export with_mpi_data
 include("mpi_data.jl")
 
 export local_range
-export bounday_owner
+export boundary_owner
 export PRange
 export ConstantBlockSize
 export VariableBlockSize

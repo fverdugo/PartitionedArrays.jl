@@ -1,7 +1,8 @@
 """
     abstract type AbstractLocalIndices
 
-Abstract type representing a part in the `PRange` type.
+Abstract type representing the *local*, *own*, and *ghost* indices in
+a part of an instance of [`PRange`](@ref).
 
 The following functions form the `AbstractLocalIndices` interface:
 
@@ -153,7 +154,7 @@ in a part is the one being stored at index `i` in the array that contains
 the own indices in this part.
 The same rationale applies for ghost and local indices.
 
-# Fields
+# Properties
 - `n_global::Int`: Number of global indices.
 - `local_indices::A`: Array-like object with `length(local_indices)` equal to the number of parts in the partitioned range.
 
@@ -172,7 +173,7 @@ struct PRange{A} <: AbstractUnitRange{Int}
     @doc """
         PRange(n_global,local_indices)
 
-    Build an instance of [`Prange`](@ref) from the underlying fields
+    Build an instance of [`Prange`](@ref) from the underlying properties
     `n_global` and `local_indices`.
 
     # Examples
@@ -236,6 +237,27 @@ function union_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
     map(union_ghost!,pr.local_indices,gids,owners)
 end
 
+"""
+    struct ConstantBlockSize end
+
+Trait-like type used to build [`PRange`](@ref) instances with constant size block partitions.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((4,));
+    
+    julia> pr = PRange(ConstantBlockSize(),rank,(2,2),(4,4),(true,true))
+    1:1:16
+    
+    julia> get_local_to_global(pr)
+    4-element Vector{PartitionedArrays.LocalToGlobal{PartitionedArrays.BlockPartitionOwnToGlobal{2}, Vector{Int32}}}:
+     [1, 2, 3, 5, 6, 7, 9, 10, 11]
+     [2, 3, 4, 6, 7, 8, 10, 11, 12]
+     [5, 6, 7, 9, 10, 11, 13, 14, 15]
+     [6, 7, 8, 10, 11, 12, 14, 15, 16]
+"""
 struct ConstantBlockSize end
 
 """
@@ -274,6 +296,10 @@ to create 1D block partitions.
 
 2D partition of 4x4 indices into 2x2 parts with ghost
 
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((4,));
+    
     julia> pr = PRange(ConstantBlockSize(),rank,(2,2),(4,4),(true,true))
     1:1:16
     
@@ -283,7 +309,6 @@ to create 1D block partitions.
      [2, 3, 4, 6, 7, 8, 10, 11, 12]
      [5, 6, 7, 9, 10, 11, 13, 14, 15]
      [6, 7, 8, 10, 11, 12, 14, 15, 16]
-
 """
 function PRange(::ConstantBlockSize,ranks,np,n,args...)
     @assert prod(np) == length(ranks)
@@ -370,6 +395,30 @@ function block_with_constant_size(
     PermutedLocalIndices(ids,perm)
 end
 
+"""
+    struct VariableBlockSize end
+
+Trait-like type used to build [`PRange`](@ref) instances with variable size block partitions.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((4,));
+    
+    julia> n_own = [3,2,2,3];
+    
+    julia> pr = PRange(VariableBlockSize(),rank,n_own,sum(n_own))
+    1:1:10
+    
+    julia> get_own_to_global(pr)
+    4-element Vector{PartitionedArrays.BlockPartitionOwnToGlobal{1}}:
+     [1, 2, 3]
+     [4, 5]
+     [6, 7]
+     [8, 9, 10]
+
+"""
 struct VariableBlockSize end
 
 """
@@ -455,6 +504,22 @@ function VectorFromDict(ids,vals,n)
     VectorFromDict(dict,n)
 end
 
+"""
+    struct OwnIndices
+
+Container for own indices.
+
+# Properties
+
+- `n_global::Int`: Number of global indices
+- `owner::Int32`: Id of the part that owns these indices
+- `own_to_global::Vector{Int}`: Global ids of the indices owned by this part. `own_to_global[i_own]` is the global id corresponding to the own index number `i_own`. 
+
+# Supertype hierarchy
+
+    OwnIndices <: Any
+
+"""
 struct OwnIndices
     n_global::Int
     owner::Int32
@@ -462,6 +527,13 @@ struct OwnIndices
     global_to_own::VectorFromDict{Int,Int32}
 end
 
+"""
+    OwnIndices(n_global,owner,own_to_global)
+
+Build an instance of [`OwnIndices`](@ref) from the underlying properties `n_global`,
+`owner`, and `own_to_global`. The types of these variables need to match
+the type of the properties in [`OwnIndices`](@ref).
+"""
 function OwnIndices(n_global::Int,owner::Integer,own_to_global::Vector{Int})
     n_own = length(own_to_global)
     global_to_own = VectorFromDict(
@@ -469,6 +541,21 @@ function OwnIndices(n_global::Int,owner::Integer,own_to_global::Vector{Int})
     OwnIndices(n_global,Int32(owner),own_to_global,global_to_own)
 end
 
+"""
+    struct GhostIndices
+
+Container for ghost indices.
+
+# Properties
+
+- `n_global::Int`: Number of global indices
+- `ghost_to_global::Vector{Int}`: Global ids of the ghost indices in this part. `ghost_to_global[i_ghost]` is the global id corresponding to the ghost index number `i_ghost`. 
+- `ghost_to_owner::Vector{Int32}`: Owners of the ghost ids. `ghost_to_owner[i_ghost]`is the id of the owner of the ghost index number `i_ghost`.
+
+# Supertype hierarchy
+
+    GhostIndices <: Any
+"""
 mutable struct GhostIndices
     n_global::Int
     ghost_to_global::Vector{Int}
@@ -484,6 +571,14 @@ function copy!(a::GhostIndices,b::GhostIndices)
     a
 end
 
+"""
+    GhostIndices(n_global,ghost_to_global,ghost_to_owner)
+
+Build an instance of [`GhostIndices`](@ref) from the underlying fields `n_global`,
+`ghost_to_global`, and `ghost_to_owner`.
+The types of these variables need to match
+the type of the properties in [`GhostIndices`](@ref).
+"""
 function GhostIndices(n_global,ghost_to_global,ghost_to_owner)
     n_ghost = length(ghost_to_global)
     @assert length(ghost_to_owner) == n_ghost
@@ -493,6 +588,11 @@ function GhostIndices(n_global,ghost_to_global,ghost_to_owner)
       n_global,ghost_to_global,ghost_to_owner,global_to_ghost)
 end
 
+"""
+    GhostIndices(n_global)
+
+Build an empty instance of [`GhostIndices`](@ref) for a range of `n_global` indices.
+"""
 function GhostIndices(n_global)
     ghost_to_global = Int[]
     ghost_to_owner = Int32[]
@@ -642,6 +742,23 @@ function Base.getindex(a::GlobalToGhost,global_i::Int)
     return Int32(i-a.n_own)
 end
 
+"""
+    struct LocalIndices
+
+Container for local indices.
+
+# Properties
+
+- `n_global::Int`: Number of global indices.
+- `owner::Int32`: Id of the part that stores the local indices
+- `local_to_global::Vector{Int}`:  Global ids of the local indices in this part.  `local_to_global[i_local]` is the global id corresponding to the local index number `i_local`.
+- `local_to_owner::Vector{Int32}`: Owners of the local ids. `local_to_owner[i_local]`is the id of the owner of the local index number `i_local`.
+
+# Supertype hierarchy
+
+    LocalIndices <: AbstractLocalIndices
+
+"""
 struct LocalIndices <: AbstractLocalIndices
     n_global::Int
     owner::Int32
@@ -653,6 +770,14 @@ struct LocalIndices <: AbstractLocalIndices
     global_to_local::VectorFromDict{Int,Int32}
 end
 
+"""
+    LocalIndices(n_global,owner,local_to_global,local_to_owner)
+
+Build an instance of [`LocalIndices`](@ref) from the underlying properties
+`n_global`, `owner`, `local_to_global`, and `local_to_owner`.
+ The types of these variables need to match
+the type of the properties in [`LocalIndices`](@ref).
+"""
 function LocalIndices(
     n_global::Integer,
     owner::Integer,
@@ -755,9 +880,32 @@ function get_local_to_owner(a::LocalIndices)
     a.local_to_owner
 end
 
+"""
+    OwnAndGhostIndices
+
+Contaner for local indices stored as own and ghost indices separately.
+
+# Properties
+
+- `own::OwnIndices`: Container for the own indices.
+- `ghost::GhostIndices`: Container for the ghost indices.
+
+# Supertype hierarchy
+
+    OwnAndGhostIndices <: AbstractLocalIndices
+
+"""
 struct OwnAndGhostIndices <: AbstractLocalIndices
     own::OwnIndices
     ghost::GhostIndices
+    @doc """
+        OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
+
+    Build an instance of [`OwnAndGhostIndices`](@ref) from the underlying properties `own` and `ghost`.
+    """
+    function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
+        new(own,ghost)
+    end
 end
 
 function append_ghost!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_owner)
@@ -855,6 +1003,21 @@ function get_local_to_owner(a::OwnAndGhostIndices)
     LocalToOwner(own_to_owner,ghost_to_owner,perm)
 end
 
+"""
+    PermutedLocalIndices{A}
+
+Type representing local indices subjected to a permutation.
+
+# Properties
+
+- `local_indices::A`: Local indices before permutation. `typeof(local_indices)` is a type implementing the `AbstractLocalIndices` interface.
+- `perm::Vector{Int32}`: Permutation vector. `perm[local_i]` contains the local indexid in `local_indices` corresponding with the new local index id `local_i`.
+
+# Supertype hierarchy
+
+    PermutedLocalIndices{A} <: AbstractLocalIndices
+
+"""
 struct PermutedLocalIndices{A} <: AbstractLocalIndices
     local_indices::A
     perm::Vector{Int32}
@@ -862,6 +1025,13 @@ struct PermutedLocalIndices{A} <: AbstractLocalIndices
     ghost_to_local::Vector{Int32}
 end
 
+"""
+    PermutedLocalIndices(local_indices,perm)
+
+Build an instance of [`PermutedLocalIndices`](@ref) from the underlying properties `local_indices` and `perm`.
+ The types of these variables need to match
+the type of the properties in [`PermutedLocalIndices`](@ref).
+"""
 function PermutedLocalIndices(local_indices,perm)
     n_own = length(get_own_to_owner(local_indices))
     n_local = length(perm)
@@ -1236,7 +1406,14 @@ function local_range(p,np,n,ghost=false,periodic=false)
     start:stop
 end
 
-function bounday_owner(p,np,n,ghost=false,periodic=false)
+"""
+    boundary_owner(p,np,n,ghost=false,periodic=false)
+
+The object `o=bounday_owner(args...)` is such that `first(o)` is
+the owner of `first(r)` and `last(o)` is the owner of `last(r)` for
+ `r=local_range(args...)`.
+"""
+function boundary_owner(p,np,n,ghost=false,periodic=false)
     start = p
     stop = p
     if ghost && np != 1
