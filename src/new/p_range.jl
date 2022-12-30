@@ -18,6 +18,7 @@ Sub-types must implement the following interface:
 - [`get_ghost_to_local`](@ref)
 - [`get_local_to_own`](@ref)
 - [`get_local_to_ghost`](@ref)
+- [`set_ghost!`](@ref)
 - [`append_ghost!`](@ref)
 - [`union_ghost!`](@ref)
 
@@ -94,6 +95,9 @@ function get_local_to_own end
 """
 function get_local_to_ghost end
 
+function set_ghost! end
+
+function append_ghost! end
 
 function union_ghost!(part,gids,owners)
     part_owner = get_owner(part)
@@ -184,6 +188,10 @@ get_local_to_own(pr::PRange) = map(get_local_to_own,pr.local_indices)
 get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.local_indices)
 
 find_owner(pr::PRange,global_ids) = find_owner(pr.local_indices,global_ids)
+
+function set_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
+    map(set_ghost!,pr.local_indices,gids,owners)
+end
 
 function append_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
     map(append_ghost!,pr.local_indices,gids,owners)
@@ -292,48 +300,36 @@ function block_with_constant_size(
     end
     ghostids = GhostIndices(prod(n),ghost_to_global,ghost_to_owner)
     ids = LocalIndicesWithConstantBlockSize(p,np,n,ghostids)
-    PermutedPart(ids,perm)
+    PermutedLocalIndices(ids,perm)
 end
 
 struct VariableBlockSize end
 
 """
-    PRange(VariableBlockSize(),n_own[,n[,start[,gids[,owners]]]])
+    PRange(VariableBlockSize(),ranks,n_own,n[,ghost[,periodic]][;start])
 
 """
 function PRange(::VariableBlockSize,
+    rank,
     n_own,
     n_global,
-    start,
-    gids,
-    owners)
-    ranks = linear_indices(n_own)
+    ghost=false,
+    periodic=false;
+    start=scan(+,n_own,type=:exclusive,init=one(eltype(n_own))))
+
+    if ghost == true || periodic == true
+        error("This case is not yet implemented.")
+    end
     n_parts = length(n_own)
-    local_indices = map(ranks,n_own,start,gids,owners) do rank,n_own,start,gids,owners
+    local_indices = map(rank,n_own,start) do rank,n_own,start
         p = CartesianIndex((rank,))
         np = (n_parts,)
         n = (n_global,)
         ranges = ((1:n_own).+(start-1),)
-        ghost = GhostIndices(n_global,gids,owners)
+        ghost = GhostIndices(n_global)
         LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
     end
     PRange(n_global,local_indices)
-end
-
-function PRange(
-    ::VariableBlockSize,
-    n_own,
-    n_global=sum(n_own),
-    start=scan(+,n_own,type=:exclusive,init=one(eltype(n_own))))
-    gids = map(i->Int[],n_own)
-    owners = map(i->Int32[],n_own)
-    PRange(VariableBlockSize(),n_own,n_global,start,gids,owners)
-end
-
-function PRange(::VariableBlockSize,n_own,n_global,start,gids)
-    pr = PRange(VariableBlockSize(),n_own,n_global,start)
-    owners = find_owner(pr,gids) 
-    PRange(VariableBlockSize(),n_own,n_global,start,gids,owners)
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
@@ -377,11 +373,19 @@ function OwnIndices(n_global::Int,owner::Integer,own_to_global::Vector{Int})
     OwnIndices(n_global,Int32(owner),own_to_global,global_to_own)
 end
 
-struct GhostIndices
+mutable struct GhostIndices
     n_global::Int
     ghost_to_global::Vector{Int}
     ghost_to_owner::Vector{Int32}
     global_to_ghost::VectorFromDict{Int,Int32}
+end
+
+function copy!(a::GhostIndices,b::GhostIndices)
+    a.n_global = b.n_global
+    a.ghost_to_global = b.ghost_to_global
+    a.ghost_to_owner = b.ghost_to_owner
+    a.global_to_ghost = b.global_to_ghost
+    a
 end
 
 function GhostIndices(n_global,ghost_to_global,ghost_to_owner)
@@ -397,6 +401,11 @@ function GhostIndices(n_global)
     ghost_to_global = Int[]
     ghost_to_owner = Int32[]
     GhostIndices(n_global,ghost_to_global,ghost_to_owner)
+end
+
+function set_ghost!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
+    new_ghost = GhostIndices(a.n_global,new_ghost_to_global,new_ghost_to_owner)
+    copy!(a,new_ghost)
 end
 
 function append_ghost!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
@@ -575,6 +584,10 @@ function LocalIndices(
         global_to_local)
 end
 
+function set_ghost!(a::LocalIndices,new_ghost_to_global,new_ghost_to_owner)
+    error("set_ghost! only makes sense for un-permuted local indices.")
+end
+
 function append_ghost!(a::LocalIndices,new_ghost_to_global,new_ghost_to_owner)
     n_local = length(a.local_to_global)
     n_new_ghost = length(new_ghost_to_global)
@@ -653,6 +666,11 @@ end
 
 function append_ghost!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_owner)
     append_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
+    a
+end
+
+function set_ghost!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_owner)
+    set_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
     a
 end
 
@@ -741,24 +759,14 @@ function get_local_to_owner(a::OwnAndGhostIndices)
     LocalToOwner(own_to_owner,ghost_to_owner,perm)
 end
 
-struct PermutedPart{A} <: AbstractLocalIndices
+struct PermutedLocalIndices{A} <: AbstractLocalIndices
     part::A
     perm::Vector{Int32}
     own_to_local::Vector{Int32}
     ghost_to_local::Vector{Int32}
 end
 
-function append_ghost!(a::PermutedPart,new_ghost_to_global,new_ghost_to_owner)
-    n_local = length(a.perm)
-    n_new_ghost = length(new_ghost_to_global)
-    r = (1:n_new_ghost).+n_local
-    append_ghost!(a.part,new_ghost_to_global,new_ghost_to_owner)
-    append!(a.perm,r)
-    append!(a.ghost_to_local,r)
-    a
-end
-
-function PermutedPart(part,perm)
+function PermutedLocalIndices(part,perm)
     n_own = length(get_own_to_owner(part))
     n_local = length(perm)
     n_ghost = n_local - n_own
@@ -774,58 +782,73 @@ function PermutedPart(part,perm)
             own_to_local[i_own] = i_local
         end
     end
-    PermutedPart(part,perm,own_to_local,ghost_to_local)
+    _perm = convert(Vector{Int32},perm)
+    PermutedLocalIndices(part,_perm,own_to_local,ghost_to_local)
 end
 
-get_owner(a::PermutedPart) = get_owner(a.part)
+function append_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_owner)
+    n_local = length(a.perm)
+    n_new_ghost = length(new_ghost_to_global)
+    r = (1:n_new_ghost).+n_local
+    append_ghost!(a.part,new_ghost_to_global,new_ghost_to_owner)
+    append!(a.perm,r)
+    append!(a.ghost_to_local,r)
+    a
+end
 
-function get_own_to_global(a::PermutedPart)
+function set_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_owner)
+    error("set_ghost! only makes sense for un-permuted local indices.")
+end
+
+get_owner(a::PermutedLocalIndices) = get_owner(a.part)
+
+function get_own_to_global(a::PermutedLocalIndices)
     get_own_to_global(a.part)
 end
 
-function get_own_to_owner(a::PermutedPart)
+function get_own_to_owner(a::PermutedLocalIndices)
     get_own_to_owner(a.part)
 end
 
-function get_global_to_own(a::PermutedPart)
+function get_global_to_own(a::PermutedLocalIndices)
     get_global_to_own(a.part)
 end
 
-function get_ghost_to_global(a::PermutedPart)
+function get_ghost_to_global(a::PermutedLocalIndices)
     get_ghost_to_global(a.part)
 end
 
-function get_ghost_to_owner(a::PermutedPart)
+function get_ghost_to_owner(a::PermutedLocalIndices)
     get_ghost_to_owner(a.part)
 end
 
-function get_global_to_ghost(a::PermutedPart)
+function get_global_to_ghost(a::PermutedLocalIndices)
     get_global_to_ghost(a.part)
 end
 
-function get_own_to_local(a::PermutedPart)
+function get_own_to_local(a::PermutedLocalIndices)
     a.own_to_local
 end
 
-function get_ghost_to_local(a::PermutedPart)
+function get_ghost_to_local(a::PermutedLocalIndices)
     a.ghost_to_local
 end
 
-function get_local_to_own(a::PermutedPart)
+function get_local_to_own(a::PermutedLocalIndices)
     own_to_local = get_own_to_local(a)
     ghost_to_local = get_ghost_to_local(a)
     n_own = length(own_to_local)
     LocalToOwn(n_own,a.perm)
 end
 
-function get_local_to_ghost(a::PermutedPart)
+function get_local_to_ghost(a::PermutedLocalIndices)
     own_to_local = get_own_to_local(a)
     ghost_to_local = get_ghost_to_local(a)
     n_own = length(own_to_local)
     LocalToGhost(n_own,a.perm)
 end
 
-function get_global_to_local(a::PermutedPart)
+function get_global_to_local(a::PermutedLocalIndices)
     global_to_own = get_global_to_own(a)
     global_to_ghost = get_global_to_ghost(a)
     own_to_local = get_own_to_local(a)
@@ -833,19 +856,19 @@ function get_global_to_local(a::PermutedPart)
     GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
 end
 
-function get_local_to_global(a::PermutedPart)
+function get_local_to_global(a::PermutedLocalIndices)
     own_to_global = get_own_to_global(a)
     ghost_to_global = get_ghost_to_global(a)
     LocalToGlobal(own_to_global,ghost_to_global,a.perm)
 end
 
-function get_local_to_owner(a::PermutedPart)
+function get_local_to_owner(a::PermutedLocalIndices)
     own_to_owner = get_own_to_owner(a)
     ghost_to_owner = get_ghost_to_owner(a)
     LocalToOwner(own_to_owner,ghost_to_owner,a.perm)
 end
 
-function find_owner(local_indices,global_ids,::Type{<:PermutedPart})
+function find_owner(local_indices,global_ids,::Type{<:PermutedLocalIndices})
     inner_parts = map(i->i.part,local_indices)
     find_owner(inner_parts,global_ids)
 end
@@ -948,6 +971,11 @@ const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,Loc
 
 function append_ghost!(a::LocalIndicesInBlockPartition,new_ghost_to_global,new_ghost_to_owner)
     append_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
+    a
+end
+
+function set_ghost!(a::LocalIndicesInBlockPartition,new_ghost_to_global,new_ghost_to_owner)
+    set_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
     a
 end
 

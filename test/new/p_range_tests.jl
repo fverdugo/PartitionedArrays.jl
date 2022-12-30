@@ -16,7 +16,6 @@ function p_range_tests(distribute)
 
    rank = distribute(LinearIndices((4,)))
 
-
    # Uniform linear partition without ghost
    np = 4
    n = 100
@@ -54,43 +53,42 @@ function p_range_tests(distribute)
    n_own = map(rank) do rank
        mod(rank,3) + 2
    end
-   pr = PRange(VariableBlockSize(),n_own)
+   n=sum(n_own)
+   pr = PRange(VariableBlockSize(),rank,n_own,n)
 
    # Custom linear partition with no ghost
-   # reduction to discover ngids is done by the caller
-   n = sum(n_own)
-   pr = PRange(VariableBlockSize(),n_own,n)
-
-   # Custom linear partition with no ghost
-   # reduction to discover ngids is done by the caller
    # scan to find the first id in each block is done by the caller
    start = scan(+,n_own,type=:exclusive,init=1)
-   pr = PRange(VariableBlockSize(),n_own,n,start)
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
 
-   # Custom linear partition with ghost
-   # Here the ghost need to be non-repeated actual ghost values
+   # Custom linear partition with arbitrary ghost
+   # Here the ghost need to be non-repeated and actual ghost values
    # This requires a lot of communication to find
    # the owner of each given gid
    gids = map(rank) do rank
        Int[]
    end
-   pr = PRange(VariableBlockSize(),n_own,n,start,gids)
+   # First create a PRange without ghost
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   # Then set the ghost
+   set_ghost!(pr,gids)
 
    # Same as before but save some communications
    # by providing the owners
    owners = map(rank) do rank
        Int32[]
    end
-   pr = PRange(VariableBlockSize(),n_own,n,start,gids,owners)
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   set_ghost!(pr,gids,owners)
 
    # We can achieve the same without taking ownership of the
    # gids and owners
-   pr = PRange(VariableBlockSize(),n_own)
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
    append_ghost!(pr,gids)
 
    # Same as before but save some communications
    # by providing the owners
-   pr = PRange(VariableBlockSize(),n_own)
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
    append_ghost!(pr,gids,owners)
 
    # Custom linear partition with ghost
@@ -98,60 +96,60 @@ function p_range_tests(distribute)
    # Only the ghost not already present will be added
    # This requires a lot of communication to find
    # the owner of each given gid
-   pr = PRange(VariableBlockSize(),n_own)
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
    union_ghost!(pr,gids)
 
    # Same as before but save some communications
    # by providing the owners
-   pr = PRange(VariableBlockSize(),n_own)
+   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
    union_ghost!(pr,gids,owners)
 
    # Custom general partition by providing
    # info about the local indices
    # We fill with a uniform partition as an example
-   n = 10
-   np = length(rank)
-   ghost = true
-   local_indices = map(rank) do rank
-       local_to_global = collect(local_range(rank,np,n,ghost))
-       n_local = length(local_to_global)
-       local_to_owner = fill(Int32(rank),n_local)
-       o = bounday_owner(rank,np,n,ghost)
-       local_to_owner[1] = o[1]
-       local_to_owner[end] = o[end]
-       LocalIndices(n,rank,local_to_global,local_to_owner)
+   np = (2,2)
+   n = (10,10)
+   ghost = (true,true)
+   n_global = prod(n)
+   old_pr = PRange(ConstantBlockSize(),rank,np,n,ghost)
+   local_indices = map(old_pr.local_indices) do old_local_indices
+       local_to_global = get_local_to_global(old_local_indices) |> collect
+       local_to_owner = get_local_to_owner(old_local_indices) |> collect
+       owner  = get_owner(old_local_indices)
+       LocalIndices(n_global,owner,local_to_global,local_to_owner)
    end
-   pr = PRange(n,local_indices)
+   pr = PRange(n_global,local_indices)
 
    # Custom general partition by providing
    # info about the own and ghost indices
    # local indices are defined by concatenating
    # own and ghost
-   n = 10
-   np = length(rank)
-   ghost = true
-   local_indices = map(rank) do rank
-       local_to_global = collect(local_range(rank,np,n,ghost))
-       n_local = length(local_to_global)
-       local_to_owner = fill(Int32(rank),n_local)
-       o = bounday_owner(rank,np,n,ghost)
-       local_to_owner[1] = o[1]
-       local_to_owner[end] = o[end]
-       is_own = local_to_owner .== rank
-       own_to_global = local_to_global[is_own]
-       own = OwnIndices(n,rank,own_to_global)
-       is_ghost = local_to_global .!= rank
-       ghost_to_global = local_to_global[is_ghost]
-       ghost_to_owner = local_to_owner[is_ghost]
-       _ghost = GhostIndices(n,ghost_to_global,ghost_to_owner)
-       OwnAndGhostIndices(own,_ghost)
+   local_indices = map(old_pr.local_indices) do old_local_indices
+       owner = get_owner(old_local_indices)
+       own_to_global = get_own_to_global(old_local_indices) |> collect
+       ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
+       ghost_to_owner = get_ghost_to_owner(old_local_indices) |> collect
+       own = OwnIndices(n_global,owner,own_to_global)
+       ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
+       OwnAndGhostIndices(own,ghost)
    end
-   pr = PRange(n,local_indices)
+   pr = PRange(n_global,local_indices)
 
-   
-
-   
-
-
+   # Custom general partition by providing
+   # info about the own and ghost indices
+   # local indices are defined by concatenating
+   # own and ghost plus an arbitrary permutation
+   local_indices = map(old_pr.local_indices) do old_local_indices
+       owner = get_owner(old_local_indices)
+       own_to_global = get_own_to_global(old_local_indices) |> collect
+       ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
+       ghost_to_owner = get_ghost_to_owner(old_local_indices) |> collect
+       own = OwnIndices(n_global,owner,own_to_global)
+       ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
+       n_local = length(get_local_to_global(old_local_indices))
+       perm = collect(n_local:-1:1)
+       PermutedLocalIndices(OwnAndGhostIndices(own,ghost),perm)
+   end
+   pr = PRange(n_global,local_indices)
 
 end

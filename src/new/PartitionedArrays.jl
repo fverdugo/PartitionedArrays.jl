@@ -57,8 +57,10 @@ export VariableBlockSize
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices
+export PermutedLocalIndices
 export GhostIndices
 export OwnIndices
+export get_owner
 export get_local_to_global
 export get_own_to_global
 export get_ghost_to_global
@@ -72,6 +74,7 @@ export get_own_to_local
 export get_ghost_to_local
 export get_local_to_own
 export get_local_to_ghost
+export set_ghost!
 export append_ghost!
 export union_ghost!
 include("p_range.jl")
