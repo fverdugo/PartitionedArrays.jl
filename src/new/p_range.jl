@@ -31,67 +31,67 @@ function Base.getindex(a::AbstractLocalIndices,i::Int)
 end
 
 """
-    get_local_to_global(part)
+    get_local_to_global(local_indices)
 """
 function get_local_to_global end
 
 """
-    get_own_to_global(part)
+    get_own_to_global(local_indices)
 """
 function get_own_to_global end
 
 """
-    get_ghost_to_global(part)
+    get_ghost_to_global(local_indices)
 """
 function get_ghost_to_global end
 
 """
-    get_local_to_owner(part)
+    get_local_to_owner(local_indices)
 """
 function get_local_to_owner end
 
 """
-    get_own_to_owner(part)
+    get_own_to_owner(local_indices)
 """
 function get_own_to_owner end
 
 """
-    get_ghost_to_owner(part)
+    get_ghost_to_owner(local_indices)
 """
 function get_ghost_to_owner end
 
 """
-    get_global_to_local(part)
+    get_global_to_local(local_indices)
 """
 function get_global_to_local end
 
 """
-    get_global_to_own(part)
+    get_global_to_own(local_indices)
 """
 function get_global_to_own end
 
 """
-    get_global_to_ghost(part)
+    get_global_to_ghost(local_indices)
 """
 function get_global_to_ghost end
 
 """
-    get_own_to_local(part)
+    get_own_to_local(local_indices)
 """
 function get_own_to_local end
 
 """
-    get_ghost_to_local(part)
+    get_ghost_to_local(local_indices)
 """
 function get_ghost_to_local end
 
 """
-    get_local_to_own(part)
+    get_local_to_own(local_indices)
 """
 function get_local_to_own end
 
 """
-    get_local_to_ghost(part)
+    get_local_to_ghost(local_indices)
 """
 function get_local_to_ghost end
 
@@ -99,10 +99,10 @@ function set_ghost! end
 
 function append_ghost! end
 
-function union_ghost!(part,gids,owners)
-    part_owner = get_owner(part)
+function union_ghost!(local_indices,gids,owners)
+    part_owner = get_owner(local_indices)
     n_new_ghost = 0
-    global_to_ghost = get_global_to_ghost(part)
+    global_to_ghost = get_global_to_ghost(local_indices)
     for (global_i,owner) in zip(gids,owners)
         if owner != part_owner
             ghost_i = global_to_ghost[global_i]
@@ -124,7 +124,7 @@ function union_ghost!(part,gids,owners)
             end
         end
     end
-    append_ghost!(part,new_ghost_to_global,new_ghost_to_owner)
+    append_ghost!(local_indices,new_ghost_to_global,new_ghost_to_owner)
 end
 
 function find_owner(local_indices,global_ids)
@@ -760,14 +760,14 @@ function get_local_to_owner(a::OwnAndGhostIndices)
 end
 
 struct PermutedLocalIndices{A} <: AbstractLocalIndices
-    part::A
+    local_indices::A
     perm::Vector{Int32}
     own_to_local::Vector{Int32}
     ghost_to_local::Vector{Int32}
 end
 
-function PermutedLocalIndices(part,perm)
-    n_own = length(get_own_to_owner(part))
+function PermutedLocalIndices(local_indices,perm)
+    n_own = length(get_own_to_owner(local_indices))
     n_local = length(perm)
     n_ghost = n_local - n_own
     own_to_local = zeros(Int32,n_own)
@@ -783,14 +783,14 @@ function PermutedLocalIndices(part,perm)
         end
     end
     _perm = convert(Vector{Int32},perm)
-    PermutedLocalIndices(part,_perm,own_to_local,ghost_to_local)
+    PermutedLocalIndices(local_indices,_perm,own_to_local,ghost_to_local)
 end
 
 function append_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_owner)
     n_local = length(a.perm)
     n_new_ghost = length(new_ghost_to_global)
     r = (1:n_new_ghost).+n_local
-    append_ghost!(a.part,new_ghost_to_global,new_ghost_to_owner)
+    append_ghost!(a.local_indices,new_ghost_to_global,new_ghost_to_owner)
     append!(a.perm,r)
     append!(a.ghost_to_local,r)
     a
@@ -800,30 +800,30 @@ function set_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_own
     error("set_ghost! only makes sense for un-permuted local indices.")
 end
 
-get_owner(a::PermutedLocalIndices) = get_owner(a.part)
+get_owner(a::PermutedLocalIndices) = get_owner(a.local_indices)
 
 function get_own_to_global(a::PermutedLocalIndices)
-    get_own_to_global(a.part)
+    get_own_to_global(a.local_indices)
 end
 
 function get_own_to_owner(a::PermutedLocalIndices)
-    get_own_to_owner(a.part)
+    get_own_to_owner(a.local_indices)
 end
 
 function get_global_to_own(a::PermutedLocalIndices)
-    get_global_to_own(a.part)
+    get_global_to_own(a.local_indices)
 end
 
 function get_ghost_to_global(a::PermutedLocalIndices)
-    get_ghost_to_global(a.part)
+    get_ghost_to_global(a.local_indices)
 end
 
 function get_ghost_to_owner(a::PermutedLocalIndices)
-    get_ghost_to_owner(a.part)
+    get_ghost_to_owner(a.local_indices)
 end
 
 function get_global_to_ghost(a::PermutedLocalIndices)
-    get_global_to_ghost(a.part)
+    get_global_to_ghost(a.local_indices)
 end
 
 function get_own_to_local(a::PermutedLocalIndices)
@@ -869,7 +869,7 @@ function get_local_to_owner(a::PermutedLocalIndices)
 end
 
 function find_owner(local_indices,global_ids,::Type{<:PermutedLocalIndices})
-    inner_parts = map(i->i.part,local_indices)
+    inner_parts = map(i->i.local_indices,local_indices)
     find_owner(inner_parts,global_ids)
 end
 
@@ -937,8 +937,8 @@ function Base.propertynames(x::LocalIndicesWithConstantBlockSize, private::Bool=
 end
 
 function find_owner(local_indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSize})
-    map(local_indices,global_ids) do part,global_ids
-        start = map(part.np,part.n) do np,n
+    map(local_indices,global_ids) do local_indices,global_ids
+        start = map(local_indices.np,local_indices.n) do np,n
             start = [ local_range(p,np,n) for p in 1:np ]
             push!(start,n+1)
             start
@@ -957,9 +957,9 @@ struct LocalIndicesWithVariableBlockSize{N} <: AbstractLocalIndices
 end
 
 function find_owner(local_indices,global_ids,::Type{<:LocalIndicesWithVariableBlockSize})
-    initial = map(part->map(first,part.ranges),local_indices) |> collect |> unpack
-    map(local_indices,global_ids) do part,global_ids
-        start = map(part.n,initial) do n,initial
+    initial = map(local_indices->map(first,local_indices.ranges),local_indices) |> collect |> unpack
+    map(local_indices,global_ids) do local_indices,global_ids
+        start = map(local_indices.n,initial) do n,initial
             start = vcat(initial,[n+1])
         end
         global_to_owner = BlockPartitionGlobalToOwner(start)
