@@ -50,9 +50,15 @@ export with_mpi_data
 include("mpi_data.jl")
 
 export local_range
+export bounday_owner
 export PRange
 export ConstantBlockSize
 export VariableBlockSize
+export AbstractLocalIndices
+export OwnAndGhostIndices
+export LocalIndices
+export GhostIndices
+export OwnIndices
 export get_local_to_global
 export get_own_to_global
 export get_ghost_to_global
@@ -66,6 +72,7 @@ export get_own_to_local
 export get_ghost_to_local
 export get_local_to_own
 export get_local_to_ghost
-export get_global_to_owner
+export append_ghost!
+export union_ghost!
 include("p_range.jl")
 
