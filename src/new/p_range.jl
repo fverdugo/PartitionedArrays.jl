@@ -60,6 +60,13 @@ Get number of global ids associated with `local_indices`.
 get_n_global(a) = length(get_global_to_own(a))
 
 """
+    get_owner(local_indices)
+
+Return the id of the part that is storing `local_indices`.
+"""
+function get_owner end
+
+"""
     get_local_to_global(local_indices)
 
 Return an array with the global indices of the local indices in `local_indices`.

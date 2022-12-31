@@ -7,6 +7,13 @@ Modules = [PartitionedArrays]
 Pages = ["jagged_array.jl"]
 ```
 
+## Back-ends
+
+```@autodocs
+Modules = [PartitionedArrays]
+Pages = ["sequential_data.jl","mpi_data.jl"]
+```
+
 ## Parallel primitives
 
 ```@autodocs
