@@ -457,11 +457,12 @@ Trait-like type used to build [`PRange`](@ref) instances with constant size bloc
     1:1:16
     
     julia> get_local_to_global(pr)
-    4-element Vector{PartitionedArrays.LocalToGlobal{PartitionedArrays.BlockPartitionOwnToGlobal{2}, Vector{Int32}}}:
+    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{2, Vector{Int32}}}:
      [1, 2, 3, 5, 6, 7, 9, 10, 11]
      [2, 3, 4, 6, 7, 8, 10, 11, 12]
      [5, 6, 7, 9, 10, 11, 13, 14, 15]
      [6, 7, 8, 10, 11, 12, 14, 15, 16]
+
 """
 struct ConstantBlockSize end
 
@@ -493,7 +494,7 @@ to create 1D block partitions.
     1:1:10
     
     julia> get_local_to_global(pr)
-    4-element Vector{PartitionedArrays.LocalToGlobal{PartitionedArrays.BlockPartitionOwnToGlobal{1}, UnitRange{Int64}}}:
+    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{1, UnitRange{Int64}}}:
      [1, 2]
      [3, 4]
      [5, 6, 7]
@@ -509,7 +510,7 @@ to create 1D block partitions.
     1:1:16
     
     julia> get_local_to_global(pr)
-    4-element Vector{PartitionedArrays.LocalToGlobal{PartitionedArrays.BlockPartitionOwnToGlobal{2}, Vector{Int32}}}:
+    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{2, Vector{Int32}}}:
      [1, 2, 3, 5, 6, 7, 9, 10, 11]
      [2, 3, 4, 6, 7, 8, 10, 11, 12]
      [5, 6, 7, 9, 10, 11, 13, 14, 15]
@@ -1028,6 +1029,8 @@ end
 
 get_owner(a::LocalIndices) = a.owner
 
+get_n_local(a::LocalIndices) = length(a.local_to_global)
+
 function get_own_to_global(a::LocalIndices)
     view(a.local_to_global,a.own_to_local)
 end
@@ -1088,7 +1091,8 @@ end
 """
     OwnAndGhostIndices
 
-Contaner for local indices stored as own and ghost indices separately.
+Container for local indices stored as own and ghost indices separately.
+Local indices are defined by concatenating own and ghost ones.
 
 # Properties
 
@@ -1388,6 +1392,66 @@ function Base.getindex(a::BlockPartitionGlobalToOwner,i::Int)
     LinearIndices(np)[CartesianIndex(j)]
 end
 
+# This one is just to improve the display of the type LocalToGlobal
+struct BlockPartitionLocalToGlobal{N,C} <: AbstractVector{Int}
+    own_to_global::BlockPartitionOwnToGlobal{N}
+    ghost_to_global::Vector{Int}
+    perm::C
+end
+Base.IndexStyle(::Type{<:BlockPartitionLocalToGlobal}) = IndexLinear()
+Base.size(a::BlockPartitionLocalToGlobal) = (length(a.own_to_global)+length(a.ghost_to_global),)
+function Base.getindex(a::BlockPartitionLocalToGlobal,local_id::Int)
+    n_own = length(a.own_to_global)
+    j = a.perm[local_id]
+    if j > n_own
+        a.ghost_to_global[j-n_own]
+    else
+        a.own_to_global[j]
+    end
+end
+function LocalToGlobal(
+    own_to_global::BlockPartitionOwnToGlobal,
+    ghost_to_global::Vector{Int},
+    perm)
+    BlockPartitionLocalToGlobal(
+        own_to_global,
+        ghost_to_global,
+        perm)
+end
+
+# This one is just to improve the display of the type GlobalToLocal
+struct BlockPartitionGlobalToLocal{N,V} <: AbstractVector{Int32}
+    global_to_own::BlockPartitionGlobalToOwn{N}
+    global_to_ghost::VectorFromDict{Int,Int32}
+    own_to_local::V
+    ghost_to_local::V
+end
+Base.size(a::BlockPartitionGlobalToLocal) = size(a.global_to_own)
+Base.IndexStyle(::Type{<:BlockPartitionGlobalToLocal}) = IndexLinear()
+function Base.getindex(a::BlockPartitionGlobalToLocal,global_id::Int)
+    own_id = a.global_to_own[global_id]
+    z = Int32(0)
+    if own_id != z
+        return a.own_to_local[own_id]
+    end
+    ghost_id = a.global_to_ghost[global_id]
+    if ghost_id != z
+        return a.ghost_to_local[ghost_id]
+    end
+    return z
+end
+function GlobalToLocal(
+    global_to_own::BlockPartitionGlobalToOwn,
+    global_to_ghost::VectorFromDict{Int,Int32},
+    own_to_local,
+    ghost_to_local)
+    BlockPartitionGlobalToLocal(
+        global_to_own,
+        global_to_ghost,
+        own_to_local,
+        ghost_to_local)
+end
+
 struct LocalIndicesWithConstantBlockSize{N} <: AbstractLocalIndices
     p::CartesianIndex{N}
     np::NTuple{N,Int}
@@ -1484,13 +1548,13 @@ end
 
 function get_own_to_local(a::LocalIndicesInBlockPartition)
     n_own = prod(map(length,a.ranges))
-    Int32.(1:n_own)
+    Int32(1):Int32(n_own)
 end
 
 function get_ghost_to_local(a::LocalIndicesInBlockPartition)
     n_own = prod(map(length,a.ranges))
     n_ghost = length(a.ghost.ghost_to_global)
-    Int32.((1:n_ghost).+n_own)
+    ((Int32(1):Int32(n_ghost)).+Int32(n_own))
 end
 
 function get_local_to_own(a::LocalIndicesInBlockPartition)
