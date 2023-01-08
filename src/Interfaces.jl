@@ -928,7 +928,7 @@ function async_exchange!(
   combine_op,
   values::AbstractPData{<:AbstractVector{Trcv}},
   exchanger::Exchanger,
-  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where {Trcv,Tsnd}
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where {Trcv}
 
   async_exchange!(combine_op,values,values,exchanger,t0)
 end
