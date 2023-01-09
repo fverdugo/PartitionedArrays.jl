@@ -27,6 +27,7 @@ export SequentialData
 export MPIData
 export num_parts
 export i_am_main
+export i_am_in
 export map_parts
 export get_part_ids
 export get_backend

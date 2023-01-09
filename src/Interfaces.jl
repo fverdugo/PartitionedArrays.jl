@@ -44,7 +44,7 @@ calls `MPI.Abort` if some error occurs when running `driver(parts)`.
 
 # Examples
 
-The next code will provably fail since MPI needs to be initialized.
+The next code will probably fail since MPI needs to be initialized.
 
     using MPI
     using PartitionedArrays
@@ -60,9 +60,9 @@ be managed internally
     nparts = 1
     with_backend(display,MPIBackend(),nparts)
 """
-function with_backend(driver,b::AbstractBackend,nparts)
+function with_backend(driver,b::AbstractBackend,nparts,args...;kwargs...)
   part = get_part_ids(b,nparts)
-  driver(part)
+  driver(part,args...;kwargs...)
 end
 
 # Data distributed in parts of type T
@@ -940,7 +940,7 @@ function async_exchange!(
   combine_op,
   values::AbstractPData{<:AbstractVector{Trcv}},
   exchanger::Exchanger,
-  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where {Trcv,Tsnd}
+  t0::AbstractPData=_empty_tasks(exchanger.parts_rcv)) where {Trcv}
 
   async_exchange!(combine_op,values,values,exchanger,t0)
 end

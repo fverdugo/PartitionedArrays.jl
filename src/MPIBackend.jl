@@ -15,36 +15,81 @@ function prun_debug(driver::Function,b::MPIBackendDeprecated,nparts)
   prun_debug(driver,MPIBackend(),nparts)
 end
 
-get_part_id(comm::MPI.Comm) = MPI.Comm_rank(comm)+1
-num_parts(comm::MPI.Comm) = MPI.Comm_size(comm)
+function num_parts(comm::MPI.Comm)
+  if comm != MPI.COMM_NULL
+    nparts = MPI.Comm_size(comm)
+  else
+    nparts = -1
+  end
+  nparts
+end
+
+function get_part_id(comm::MPI.Comm)
+  if comm != MPI.COMM_NULL
+    id = MPI.Comm_rank(comm)+1
+  else
+    id = -1
+  end
+  id
+end
+
+function i_am_in(comm::MPI.Comm)
+  get_part_id(comm) >=0
+end
+
+function get_part_ids(comm::MPI.Comm)
+  rank = get_part_id(comm)
+  nparts = num_parts(comm)
+  MPIData(rank,comm,(nparts,))
+end
 
 struct MPIBackend <: AbstractBackend end
 
 function get_part_ids(b::MPIBackend,nparts::Integer)
-  comm = MPI.Comm_dup(MPI.COMM_WORLD)
-  @notimplementedif(num_parts(comm) != nparts,
-    "Number of MPI processors must be equivalent to number of parts.")
-  MPIData(get_part_id(comm),comm,(nparts,))
+  root_comm = MPI.Comm_dup(MPI.COMM_WORLD)
+  size = MPI.Comm_size(root_comm)
+  rank = MPI.Comm_rank(root_comm)
+  need = prod(nparts)
+  _get_part_ids_body(root_comm,rank,size,need,nparts)
 end
 
 function get_part_ids(b::MPIBackend,nparts::Tuple)
-  comm = MPI.Comm_dup(MPI.COMM_WORLD)
-  @notimplementedif(num_parts(comm) != prod(nparts),
-    "Number of MPI processors must be equivalent to number of parts.")
-  MPIData(get_part_id(comm),comm,nparts)
+  root_comm = MPI.Comm_dup(MPI.COMM_WORLD)
+  size = MPI.Comm_size(root_comm)
+  rank = MPI.Comm_rank(root_comm)
+  need = prod(nparts)
+  _get_part_ids_body(root_comm,rank,size,need,nparts)
 end
 
-function with_backend(driver,b::MPIBackend,nparts)
+function _get_part_ids_body(root_comm,rank,size,need,nparts)
+  if size < need
+    throw("Not enough MPI ranks, please run mpiexec with -n $need (at least)")
+  elseif size > need
+    if rank < need
+      comm = MPI.Comm_split(root_comm, 0, 0)
+      MPIData(get_part_id(comm),comm,Tuple(nparts))
+    else
+      comm = MPI.Comm_split(root_comm, MPI.API.MPI_UNDEFINED[], MPI.API.MPI_UNDEFINED[])
+      MPIData(get_part_id(comm),comm,(-1,))
+    end
+  else
+    comm = root_comm
+    MPIData(get_part_id(comm),comm,Tuple(nparts))
+  end
+end
+
+
+function with_backend(driver,b::MPIBackend,nparts,args...;kwargs...)
   if !MPI.Initialized()
     MPI.Init()
   end
   if MPI.Comm_size(MPI.COMM_WORLD) == 1
     part = get_part_ids(b,nparts)
-    driver(part)
+    driver(part,args...;kwargs...)
   else
     try
        part = get_part_ids(b,nparts)
-       driver(part)
+       driver(part,args...;kwargs...)
     catch e
       @error "" exception=(e, catch_backtrace())
       if MPI.Initialized() && !MPI.Finalized()
@@ -93,6 +138,12 @@ i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
 
 function get_part_ids(a::MPIData)
   MPIData(get_part_id(a.comm),a.comm,a.size)
+end
+function num_parts(parts::MPIData)
+  num_parts(parts.comm)
+end
+function i_am_in(parts::MPIData)
+  i_am_in(parts.comm)
 end
 
 function map_parts(task,args::MPIData...)
