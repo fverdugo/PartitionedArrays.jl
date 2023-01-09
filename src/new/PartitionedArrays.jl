@@ -60,6 +60,10 @@ export LocalIndices
 export PermutedLocalIndices
 export GhostIndices
 export OwnIndices
+export get_n_local
+export get_n_global
+export get_n_ghost
+export get_n_own
 export get_owner
 export get_local_to_global
 export get_own_to_global
