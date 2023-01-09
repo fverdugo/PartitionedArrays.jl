@@ -1703,3 +1703,105 @@ function boundary_owner(p,np,n,ghost=false,periodic=false)
     (start,p,stop)
 end
 
+struct Assembler{A,B}
+    graph::ExchangeGraph{A}
+    local_indices_snd::B
+    local_indices_rcv::B
+end
+Base.reverse(g::Assembler) = Assembler(reverse(graph),local_indices_rcv,local_indices_snd)
+function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
+    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
+
+end
+
+function vector_assembler(local_indices;kwargs...)
+    rank = linear_indices(local_indices)
+    aux1 = map(rank,local_indices) do rank, local_indices
+        local_to_owner = get_local_to_owner(local_indices)
+        set = Set{Int32}()
+        for owner in local_to_owner
+            if owner != rank
+                push!(set,owner)
+            end
+        end
+        parts_snd = sort(collect(set))
+        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
+        ptrs = zeros(Int32,length(parts_snd)+1)
+        for owner in local_to_owner
+            if owner != rank
+                ptrs[owner_to_i[owner]+1] +=1
+            end
+        end
+        length_to_ptrs!(ptrs)
+        data_lids = zeros(Int32,ptrs[end]-1)
+        data_gids = zeros(Int,ptrs[end]-1)
+        local_to_global = get_local_to_global(local_indices)
+        for (lid,owner) in enumerate(local_to_owner)
+            if owner != rank
+                p = ptrs[owner_to_i[owner]]
+                data_lids[p]=lid
+                data_gids[p]=local_to_global[lid]
+                ptrs[owner_to_i[owner]] += 1
+            end
+        end
+        rewind_ptrs!(ptrs)
+        local_indices_snd = JaggedArray(data_lids,ptrs)
+        global_indices_snd = JaggedArray(data_gids,ptrs)
+        parts_snd, local_indices_snd, global_indices_snd
+    end
+    parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
+    graph = ExchangeGraph(parts_snd;kwargs...)
+    global_indices_rcv = exchange(global_indices_snd,graph)
+    local_indices_rcv = map(rank,global_indices_rcv,local_indices) do ids,global_indices_rcv,local_indices
+        ptrs = global_indices_rcv.ptrs
+        data_lids = zeros(Int32,ptrs[end]-1)
+        global_to_local = get_global_to_local(local_indices)
+        for (k,gid) in enumerate(global_indices_rcv.data)
+            data_lids[k] = global_to_local[gid]
+        end
+        local_indices_rcv = JaggedArray(data_lids,ptrs)
+    end
+    Assembler(graph,local_indices_snd,local_indices_rcv)
+end
+
+function assemble!(f,a,assember,
+    buffer_snd = allocate_assembly_buffer_snd(a,assembler),
+    buffer_rcv = allocate_assembly_buffer_rcv(a,assembler))
+    # Fill snd buffer
+    local_indices_snd = assembler.local_indices_snd
+    map(a,local_indices_snd,buffer_snd) do a,local_indices_snd,buffer_snd
+        for (p,lid) in enumerate(local_indices_snd.data)
+            buffer_snd.data[p] = a[lid]
+        end
+    end
+    graph = assembler.graph
+    t = exchange!(buffer_rcv,buffer_snd,graph)
+    # Fill a from rcv buffer asynchronously
+    local_indices_rcv = assembler.local_indices_rcv
+    map(t,a,local_indices_rcv,buffer_rcv) do t,a,local_indices_rcv,buffer_rcv
+        @async begin
+            wait(t)
+            for (p,lid) in enumerate(local_indices_rcv.data)
+                a[lid] = f(a[lid],buffer_rcv.data[p])
+            end
+        end
+    end
+end
+
+function allocate_assembly_buffer_rcv(a,assembler)
+    T = eltype(eltype(a))
+    map(assembler.local_indices_rcv) do local_indices_rcv
+        ptrs = local_indices_rcv.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+end
+
+function allocate_assembly_buffer_snd(a,assembler)
+    T = eltype(eltype(a))
+    map(assembler.local_indices_snd) do local_indices_snd
+        ptrs = local_indices_snd.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+end

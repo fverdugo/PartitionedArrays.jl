@@ -82,5 +82,10 @@ export set_ghost!
 export append_ghost!
 export union_ghost!
 export find_owner
+export Assembler
+export vector_assembler
+export assemble!
+export allocate_assembly_buffer_snd
+export allocate_assembly_buffer_rcv
 include("p_range.jl")
 
