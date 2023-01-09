@@ -551,20 +551,25 @@ Base.reverse(g::ExchangeGraph) = ExchangeGraph(g.rcv,g.snd)
 
 function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
     println(io,typeof(data)," with $(length(data.snd)) nodes")
-
 end
 
 """
-    ExchangeGraph(snd;neighbors=nothing)
+    ExchangeGraph(snd;neighbors=nothing,symmetric=false)
 
 Create an `ExchangeGraph` object only from the lists of outgoing 
-neighbors in `snd`. The optional `neighbors` is also an `ExchangeGraph`
+neighbors in `snd`. If `symmetric==true`, then the incoming neighbors
+are set to `snd`. Otherwise, the optional `neighbors` is considered.
+ `neighbors` is also an `ExchangeGraph`
 that contains a super set of the outgoing and incoming neighbors
 associated with `snd`. It is used to find the incoming neighbors `rcv`
 efficiently.
 """
-function ExchangeGraph(snd;neighbors=nothing)
-    ExchangeGraph_impl(snd,neighbors)
+function ExchangeGraph(snd;neighbors=nothing,symmetric=false)
+    if symmetric
+        ExchangeGraph(snd,snd)
+    else
+        ExchangeGraph_impl(snd,neighbors)
+    end
 end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
