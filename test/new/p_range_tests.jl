@@ -142,4 +142,9 @@ function p_range_tests(distribute)
    end
    pr = PRange(n_global,local_indices)
 
+   #display(pr)
+   #display(pr.local_indices)
+   #display(pr.assembler)
+   #display(pr.assembler.graph)
+
 end
