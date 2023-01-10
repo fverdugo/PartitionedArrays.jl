@@ -84,7 +84,7 @@ export find_owner
 export Assembler
 export vector_assembler
 export assemble!
-export allocate_assembly_buffer_snd
-export allocate_assembly_buffer_rcv
+export assembly_buffer_snd
+export assembly_buffer_rcv
 include("p_range.jl")
 

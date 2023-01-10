@@ -1689,12 +1689,28 @@ function boundary_owner(p,np,n,ghost=false,periodic=false)
     (start,p,stop)
 end
 
+"""
+    struct Assembler{A,B}
+
+Container type storing symbolic information needed in assembly-like operations.
+
+# Properties
+    - `exchange_graph::A`: Instance of `ExchangeGraph` indicating to which parts we need to send and receive to/from.
+    - `local_indices_snd::B`: Contains the local ids of the data we want to send.
+    - `local_indices_rcv::B`: Contains the local ids of the data we want to receive.
+
+See [`assemble!](@ref) for full details on the format of these fields.
+
+# Supertype hierarchy
+
+    Assembler{A,B} <: Any
+"""
 struct Assembler{A,B}
-    graph::ExchangeGraph{A}
+    exchange_graph::A
     local_indices_snd::B
     local_indices_rcv::B
 end
-Base.reverse(g::Assembler) = Assembler(reverse(graph),local_indices_rcv,local_indices_snd)
+Base.reverse(g::Assembler) = Assembler(reverse(g.exchange_graph),g.local_indices_rcv,g.local_indices_snd)
 function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
     println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
 
@@ -1709,6 +1725,13 @@ function empty_assembler(local_indices)
     Assembler(graph,local_indices_snd,local_indices_rcv)
 end
 
+"""
+    vector_assembler(local_indices; kwargs...)
+
+Returns an instance of [`Assembler`](@ref) containing the symbolic information needed for performing 
+assembly operations in [`PVector`](@ref). The key-word arguments `kwargs...` are passed to the [`ExchangeGraph`](@ref)
+to help discover the ids of the parts we want to receive from, given the parts we want to send to.
+"""
 function vector_assembler(local_indices;kwargs...)
     rank = linear_indices(local_indices)
     aux1 = map(rank,local_indices) do rank, local_indices
@@ -1759,9 +1782,37 @@ function vector_assembler(local_indices;kwargs...)
     Assembler(graph,local_indices_snd,local_indices_rcv)
 end
 
+"""
+    assemble!(f,a,assembler[,buffer_snd[,buffer_rcv]])
+
+Assemble the values in `a` using the insertion operation `f`. If the optional arguments are not given,
+they are computed as `assembly_buffer_snd(a,assembler)` and `assembly_buffer_rcv(a,assembler)` respectively.
+
+During the assembly, the values of `a` are updated (conceptually) as follows.
+
+    parts_snd = assembler.exchange_graph.snd
+    parts_rcv = assembler.exchange_graph.rcv
+    local_indices_snd = assembler.local_indices_snd
+    local_indices_rcv = assembler.local_indices_rcv
+    for p_snd in 1:length(a)
+      for i in 1:length(parts_snd[p_snd])
+         p_rcv = parts_snd[p_snd][i]
+         j = findfirst(p->p==p_snd,parts_rcv[p_rcv])
+         for l_snd in local_indices_snd[p_snd][i]
+             for l_rcv in local_indices_rcv[p_rcv][j]
+                a[p_rcv][l_rcv] = f(a[p_rcv][l_rcv],a[p_snd][l_snd])
+             end
+         end
+      end
+    end
+
+This algorithm is never executed like this, but a parallel version using exchanges via the exchange graph
+in `assemble.exchange_graph`.
+
+"""
 function assemble!(f,a,assembler,
-    buffer_snd = allocate_assembly_buffer_snd(a,assembler),
-    buffer_rcv = allocate_assembly_buffer_rcv(a,assembler))
+    buffer_snd = assembly_buffer_snd(a,assembler),
+    buffer_rcv = assembly_buffer_rcv(a,assembler))
     # Fill snd buffer
     local_indices_snd = assembler.local_indices_snd
     map(a,local_indices_snd,buffer_snd) do a,local_indices_snd,buffer_snd
@@ -1769,7 +1820,7 @@ function assemble!(f,a,assembler,
             buffer_snd.data[p] = a[lid]
         end
     end
-    graph = assembler.graph
+    graph = assembler.exchange_graph
     t = exchange!(buffer_rcv,buffer_snd,graph)
     # Fill a from rcv buffer asynchronously
     local_indices_rcv = assembler.local_indices_rcv
@@ -1783,7 +1834,12 @@ function assemble!(f,a,assembler,
     end
 end
 
-function allocate_assembly_buffer_rcv(a,assembler)
+"""
+    assembly_buffer_rcv(a,assembler)
+
+Allocate and return `buff_rcv` in [`assemble!`](@ref).
+"""
+function assembly_buffer_rcv(a,assembler)
     T = eltype(eltype(a))
     map(assembler.local_indices_rcv) do local_indices_rcv
         ptrs = local_indices_rcv.ptrs
@@ -1792,7 +1848,12 @@ function allocate_assembly_buffer_rcv(a,assembler)
     end
 end
 
-function allocate_assembly_buffer_snd(a,assembler)
+"""
+    assembly_buffer_snd(a,assembler)
+
+Allocate and return `buff_snd` in [`assemble!`](@ref).
+"""
+function assembly_buffer_snd(a,assembler)
     T = eltype(eltype(a))
     map(assembler.local_indices_snd) do local_indices_snd
         ptrs = local_indices_snd.ptrs
