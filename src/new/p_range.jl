@@ -242,7 +242,8 @@ The same rationale applies for ghost and local indices.
 an expensive operation that we want to reuse.
 
 
-The item `local_indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`. `typeof(local_indices[i])` is a type that
+The item `local_indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`.
+`typeof(local_indices[i])` is a type that
 implements the methods of the [`AbstractLocalIndices`](@ref) interface. Use this
 interface to access the underlying information about own, ghost, and local indices.
 
