@@ -102,19 +102,19 @@ function p_range_tests(distribute)
    ghost = (true,true)
    n_global = prod(n)
    old_pr = PRange(ConstantBlockSize(),rank,np,n,ghost)
-   local_indices = map(old_pr.local_indices) do old_local_indices
+   indices = map(old_pr.indices) do old_local_indices
        local_to_global = get_local_to_global(old_local_indices) |> collect
        local_to_owner = get_local_to_owner(old_local_indices) |> collect
        owner  = get_owner(old_local_indices)
        LocalIndices(n_global,owner,local_to_global,local_to_owner)
    end
-   pr = PRange(n_global,local_indices)
+   pr = PRange(n_global,indices)
 
    # Custom general partition by providing
    # info about the own and ghost indices
    # local indices are defined by concatenating
    # own and ghost
-   local_indices = map(old_pr.local_indices) do old_local_indices
+   indices = map(old_pr.indices) do old_local_indices
        owner = get_owner(old_local_indices)
        own_to_global = get_own_to_global(old_local_indices) |> collect
        ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
@@ -123,13 +123,13 @@ function p_range_tests(distribute)
        ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
        OwnAndGhostIndices(own,ghost)
    end
-   pr = PRange(n_global,local_indices)
+   pr = PRange(n_global,indices)
 
    # Custom general partition by providing
    # info about the own and ghost indices
    # local indices are defined by concatenating
    # own and ghost plus an arbitrary permutation
-   local_indices = map(old_pr.local_indices) do old_local_indices
+   indices = map(old_pr.indices) do old_local_indices
        owner = get_owner(old_local_indices)
        own_to_global = get_own_to_global(old_local_indices) |> collect
        ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
@@ -140,6 +140,6 @@ function p_range_tests(distribute)
        perm = collect(n_local:-1:1)
        PermutedLocalIndices(OwnAndGhostIndices(own,ghost),perm)
    end
-   pr = PRange(n_global,local_indices)
+   pr = PRange(n_global,indices)
 
 end
