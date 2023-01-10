@@ -549,8 +549,8 @@ struct ExchangeGraph{A}
 end
 Base.reverse(g::ExchangeGraph) = ExchangeGraph(g.rcv,g.snd)
 
-function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph{A}) where A
-    println(io,"PartitionedArrays.",nameof(typeof(data)),"{A} with $(length(data.snd)) nodes, where\n    A = ",A)
+function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
+    println(io,typeof(data)," with $(length(data.snd)) nodes")
 end
 
 """

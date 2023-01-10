@@ -1695,10 +1695,8 @@ struct Assembler{A,B}
     local_indices_rcv::B
 end
 Base.reverse(g::Assembler) = Assembler(reverse(graph),local_indices_rcv,local_indices_snd)
-function Base.show(io::IO,k::MIME"text/plain",data::Assembler{A,B}) where {A,B}
-    println(io,"PartitionedArrays.",nameof(typeof(data)),
-        "{A,B} on $(length(data.local_indices_snd)) parts, where\n    A = ",
-        A,"\n    B = ",B)
+function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
+    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
 
 end
 
