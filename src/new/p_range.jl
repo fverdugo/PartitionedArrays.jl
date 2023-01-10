@@ -1707,11 +1707,12 @@ See [`assemble!](@ref) for full details on the format of these fields.
     Assembler{A,B} <: Any
 """
 struct Assembler{A,B}
-    exchange_graph::A
+    parts_snd::A
+    parts_rcv::A
     local_indices_snd::B
     local_indices_rcv::B
 end
-Base.reverse(g::Assembler) = Assembler(reverse(g.exchange_graph),g.local_indices_rcv,g.local_indices_snd)
+Base.reverse(g::Assembler) = Assembler(g.parts_rcv,g.parts_snd,g.local_indices_rcv,g.local_indices_snd)
 function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
     println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
 
@@ -1722,8 +1723,7 @@ function empty_assembler(indices)
     parts_rcv = parts_snd
     local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
     local_indices_rcv = local_indices_snd
-    graph = ExchangeGraph(parts_snd,parts_rcv)
-    Assembler(graph,local_indices_snd,local_indices_rcv)
+    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
 end
 
 """
@@ -1770,6 +1770,7 @@ function vector_assembler(indices;kwargs...)
     end
     parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
     graph = ExchangeGraph(parts_snd;kwargs...)
+    parts_rcv = graph.rcv
     global_indices_rcv = exchange(global_indices_snd,graph)
     local_indices_rcv = map(rank,global_indices_rcv,indices) do ids,global_indices_rcv,indices
         ptrs = global_indices_rcv.ptrs
@@ -1780,7 +1781,7 @@ function vector_assembler(indices;kwargs...)
         end
         local_indices_rcv = JaggedArray(data_lids,ptrs)
     end
-    Assembler(graph,local_indices_snd,local_indices_rcv)
+    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
 end
 
 """
@@ -1791,8 +1792,8 @@ they are computed as `assembly_buffer_snd(a,assembler)` and `assembly_buffer_rcv
 
 During the assembly, the values of `a` are updated (conceptually) as follows.
 
-    parts_snd = assembler.exchange_graph.snd
-    parts_rcv = assembler.exchange_graph.rcv
+    parts_snd = assembler.parts_snd
+    parts_rcv = assembler.parts_rcv
     local_indices_snd = assembler.local_indices_snd
     local_indices_rcv = assembler.local_indices_rcv
     for p_snd in 1:length(a)
@@ -1807,9 +1808,8 @@ During the assembly, the values of `a` are updated (conceptually) as follows.
       end
     end
 
-This algorithm is never executed like this, but a parallel version using exchanges via the exchange graph
-in `assemble.exchange_graph`.
-
+This algorithm is never executed like this, but a parallel version using function [`exchange`](@ref)
+for communications.
 """
 function assemble!(f,a,assembler,
     buffer_snd = assembly_buffer_snd(a,assembler),
@@ -1821,7 +1821,7 @@ function assemble!(f,a,assembler,
             buffer_snd.data[p] = a[lid]
         end
     end
-    graph = assembler.exchange_graph
+    graph = ExchangeGraph(assembler.parts_snd,assembler.parts_rcv)
     t = exchange!(buffer_rcv,buffer_snd,graph)
     # Fill a from rcv buffer asynchronously
     local_indices_rcv = assembler.local_indices_rcv
