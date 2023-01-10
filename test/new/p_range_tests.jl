@@ -81,28 +81,18 @@ function p_range_tests(distribute)
    pr = PRange(VariableBlockSize(),rank,n_own,n;start)
    pr = replace_ghost(pr,gids,owners)
 
-   # We can achieve the same without taking ownership of the
-   # gids and owners
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
-   append_ghost!(pr,gids)
-
-   # Same as before but save some communications
-   # by providing the owners
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
-   append_ghost!(pr,gids,owners)
-
    # Custom linear partition with ghost
    # Here the gids can be whatever
    # Only the ghost not already present will be added
    # This requires a lot of communication to find
    # the owner of each given gid
    pr = PRange(VariableBlockSize(),rank,n_own,n;start)
-   union_ghost!(pr,gids)
+   pr = union_ghost(pr,gids)
 
    # Same as before but save some communications
    # by providing the owners
    pr = PRange(VariableBlockSize(),rank,n_own,n;start)
-   union_ghost!(pr,gids,owners)
+   pr = union_ghost(pr,gids,owners)
 
    # Custom general partition by providing
    # info about the local indices

@@ -79,8 +79,7 @@ export get_ghost_to_local
 export get_local_to_own
 export get_local_to_ghost
 export replace_ghost
-export append_ghost!
-export union_ghost!
+export union_ghost
 export find_owner
 export Assembler
 export vector_assembler

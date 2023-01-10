@@ -25,8 +25,7 @@ The following functions form the `AbstractLocalIndices` interface:
 - [`get_local_to_own`](@ref)
 - [`get_local_to_ghost`](@ref)
 - [`replace_ghost`](@ref)
-- [`append_ghost!`](@ref)
-- [`union_ghost!`](@ref)
+- [`union_ghost`](@ref)
 
 """
 abstract type AbstractLocalIndices end
@@ -167,21 +166,7 @@ only makes sense if `local_indices` stores ghost ids in separate vectors like in
 """
 function replace_ghost end
 
-"""
-    append_ghost!(local_indices,gids,owners)
-
-Append the global indices `gids` and owners `owners` in the ghost indices in `local_indices`. `local_indices` does not take ownership of `gids`  and `owners`. 
- `gids` should be unique and not being already present in `local_indices`.
-"""
-function append_ghost! end
-
-"""
-    union_ghost!(local_indices,gids,owners)
-
-Make the union of the ghost indices in `local_indices` with 
- the global indices `gids` and owners `owners` and store the result in `local_indices`. `local_indices` does not take ownership of `gids`  and `owners`. 
-"""
-function union_ghost!(local_indices,gids,owners)
+function filter_ghost(local_indices,gids,owners)
     part_owner = get_owner(local_indices)
     n_new_ghost = 0
     global_to_ghost = get_global_to_ghost(local_indices)
@@ -206,7 +191,27 @@ function union_ghost!(local_indices,gids,owners)
             end
         end
     end
-    append_ghost!(local_indices,new_ghost_to_global,new_ghost_to_owner)
+    new_ghost_to_global, new_ghost_to_owner
+end
+
+"""
+    union_ghost(local_indices,gids,owners)
+
+Make the union of the ghost indices in `local_indices` with 
+ the global indices `gids` and owners `owners`.
+ Return an object  of the same type as `local_indices` with the new ghost indices and the same
+ own indices as in `local_indices`.
+ The result does not take ownership of `gids`  and `owners`. 
+"""
+function union_ghost(local_indices,gids,owners)
+    extra_gids, extra_owners = filter_ghost(local_indices,gids,owners)
+    ghost_to_global = get_ghost_to_global(local_indices)
+    ghost_to_owner = get_ghost_to_owner(local_indices)
+    new_gids = vcat(ghost_to_global,extra_gids)
+    new_owners = vcat(ghost_to_owner,extra_owners)
+    n_global = get_n_global(local_indices)
+    ghost = GhostIndices(n_global,new_gids,new_owners)
+    replace_ghost(local_indices,ghost)
 end
 
 function find_owner(local_indices,global_ids)
@@ -214,7 +219,7 @@ function find_owner(local_indices,global_ids)
 end
 
 """
-    struct PRange{A}
+    struct PRange{A,B}
 
 `PRange` (partitioned range) is a type representing a range of indices `1:n_global`
 distributed into several parts. The indices in the range `1:n_global` are called the
@@ -233,6 +238,9 @@ The same rationale applies for ghost and local indices.
 # Properties
 - `n_global::Int`: Number of global indices.
 - `local_indices::A`: Array-like object with `length(local_indices)` equal to the number of parts in the partitioned range.
+- `assembler::B`: Result of `vector_assembler(local_indices)`. We precompute this value and store it here since it is
+an expensive operation that we want to reuse.
+
 
 The item `local_indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`. `typeof(local_indices[i])` is a type that
 implements the methods of the [`AbstractLocalIndices`](@ref) interface. Use this
@@ -243,14 +251,16 @@ interface to access the underlying information about own, ghost, and local indic
     PRange{A} <: AbstractUnitRange{Int}
 
 """
-struct PRange{A} <: AbstractUnitRange{Int}
+struct PRange{A,B} <: AbstractUnitRange{Int}
     n_global::Int
     local_indices::A
+    assembler::B
     @doc """
-        PRange(n_global,local_indices)
+        PRange(n_global,local_indices[,assembler])
 
     Build an instance of [`Prange`](@ref) from the underlying properties
-    `n_global` and `local_indices`.
+    `n_global`, `local_indices`, and `assembler`. If `assembler` is not provided,
+    it will be computed as `assembler = vector_assembler(local_indices)`.
 
     # Examples
    
@@ -274,9 +284,10 @@ struct PRange{A} <: AbstractUnitRange{Int}
          [1, 2, 3, 4, 5]
          [4, 5, 6, 7, 8]
     """
-    function PRange(n_global,local_indices)
+    function PRange(n_global,local_indices,assembler = vector_assembler(local_indices))
         A = typeof(local_indices)
-        new{A}(Int(n_global),local_indices)
+        B = typeof(assembler)
+        new{A,B}(Int(n_global),local_indices,assembler)
     end
 end
 Base.first(a::PRange) = 1
@@ -423,33 +434,41 @@ look for the owners in parallel, when using a parallel back-end.
 find_owner(pr::PRange,global_ids) = find_owner(pr.local_indices,global_ids)
 
 """
-    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
+    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+
+Return an object of the same type as `pr` obtained by replacing the ghost
+ids in `pr` by the global ids in `gids`.
+The key-word arguments `kwargs...` are passed to [`vector_assembler`](@ref)
+when re-generating the assembler object.
 
 Equivalent to
     local_indices = map(replace_ghost,pr.local_indices,gids,owners)
-    PRange(pr.n_global,local_indices)
+    assembler = vector_assembler(local_indices;kwargs...)
+    PRange(pr.n_global,local_indices,assembler)
 """
-function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
+function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     local_indices = map(replace_ghost,pr.local_indices,gids,owners)
-    PRange(pr.n_global,local_indices)
+    assembler = vector_assembler(local_indices;kwargs...)
+    PRange(pr.n_global,local_indices,assembler)
 end
 
 """
-    append_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
+    union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
 
-Equivalent to `map(append_ghost!,pr.local_indices,gids,owners)`.
-"""
-function append_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
-    map(append_ghost!,pr.local_indices,gids,owners)
-end
+Return an object of the same type as `pr` that contains the union of the ghost
+ids in `pr` and the global ids in `gids`. 
+The key-word arguments `kwargs...` are passed to [`vector_assembler`](@ref)
+when re-generating the assembler object.
 
+Equivalent to
+    local_indices = map(union_ghost,pr.local_indices,gids,owners)
+    assembler = vector_assembler(local_indices;kwargs...)
+    PRange(pr.n_global,local_indices,assembler)
 """
-    union_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
-
-Equivalent to `map(union_ghost!,pr.local_indices,gids,owners)`.
-"""
-function union_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
-    map(union_ghost!,pr.local_indices,gids,owners)
+function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+    local_indices = map(union_ghost,pr.local_indices,gids,owners)
+    assembler = vector_assembler(local_indices;kwargs...)
+    PRange(pr.n_global,local_indices,assembler)
 end
 
 """
@@ -531,7 +550,12 @@ function PRange(::ConstantBlockSize,ranks,np,n,args...)
     local_indices = map(ranks) do rank
         block_with_constant_size(rank,np,n,args...)
     end
-    PRange(prod(n),local_indices)
+    if length(args) == 0
+        assembler = empty_assembler(local_indices)
+    else
+        assembler = vector_assembler(local_indices;symmetric=true)
+    end
+    PRange(prod(n),local_indices,assembler)
 end
 
 function block_with_constant_size(rank::Int,np::Int,n::Int)
@@ -690,7 +714,12 @@ function PRange(::VariableBlockSize,
         ghost = GhostIndices(n_global)
         LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
     end
-    PRange(n_global,local_indices)
+    if ghost == false
+        assembler = empty_assembler(local_indices)
+    else
+        assembler = vector_assembler(local_indices;symmetric=true)
+    end
+    PRange(n_global,local_indices,assembler)
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
@@ -805,15 +834,6 @@ function GhostIndices(n_global)
     ghost_to_global = Int[]
     ghost_to_owner = Int32[]
     GhostIndices(n_global,ghost_to_global,ghost_to_owner)
-end
-
-function append_ghost!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
-    n_ghost = length(a.ghost_to_global)
-    n_new_ghost = length(new_ghost_to_global)
-    append!(a.ghost_to_global,new_ghost_to_global)
-    append!(a.ghost_to_owner,new_ghost_to_owner)
-    a.global_to_ghost[new_ghost_to_global] = (1:n_new_ghost) .+ n_ghost
-    a
 end
 
 function replace_ghost(local_indices,gids,owners)
@@ -1018,18 +1038,6 @@ function replace_ghost(a::LocalIndices,ghost::GhostIndices)
     error("replace_ghost only makes sense for un-permuted local indices.")
 end
 
-function append_ghost!(a::LocalIndices,new_ghost_to_global,new_ghost_to_owner)
-    n_local = length(a.local_to_global)
-    n_new_ghost = length(new_ghost_to_global)
-    r = (1:n_new_ghost).+n_local
-    append!(a.local_to_global,new_ghost_to_global)
-    append!(a.local_to_owner,new_ghost_to_owner)
-    append!(a.perm,r)
-    append!(a.ghost_to_local,r)
-    a.global_to_local[new_ghost_to_global] = r
-    a
-end
-
 get_owner(a::LocalIndices) = a.owner
 
 get_n_local(a::LocalIndices) = length(a.local_to_global)
@@ -1118,11 +1126,6 @@ struct OwnAndGhostIndices <: AbstractLocalIndices
     function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
         new(own,ghost)
     end
-end
-
-function append_ghost!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_owner)
-    append_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
-    a
 end
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
@@ -1261,16 +1264,6 @@ function PermutedLocalIndices(local_indices,perm)
     end
     _perm = convert(Vector{Int32},perm)
     PermutedLocalIndices(local_indices,_perm,own_to_local,ghost_to_local)
-end
-
-function append_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_owner)
-    n_local = length(a.perm)
-    n_new_ghost = length(new_ghost_to_global)
-    r = (1:n_new_ghost).+n_local
-    append_ghost!(a.local_indices,new_ghost_to_global,new_ghost_to_owner)
-    append!(a.perm,r)
-    append!(a.ghost_to_local,r)
-    a
 end
 
 function replace_ghost(a::PermutedLocalIndices,::GhostIndices)
@@ -1514,11 +1507,6 @@ end
 
 const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,LocalIndicesWithVariableBlockSize}
 
-function append_ghost!(a::LocalIndicesInBlockPartition,new_ghost_to_global,new_ghost_to_owner)
-    append_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
-    a
-end
-
 function get_owner(a::LocalIndicesInBlockPartition)
     owner = LinearIndices(a.np)[a.p]
     Int32(owner)
@@ -1712,6 +1700,15 @@ function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
 
 end
 
+function empty_assembler(local_indices)
+    parts_snd = map(i->Int32[],local_indices)
+    parts_rcv = parts_snd
+    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),local_indices)
+    local_indices_rcv = local_indices_snd
+    graph = ExchangeGraph(parts_snd,parts_rcv)
+    Assembler(graph,local_indices_snd,local_indices_rcv)
+end
+
 function vector_assembler(local_indices;kwargs...)
     rank = linear_indices(local_indices)
     aux1 = map(rank,local_indices) do rank, local_indices
@@ -1762,7 +1759,7 @@ function vector_assembler(local_indices;kwargs...)
     Assembler(graph,local_indices_snd,local_indices_rcv)
 end
 
-function assemble!(f,a,assember,
+function assemble!(f,a,assembler,
     buffer_snd = allocate_assembly_buffer_snd(a,assembler),
     buffer_rcv = allocate_assembly_buffer_rcv(a,assembler))
     # Fill snd buffer
