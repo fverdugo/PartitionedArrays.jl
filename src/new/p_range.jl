@@ -155,6 +155,18 @@ Return an array with the inverse index map of `get_ghost_to_local(indices)`.
 """
 function get_local_to_ghost end
 
+function get_permutation(indices)
+    n_local = get_n_local(indices)
+    n_own = get_n_own(indices)
+    n_ghost = get_n_ghost(indices)
+    own_to_local = get_own_to_local(indices)
+    ghost_to_local = get_ghost_to_local(indices)
+    perm = zeros(Int32,n_local)
+    perm[own_to_local] = 1:n_own
+    perm[ghost_to_local] = (1:n_ghost) .+ n_own
+    perm
+end
+
 """
     replace_ghost(indices,gids,owners)
 
@@ -1000,6 +1012,8 @@ struct LocalIndices <: AbstractLocalIndices
     global_to_local::VectorFromDict{Int,Int32}
 end
 
+get_permutation(a::LocalIndices) = a.perm
+
 """
     LocalIndices(n_global,owner,local_to_global,local_to_owner)
 
@@ -1128,6 +1142,8 @@ struct OwnAndGhostIndices <: AbstractLocalIndices
         new(own,ghost)
     end
 end
+
+get_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(get_n_local(a))
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
     OwnAndGhostIndices(a.own,ghost)
@@ -1507,6 +1523,8 @@ function find_owner(indices,global_ids,::Type{<:LocalIndicesWithVariableBlockSiz
 end
 
 const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,LocalIndicesWithVariableBlockSize}
+
+get_permutation(a::LocalIndicesInBlockPartition) = Int32(1):Int32(get_n_local(a))
 
 function get_owner(a::LocalIndicesInBlockPartition)
     owner = LinearIndices(a.np)[a.p]
