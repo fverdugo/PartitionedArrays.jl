@@ -70,8 +70,8 @@ function p_range_tests(distribute)
    end
    # First create a PRange without ghost
    pr = PRange(VariableBlockSize(),rank,n_own,n;start)
-   # Then set the ghost
-   set_ghost!(pr,gids)
+   # Then replace the ghost
+   pr = replace_ghost(pr,gids)
 
    # Same as before but save some communications
    # by providing the owners
@@ -79,7 +79,7 @@ function p_range_tests(distribute)
        Int32[]
    end
    pr = PRange(VariableBlockSize(),rank,n_own,n;start)
-   set_ghost!(pr,gids,owners)
+   pr = replace_ghost(pr,gids,owners)
 
    # We can achieve the same without taking ownership of the
    # gids and owners

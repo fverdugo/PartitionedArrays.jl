@@ -24,7 +24,7 @@ The following functions form the `AbstractLocalIndices` interface:
 - [`get_ghost_to_local`](@ref)
 - [`get_local_to_own`](@ref)
 - [`get_local_to_ghost`](@ref)
-- [`set_ghost!`](@ref)
+- [`replace_ghost`](@ref)
 - [`append_ghost!`](@ref)
 - [`union_ghost!`](@ref)
 
@@ -157,18 +157,18 @@ Return an array with the inverse index map of `get_ghost_to_local(local_indices)
 function get_local_to_ghost end
 
 """
-    set_ghost!(local_indices,gids,owners)
+    replace_ghost(local_indices,gids,owners)
 
-Set the ghost indices in `local_indices` with global ids in `gids` and owners in 
- `owners`. `local_indices` takes ownership of `gids`  and `owners`. This method 
+Replaces the ghost indices in `local_indices` with global ids in `gids` and owners in 
+ `owners`. Returned object takes ownership of `gids`  and `owners`. This method 
 only makes sense if `local_indices` stores ghost ids in separate vectors like in
 [`OwnAndGhostIndices`](@ref). `gids` should be unique and not being owned by
  `local_indices`.
 """
-function set_ghost! end
+function replace_ghost end
 
 """
-    set_ghost!(local_indices,gids,owners)
+    append_ghost!(local_indices,gids,owners)
 
 Append the global indices `gids` and owners `owners` in the ghost indices in `local_indices`. `local_indices` does not take ownership of `gids`  and `owners`. 
  `gids` should be unique and not being already present in `local_indices`.
@@ -423,12 +423,15 @@ look for the owners in parallel, when using a parallel back-end.
 find_owner(pr::PRange,global_ids) = find_owner(pr.local_indices,global_ids)
 
 """
-    set_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
+    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
 
-Equivalent to `map(set_ghost!,pr.local_indices,gids,owners)`.
+Equivalent to
+    local_indices = map(replace_ghost,pr.local_indices,gids,owners)
+    PRange(pr.n_global,local_indices)
 """
-function set_ghost!(pr::PRange,gids,owners=find_owner(pr,gids))
-    map(set_ghost!,pr.local_indices,gids,owners)
+function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
+    local_indices = map(replace_ghost,pr.local_indices,gids,owners)
+    PRange(pr.n_global,local_indices)
 end
 
 """
@@ -769,19 +772,11 @@ Container for ghost indices.
 
     GhostIndices <: Any
 """
-mutable struct GhostIndices
+struct GhostIndices
     n_global::Int
     ghost_to_global::Vector{Int}
     ghost_to_owner::Vector{Int32}
     global_to_ghost::VectorFromDict{Int,Int32}
-end
-
-function copy!(a::GhostIndices,b::GhostIndices)
-    a.n_global = b.n_global
-    a.ghost_to_global = b.ghost_to_global
-    a.ghost_to_owner = b.ghost_to_owner
-    a.global_to_ghost = b.global_to_ghost
-    a
 end
 
 """
@@ -812,11 +807,6 @@ function GhostIndices(n_global)
     GhostIndices(n_global,ghost_to_global,ghost_to_owner)
 end
 
-function set_ghost!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
-    new_ghost = GhostIndices(a.n_global,new_ghost_to_global,new_ghost_to_owner)
-    copy!(a,new_ghost)
-end
-
 function append_ghost!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
     n_ghost = length(a.ghost_to_global)
     n_new_ghost = length(new_ghost_to_global)
@@ -824,6 +814,12 @@ function append_ghost!(a::GhostIndices,new_ghost_to_global,new_ghost_to_owner)
     append!(a.ghost_to_owner,new_ghost_to_owner)
     a.global_to_ghost[new_ghost_to_global] = (1:n_new_ghost) .+ n_ghost
     a
+end
+
+function replace_ghost(local_indices,gids,owners)
+    n_global = get_n_global(local_indices)
+    ghost = GhostIndices(n_global,gids,owners)
+    replace_ghost(local_indices,ghost)
 end
 
 # This is essentially a FillArray
@@ -1018,8 +1014,8 @@ function LocalIndices(
         global_to_local)
 end
 
-function set_ghost!(a::LocalIndices,new_ghost_to_global,new_ghost_to_owner)
-    error("set_ghost! only makes sense for un-permuted local indices.")
+function replace_ghost(a::LocalIndices,ghost::GhostIndices)
+    error("replace_ghost only makes sense for un-permuted local indices.")
 end
 
 function append_ghost!(a::LocalIndices,new_ghost_to_global,new_ghost_to_owner)
@@ -1129,9 +1125,8 @@ function append_ghost!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_ow
     a
 end
 
-function set_ghost!(a::OwnAndGhostIndices,new_ghost_to_global,new_ghost_to_owner)
-    set_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
-    a
+function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
+    OwnAndGhostIndices(a.own,ghost)
 end
 
 get_owner(a::OwnAndGhostIndices) = a.own.owner
@@ -1278,8 +1273,8 @@ function append_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_
     a
 end
 
-function set_ghost!(a::PermutedLocalIndices,new_ghost_to_global,new_ghost_to_owner)
-    error("set_ghost! only makes sense for un-permuted local indices.")
+function replace_ghost(a::PermutedLocalIndices,::GhostIndices)
+    error("replace_ghost only makes sense for un-permuted local indices.")
 end
 
 get_owner(a::PermutedLocalIndices) = get_owner(a.local_indices)
@@ -1478,6 +1473,10 @@ function Base.propertynames(x::LocalIndicesWithConstantBlockSize, private::Bool=
   (fieldnames(typeof(x))...,:ranges)
 end
 
+function replace_ghost(a::LocalIndicesWithConstantBlockSize,ghost::GhostIndices)
+    LocalIndicesWithConstantBlockSize(a.p,a.np,a.n,ghost)
+end
+
 function find_owner(local_indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSize})
     map(local_indices,global_ids) do local_indices,global_ids
         start = map(local_indices.np,local_indices.n) do np,n
@@ -1498,6 +1497,10 @@ struct LocalIndicesWithVariableBlockSize{N} <: AbstractLocalIndices
     ghost::GhostIndices
 end
 
+function replace_ghost(a::LocalIndicesWithVariableBlockSize,ghost::GhostIndices)
+    LocalIndicesWithVariableBlockSize(a.p,a.np,a.n,a.ranges,ghost)
+end
+
 function find_owner(local_indices,global_ids,::Type{<:LocalIndicesWithVariableBlockSize})
     initial = map(local_indices->map(first,local_indices.ranges),local_indices) |> collect |> unpack
     map(local_indices,global_ids) do local_indices,global_ids
@@ -1513,11 +1516,6 @@ const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,Loc
 
 function append_ghost!(a::LocalIndicesInBlockPartition,new_ghost_to_global,new_ghost_to_owner)
     append_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
-    a
-end
-
-function set_ghost!(a::LocalIndicesInBlockPartition,new_ghost_to_global,new_ghost_to_owner)
-    set_ghost!(a.ghost,new_ghost_to_global,new_ghost_to_owner)
     a
 end
 

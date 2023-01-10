@@ -78,7 +78,7 @@ export get_own_to_local
 export get_ghost_to_local
 export get_local_to_own
 export get_local_to_ghost
-export set_ghost!
+export replace_ghost
 export append_ghost!
 export union_ghost!
 export find_owner
