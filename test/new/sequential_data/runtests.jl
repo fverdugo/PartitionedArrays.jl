@@ -7,4 +7,8 @@ using PartitionedArrays
 
 @testset "primitives" begin include("primitives_tests.jl")  end
 
+@testset "p_range" begin include("p_range_tests.jl")  end
+
+@testset "p_vector" begin include("p_vector_tests.jl")  end
+
 end #module

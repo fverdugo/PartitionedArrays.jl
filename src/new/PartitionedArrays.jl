@@ -88,3 +88,17 @@ export assembly_buffer_snd
 export assembly_buffer_rcv
 include("p_range.jl")
 
+export get_local_values
+export get_own_values
+export get_ghost_values
+export allocate_local_values
+export OwnAndGhostValues
+export PVector
+export pvector
+export pfill
+export pzeros
+export pones
+export prand
+export prandn
+include("p_vector.jl")
+

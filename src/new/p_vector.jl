@@ -1,72 +1,54 @@
 
-abstract type AbstractLocalVector{T} end
-
 function get_local_values end
 
 function get_own_values end
 
 function get_ghost_values end
 
-function similar_local_vector end
-
-struct LocalVector{T} <: AbstractLocalVector{T}
-    local_values::Vector{T}
+function allocate_local_values(a,::Type{T},indices) where T
+    similar(a,T,get_n_local(indices))
 end
 
-function similar_local_vector(::Type{<:LocalVector},::Type{T},indices) where T
-    n_local = get_n_local(indices)
-    local_values = Vector{T}(undef,n_local)
-    LocalVector(local_values)
+function allocate_local_values(::Type{V},indices) where V
+    similar(V,get_n_local(indices))
 end
 
-function get_local_values(values::LocalVector,indices)
-    values.local_values
+function get_local_values(values,indices)
+    values
 end
 
-function get_own_values(values::LocalVector,indices)
+function get_own_values(values,indices)
     own_to_local = get_own_to_local(indices)
-    view(values.local_values,own_to_local)
+    view(values,own_to_local)
 end
 
-function get_ghost_values(values::LocalVector,indices)
+function get_ghost_values(values,indices)
     ghost_to_local = get_ghost_to_local(indices)
-    view(values.local_values,ghost_to_local)
+    view(values,ghost_to_local)
 end
 
-struct OwnAndGhostVectors{T} <: AbstractLocalVector{T}
-    own_values::Vector{T}
-    ghost_values::Vector{T}
-end
-
-function similar_local_vector(::Type{<:OwnAndGhostVectors},::Type{T},indices) where T
-    n_own = get_n_own(indices)
-    n_ghost = get_n_ghost(indices)
-    own_values = Vector{T}(undef,n_own)
-    ghost_values = Vector{T}(undef,n_ghost)
-    OwnAndGhostVectors(own_values,ghost_values)
-end
-
-function get_local_values(values::LocalVector,indices)
-    perm = get_permutation(indices)
-    LocalToValue(values.own_values,values.ghost_values,perm)
-end
-
-function get_own_values(values::LocalVector,indices)
-    values.own_values
-end
-
-function get_ghost_values(values::LocalVector,indices)
-    values.ghost_values
-end
-
-struct LocalToValue{T,C} <: AbstractVector{T}
-    own_values::Vector{T}
-    ghost_values::Vector{T}
+struct OwnAndGhostValues{A,C,T} <: AbstractVector{T}
+    own_values::A
+    ghost_values::A
     perm::C
+    function OwnAndGhostValues{A,C}(own_values,ghost_values,perm) where {A,C}
+        T = eltype(A)
+        new{A,C,T}(
+          convert(A,own_values),
+          convert(A,ghost_values),
+          convert(C,perm))
+    end
 end
-Base.IndexStyle(::Type{<:LocalToValue}) = IndexLinear()
-Base.size(a::LocalToValue) = (length(a.own_values)+length(a.ghost_values),)
-function Base.getindex(a::LocalToValue,local_id::Int)
+function OwnAndGhostValues{A}(own_values,ghost_values,perm) where A
+    C = typeof(perm)
+    OwnAndGhostValues{A,C}(own_values,ghost_values,perm)
+end
+function OwnAndGhostValues(own_values::A,ghost_values::A,perm) where A
+    OwnAndGhostValues{A}(own_values,ghost_values,perm)
+end
+Base.IndexStyle(::Type{<:OwnAndGhostValues}) = IndexLinear()
+Base.size(a::OwnAndGhostValues) = (length(a.own_values)+length(a.ghost_values),)
+function Base.getindex(a::OwnAndGhostValues,local_id::Int)
     n_own = length(a.own_values)
     j = a.perm[local_id]
     if j > n_own
@@ -75,10 +57,58 @@ function Base.getindex(a::LocalToValue,local_id::Int)
         a.own_values[j]
     end
 end
+function Base.setindex!(a::OwnAndGhostValues,v,local_id::Int)
+    n_own = length(a.own_values)
+    j = a.perm[local_id]
+    if j > n_own
+        a.ghost_values[j-n_own] = v
+    else
+        a.own_values[j] = v
+    end
+    v
+end
 
-struct PVector{T,A,B} <: AbstractVector{T}
+function get_own_values(values::OwnAndGhostValues,indices)
+    values.own_values
+end
+
+function get_ghost_values(values::OwnAndGhostValues,indices)
+    values.ghost_values
+end
+
+function allocate_local_values(values::OwnAndGhostValues,::Type{T},indices) where T
+    n_own = get_n_own(indices)
+    n_ghost = get_n_ghost(indices)
+    own_values = similar(values.own_values,T,n_own)
+    ghost_values = similar(values.ghost_values,T,n_ghost)
+    perm = get_permutation(indices)
+    OwnAndGhostValues(own_values,ghost_values,perm)
+end
+
+function allocate_local_values(::Type{<:OwnAndGhostValues{A}},indices) where {A}
+    n_own = get_n_own(indices)
+    n_ghost = get_n_ghost(indices)
+    own_values = similar(A,n_own)
+    ghost_values = similar(A,n_ghost)
+    perm = get_permutation(indices)
+    OwnAndGhostValues{A}(own_values,ghost_values,perm)
+end
+
+struct PVector{V,A,B,T} <: AbstractVector{T}
     values::A
     rows::B
+    function PVector(values,rows::PRange)
+        V = eltype(values)
+        T = eltype(V)
+        A = typeof(values)
+        B = typeof(rows)
+        new{V,A,B,T}(values,rows)
+    end
+end
+
+function Base.show(io::IO,k::MIME"text/plain",data::PVector)
+    println(io,typeof(data)," on $(length(data.values)) parts")
+
 end
 
 function get_local_values(a::PVector)
@@ -99,39 +129,168 @@ Base.IndexStyle(::Type{<:PVector}) = IndexLinear()
 function Base.getindex(a::PVector,gid::Int)
     scalar_indexing_action(a)
 end
-
-function Base.similar(a::PVector)
-    similar(a,eltype(a),axes(a))
+function Base.setindex(a::PVector,v,gid::Int)
+    scalar_indexing_action(a)
 end
 
-function Base.similar(a::PVector,::Type{T}) where T
-    similar(a,T,axes(a))
-end
-
-function Base.similar(a::PVector,::Type{T},axes::Tuple) where T
-    error("Not enough information to build a PVector")
-end
-
-function Base.similar(a::PVector,::Type{T},axes::Tuple{<:PRange}) where T
-    rows = axes[1]
+function Base.similar(a::PVector,::Type{T},inds::Tuple{<:PRange}) where T
+    rows = inds[1]
     values = map(a.values,rows.indices) do values, indices
-        similar_local_vector(typeof(values),T,indices)
+        allocate_local_values(values,T,indices)
     end
     PVector(values,rows)
 end
 
-function Base.similar(::Type{<:PVector},axes::Tuple)
-    error("Not enough information to build a PVector")
-end
-
-function Base.similar(P::Type{<:PVector{A}},axes::Tuple{<:PRange}) where A
-  T = eltype(P)
-  V = eltype(A)
-  rows = axes[1]
+function Base.similar(::Type{<:PVector{V}},inds::Tuple{<:PRange}) where V
+  rows = inds[1]
   values = map(rows.indices) do indices
-      similar_local_vector(V,T,indices)
+      allocate_local_values(V,indices)
   end
   PVector(values,rows)
+end
+
+function Base.copy!(a::PVector,b::PVector)
+    @assert length(a) == length(b)
+    copyto!(a,b)
+end
+
+function Base.copyto!(a::PVector,b::PVector)
+    if a.rows.indices === b.rows.indices
+        map(copy!,a.values,b.values)
+    elseif matching_own_indices(a,b)
+        map(copy!,get_own_values(a),get_own_values(b))
+    else
+        error("Trying to copy a PVector into another one with a different data layout. This case is not implemented yet. It would require communications.")
+    end
+    a
+end
+
+function Base.fill!(a::PVector,v)
+    map(a.values) do values
+        fill!(values,v)
+    end
+    a
+end
+
+function pvector(f,rows)
+    values = map(rows.indices) do indices
+        f(indices)
+    end
+    PVector(values,rows)
+end
+
+PVector(::UndefInitializer,rows::PRange) = PVector{Vector{Float64}}(undef,rows)
+PVector{V}(::UndefInitializer,rows::PRange) where V = pvector(indices->allocate_local_values(V,indices),rows)
+pfill(v,rows) = pvector(indices->fill(v,get_n_local(indices)),rows)
+pzeros(rows) = pzeros(Float64,rows)
+pzeros(::Type{T},rows) where T = pvector(indices->zeros(T,get_n_local(indices)),rows)
+pones(rows) = pones(Float64,rows)
+pones(::Type{T},rows) where T = pvector(indices->ones(T,get_n_local(indices)),rows)
+prand(rows) = pvector(indices->rand(get_n_local(indices)),rows)
+prand(s,rows) = pvector(indices->rand(S,get_n_local(indices)),rows)
+prand(rng,s,rows) = pvector(indices->rand(rng,S,get_n_local(indices)),rows)
+prandn(rows) = pvector(indices->randn(get_n_local(indices)),rows)
+prandn(s,rows) = pvector(indices->randn(S,get_n_local(indices)),rows)
+prandn(rng,s,rows) = pvector(indices->randn(rng,S,get_n_local(indices)),rows)
+
+function Base.:(==)(a::PVector,b::PVector)
+    length(a) == length(b) &&
+    length(a.values) == length(b.values) &&
+    reduce(&,map(==,get_own_values(a),get_own_values(b)),init=true)
+end
+
+function Base.any(f::Function,x::PVector)
+    partials = map(get_own_values(f)) do o
+        any(f,o)
+    end
+    reduce(|,partials,init=false)
+end
+
+function Base.all(f::Function,x::PVector)
+    partials = map(get_own_values(x)) do o
+        all(f,o)
+    end
+    reduce(&,partials,init=true)
+end
+
+Base.maximum(x::PVector) = maximum(identity,x)
+function Base.maximum(f::Function,x::PVector)
+    partials = map(get_own_values(x)) do o
+        maximum(f,o,init=typemin(eltype(x)))
+    end
+    reduce(max,partials,init=typemin(eltype(x)))
+end
+
+Base.minimum(x::PVector) = minimum(identity,x)
+function Base.minimum(f::Function,x::PVector)
+    partials = map(get_own_values(x)) do o
+        minimum(f,o,init=typemax(eltype(x)))
+    end
+    reduce(min,partials,init=typemax(eltype(x)))
+end
+
+function Base.:*(a::Number,b::PVector)
+    values = map(b.values) do values
+        a*values
+    end
+    PVector(values,b.rows)
+end
+
+function Base.:*(b::PVector,a::Number)
+    a*b
+end
+
+function Base.:/(b::PVector,a::Number)
+    (1/a)*b
+end
+
+for op in (:+,:-)
+    @eval begin
+        function Base.$op(a::PVector)
+            values = map($op,a.values)
+            PVector(values,a.rows)
+        end
+        function Base.$op(a::PVector,b::PVector)
+            $op.(a,b)
+        end
+    end
+end
+
+function neutral_element end
+neutral_element(::typeof(+),::Type{T}) where T = zero(T)
+neutral_element(::typeof(&),::Type) = true
+neutral_element(::typeof(|),::Type) = false
+neutral_element(::typeof(min),::Type{T}) where T = typemax(T)
+neutral_element(::typeof(max),::Type{T}) where T = typemin(T)
+
+function Base.reduce(op,a::PVector;neutral=neutral_element(op,eltype(a)),kwargs...)
+    b = map(get_own_values(a)) do a
+        reduce(op,a,init=neutral)
+    end
+    reduce(op,b;kwargs...)
+end
+
+function Base.sum(a::PVector)
+  reduce(+,a,init=zero(eltype(a)))
+end
+
+function LinearAlgebra.dot(a::PVector,b::PVector)
+    c = map(dot,get_own_values(a),get_own_values(b))
+    sum(c)
+end
+
+function LinearAlgebra.rmul!(a::PVector,v::Number)
+    map(a.values) do l
+        rmul!(l,v)
+    end
+    a
+end
+
+function LinearAlgebra.norm(a::PVector,p::Real=2)
+    contibs = map(get_own_values(a)) do oid_to_value
+        norm(oid_to_value,p)^p
+    end
+    reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
 end
 
 

@@ -27,8 +27,14 @@ The following functions form the `AbstractLocalIndices` interface:
 - [`replace_ghost`](@ref)
 - [`union_ghost`](@ref)
 
+# Supertype hierarchy
+
+    AbstractLocalIndices <: AbstractUnitRange{Int}
+
 """
-abstract type AbstractLocalIndices end
+abstract type AbstractLocalIndices <: AbstractUnitRange{Int} end
+Base.first(a::AbstractLocalIndices) = 1
+Base.last(a::AbstractLocalIndices) = Int(get_n_local(a))
 
 """
     get_n_local(indices)
@@ -165,6 +171,24 @@ function get_permutation(indices)
     perm[own_to_local] = 1:n_own
     perm[ghost_to_local] = (1:n_ghost) .+ n_own
     perm
+end
+
+function matching_local_indices(a,b)
+    a === b && return true
+    get_local_to_global(a) == get_local_to_global(b) &&
+    get_local_to_owner(a) == get_local_to_owner(b)
+end
+
+function matching_own_indices(a,b)
+    a === b && return true
+    get_own_to_global(a) == get_own_to_global(b) &&
+    get_owner(a) == get_owner(b)
+end
+
+function matching_ghost_indices(a,b)
+    a === b && return true
+    get_ghost_to_global(a) == get_ghost_to_global(b) &&
+    get_ghost_to_owner(a) == get_ghost_to_owner(b)
 end
 
 """
@@ -482,6 +506,24 @@ function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(union_ghost,pr.indices,gids,owners)
     assembler = vector_assembler(indices;kwargs...)
     PRange(pr.n_global,indices,assembler)
+end
+
+function matching_local_indices(a::PRange,b::PRange)
+    a.indices === b.indices && return true
+    c = map(matching_local_indices,a.indices,b.indices)
+    reduce(&,c,init=true)
+end
+
+function matching_own_indices(a::PRange,b::PRange)
+    a.indices === b.indices && return true
+    c = map(matching_own_indices,a.indices,b.indices)
+    reduce(&,c,init=true)
+end
+
+function matching_ghost_indices(a::PRange,b::PRange)
+    a.indices === b.indices && return true
+    c = map(matching_ghost_indices,a.indices,b.indices)
+    reduce(&,c,init=true)
 end
 
 """
