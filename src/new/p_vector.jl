@@ -111,15 +111,15 @@ function Base.show(io::IO,k::MIME"text/plain",data::PVector)
 end
 
 function get_local_values(a::PVector)
-    map(get_local_values,a.values,rows.indices)
+    map(get_local_values,a.values,a.rows.indices)
 end
 
 function get_own_values(a::PVector)
-    map(get_own_values,a.values,rows.indices)
+    map(get_own_values,a.values,a.rows.indices)
 end
 
 function get_ghost_values(a::PVector)
-    map(get_ghost_values,a.values,rows.indices)
+    map(get_ghost_values,a.values,a.rows.indices)
 end
 
 Base.size(a::PVector) = (length(a.rows),)
@@ -137,7 +137,7 @@ function assemble!(a::PVector)
 end
 
 function assemble!(o,a::PVector)
-    t = assemble!(o,a.values,a.assembler)
+    t = assemble!(o,a.values,a.rows.assembler)
     @async begin
         wait(t)
         a
@@ -146,7 +146,7 @@ end
 
 function consistent!(a::PVector)
     insert(a,b) = b
-    t = assemble!(insert,a.values,reverse(a.assembler))
+    t = assemble!(insert,a.values,reverse(a.rows.assembler))
     @async begin
         wait(t)
         a
@@ -220,7 +220,7 @@ function Base.:(==)(a::PVector,b::PVector)
 end
 
 function Base.any(f::Function,x::PVector)
-    partials = map(get_own_values(f)) do o
+    partials = map(get_own_values(x)) do o
         any(f,o)
     end
     reduce(|,partials,init=false)
@@ -314,7 +314,7 @@ function LinearAlgebra.norm(a::PVector,p::Real=2)
 end
 
 struct PBroadcasted{A,B,C}
-    owned_values::A
+    own_values::A
     ghost_values::B
     rows::C
 end
@@ -325,40 +325,40 @@ function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
     a1 = first(args)
     @boundscheck @assert all(ai->matching_own_indices(ai.rows,a1.rows),args)
     owned_values_in = map(get_own_values,args)
-    owned_values = map((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
-    if all(ai->ai.rows===a1.rows,args) && !any(ai->ai.ghost_values===nothing,args)
+    own_values = map((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
+    if all(ai->ai.rows===a1.rows,args) && !any(ai->get_ghost_values(ai)===nothing,args)
         ghost_values_in = map(get_ghost_values,args)
         ghost_values = map((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
     else
         ghost_values = nothing
     end
-    PBroadcasted(owned_values,ghost_values,a1.rows)
+    PBroadcasted(own_values,ghost_values,a1.rows)
 end
 
 function Base.broadcasted( f, a::Number, b::Union{PVector,PBroadcasted})
-    owned_values = map(b->Base.broadcasted(f,a,b),get_own_values(b))
+    own_values = map(b->Base.broadcasted(f,a,b),get_own_values(b))
     if b.ghost_values !== nothing
         ghost_values = map(b->Base.broadcasted(f,a,b),get_ghost_values(b))
     else
         ghost_values = nothing
     end
-    PBroadcasted(owned_values,ghost_values,b.rows)
+    PBroadcasted(own_values,ghost_values,b.rows)
 end
 
 function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
-    owned_values = map(a->Base.broadcasted(f,a,b),get_own_values(a))
+    own_values = map(a->Base.broadcasted(f,a,b),get_own_values(a))
     if a.ghost_values !== nothing
         ghost_values = map(a->Base.broadcasted(f,a,b),get_ghost_values(a))
     else
         ghost_values = nothing
     end
-    PBroadcasted(owned_values,ghost_values,a.rows)
+    PBroadcasted(own_values,ghost_values,a.rows)
 end
 
 function Base.materialize(b::PBroadcasted)
     T = eltype(eltype(b.own_values))
     a = PVector{Vector{T}}(undef,b.rows)
-    materialize!(a,b)
+    Base.materialize!(a,b)
     a
 end
 
@@ -372,8 +372,8 @@ end
 
 for M in Distances.metrics
     @eval begin
-        function (dist::$M)(a::PVector,b::PVector)
-            if Distances.parameters(dist) !== nothing
+        function (d::$M)(a::PVector,b::PVector)
+            if Distances.parameters(d) !== nothing
                 error("Only distances without parameters are implemented at this moment")
             end
             partials = map(get_own_values(a),get_own_values(b)) do a,b
@@ -408,11 +408,11 @@ for M in Distances.metrics
 end
 
 function pvector_coo!(I,V,rows;kwargs...)
-    pvector_coo(+,Vector{Float64},I,V,rows;kwargs...)
+    pvector_coo!(+,Vector{Float64},I,V,rows;kwargs...)
 end
 
 function pvector_coo!(::Type{T},I,V,rows;kwargs...) where T
-    pvector_coo(+,T,I,V,rows;kwargs...)
+    pvector_coo!(+,T,I,V,rows;kwargs...)
 end
 
 function pvector_coo!(op,::Type{T},I,V,rows;owners=find_owner(rows,I),init=neutral_element(op,eltype(T))) where T
@@ -452,10 +452,6 @@ function assemble_coo!(I,V,rows)
 end
 
 function assemble_coo!(I,J,V,rows)
-    part = linear_indices(rows.indices)
-    parts_snd = rows.assembler.parts_snd
-    parts_rcv = rows.assembler.parts_rcv
-    coo_values = map_parts(tuple,I,J,V)
     function setup_snd(part,parts_snd,row_lids,coo_values)
         global_to_local = get_global_to_local(row_lids)
         local_to_owner = get_local_to_owner(row_lids)
@@ -471,8 +467,8 @@ function assemble_coo!(I,J,V,rows)
             end
         end
         length_to_ptrs!(ptrs)
-        gi_snd_data = zeros(Int,ptrs[end]-1)
-        gj_snd_data = zeros(Int,ptrs[end]-1)
+        gi_snd_data = zeros(eltype(k_gi),ptrs[end]-1)
+        gj_snd_data = zeros(eltype(k_gj),ptrs[end]-1)
         v_snd_data = zeros(eltype(k_v),ptrs[end]-1)
         for k in 1:length(k_gi)
             gi = k_gi[k]
@@ -512,19 +508,24 @@ function assemble_coo!(I,J,V,rows)
             k_v[current_n+p] = v
         end
     end
+    part = linear_indices(rows.indices)
+    parts_snd = rows.assembler.parts_snd
+    parts_rcv = rows.assembler.parts_rcv
+    graph = ExchangeGraph(parts_snd,parts_rcv)
+    coo_values = map(tuple,I,J,V)
     aux1 = map(setup_snd,part,parts_snd,rows.indices,coo_values)
     gi_snd, gj_snd, v_snd = aux1 |> unpack
-    t1 = exchange(gi_snd,parts_rcv,parts_snd)
-    t3 = exchange(v_snd,parts_rcv,parts_snd)
+    t1 = exchange(gi_snd,graph)
+    t3 = exchange(v_snd,graph)
     if J !== V
-        t2 = exchange(gj_snd,parts_rcv,parts_snd)
+        t2 = exchange(gj_snd,graph)
     else
         t2 = t3
     end
     @async begin
-        gi_snd = fetch(t1)
-        gj_snd = fetch(t2)
-        v_snd = fetch(t3) 
+        gi_rcv = fetch(t1)
+        gj_rcv = fetch(t2)
+        v_rcv = fetch(t3) 
         map(setup_rcv,part,rows.indices,gi_rcv,gj_rcv,v_rcv,coo_values)
         I,J,V
     end

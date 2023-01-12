@@ -102,5 +102,8 @@ export pzeros
 export pones
 export prand
 export prandn
+export consistent!
+export pvector_coo!
+export assemble_coo!
 include("p_vector.jl")
 

@@ -1,9 +1,13 @@
 using PartitionedArrays
 using Test
+using LinearAlgebra
+using Random
+using Distances
 
 function p_vector_tests(distribute)
 
-    rank = distribute(LinearIndices((4,)))
+    np = 4
+    rank = distribute(LinearIndices((np,)))
     rows = PRange(ConstantBlockSize(),rank,(2,2),(6,6))
 
     a1 = PVector(undef,rows)
@@ -27,5 +31,37 @@ function p_vector_tests(distribute)
     a = pones(rows)
     a = prand(rows)
     a = prandn(rows)
+    assemble!(a) |> wait
+    consistent!(a) |> wait
+
+    @test a == copy(a)
+
+    n = 10
+    I,V = map(rank) do rank
+        Random.seed!(123)
+        I = rand(1:n,5)
+        Random.seed!(123)
+        V = rand(5)
+        I,V
+    end |> unpack
+
+    rows = PRange(ConstantBlockSize(),rank,np,n)
+    a = pvector_coo!(I,V,rows) |> fetch
+
+    @test any(i->i>n,a) == false
+    @test all(i->i<n,a)
+    @test minimum(a) <= maximum(a)
+
+    b = 2*a
+    b = a*2
+    b = a/2
+    c = a + b
+    c = a - b
+
+    r = reduce(+,a)
+    @test sum(a) == r
+    @test norm(a) > 0
+    @test sqrt(a⋅a) ≈ norm(a)
+    @test euclidean(a,a) + 1 ≈ 1
 
 end
