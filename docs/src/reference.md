@@ -1,12 +1,5 @@
 # API Reference
 
-## Jagged arrays
-
-```@autodocs
-Modules = [PartitionedArrays]
-Pages = ["jagged_array.jl"]
-```
-
 ## Back-ends
 
 ```@autodocs
@@ -27,3 +20,18 @@ Pages = ["primitives.jl"]
 Modules = [PartitionedArrays]
 Pages = ["p_range.jl"]
 ```
+
+## Partitioned vectors
+
+```@autodocs
+Modules = [PartitionedArrays]
+Pages = ["p_vector.jl"]
+```
+
+## Helpers
+
+```@autodocs
+Modules = [PartitionedArrays]
+Pages = ["jagged_array.jl","sparse_utils.jl"]
+```
+

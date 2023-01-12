@@ -1756,9 +1756,10 @@ end
 Container type storing symbolic information needed in assembly-like operations.
 
 # Properties
-    - `exchange_graph::A`: Instance of `ExchangeGraph` indicating to which parts we need to send and receive to/from.
-    - `local_indices_snd::B`: Contains the local ids of the data we want to send.
-    - `local_indices_rcv::B`: Contains the local ids of the data we want to receive.
+
+- `exchange_graph::A`: Instance of `ExchangeGraph` indicating to which parts we need to send and receive to/from.
+- `local_indices_snd::B`: Contains the local ids of the data we want to send.
+- `local_indices_rcv::B`: Contains the local ids of the data we want to receive.
 
 See [`assemble!](@ref) for full details on the format of these fields.
 
