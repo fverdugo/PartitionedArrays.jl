@@ -108,7 +108,6 @@ end
 
 function Base.show(io::IO,k::MIME"text/plain",data::PVector)
     println(io,typeof(data)," on $(length(data.values)) parts")
-
 end
 
 function get_local_values(a::PVector)
@@ -291,6 +290,100 @@ function LinearAlgebra.norm(a::PVector,p::Real=2)
         norm(oid_to_value,p)^p
     end
     reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
+end
+
+struct PBroadcasted{A,B,C}
+    owned_values::A
+    ghost_values::B
+    rows::C
+end
+get_own_values(a::PBroadcasted) = a.own_values
+get_ghost_values(a::PBroadcasted) = a.ghost_values
+
+function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
+    a1 = first(args)
+    @boundscheck @assert all(ai->matching_own_indices(ai.rows,a1.rows),args)
+    owned_values_in = map(get_own_values,args)
+    owned_values = map((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
+    if all(ai->ai.rows===a1.rows,args) && !any(ai->ai.ghost_values===nothing,args)
+        ghost_values_in = map(get_ghost_values,args)
+        ghost_values = map((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
+    else
+        ghost_values = nothing
+    end
+    PBroadcasted(owned_values,ghost_values,a1.rows)
+end
+
+function Base.broadcasted( f, a::Number, b::Union{PVector,PBroadcasted})
+    owned_values = map(b->Base.broadcasted(f,a,b),get_own_values(b))
+    if b.ghost_values !== nothing
+        ghost_values = map(b->Base.broadcasted(f,a,b),get_ghost_values(b))
+    else
+        ghost_values = nothing
+    end
+    PBroadcasted(owned_values,ghost_values,b.rows)
+end
+
+function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
+    owned_values = map(a->Base.broadcasted(f,a,b),get_own_values(a))
+    if a.ghost_values !== nothing
+        ghost_values = map(a->Base.broadcasted(f,a,b),get_ghost_values(a))
+    else
+        ghost_values = nothing
+    end
+    PBroadcasted(owned_values,ghost_values,a.rows)
+end
+
+function Base.materialize(b::PBroadcasted)
+    T = eltype(eltype(b.own_values))
+    a = PVector{Vector{T}}(undef,b.rows)
+    materialize!(a,b)
+    a
+end
+
+function Base.materialize!(a::PVector,b::PBroadcasted)
+    map(Base.materialize!,get_own_values(a),get_own_values(b))
+    if b.ghost_values !== nothing && a.rows === b.rows
+        map(Base.materialize!,get_ghost_values(a),get_ghost_values(b))
+    end
+    a
+end
+
+for M in Distances.metrics
+    @eval begin
+        function (dist::$M)(a::PVector,b::PVector)
+            if Distances.parameters(dist) !== nothing
+                error("Only distances without parameters are implemented at this moment")
+            end
+            partials = map(get_own_values(a),get_own_values(b)) do a,b
+                @boundscheck if length(a) != length(b)
+                    throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
+                end
+                if length(a) == 0
+                    return zero(Distances.result_type(d, a, b))
+                end
+                @inbounds begin
+                    s = Distances.eval_start(d, a, b)
+                    if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
+                        @simd for I in eachindex(a, b)
+                            ai = a[I]
+                            bi = b[I]
+                            s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+                        end
+                    else
+                        for (ai, bi) in zip(a, b)
+                            s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+                        end
+                    end
+                    return s
+                end
+            end
+            s = reduce((i,j)->Distances.eval_reduce(d,i,j),
+                       partials,
+                       init=Distances.eval_start(d, a, b))
+            Distances.eval_end(d,s)
+        end
+    end
 end
 
 
