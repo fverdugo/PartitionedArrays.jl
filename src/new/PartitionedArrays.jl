@@ -105,5 +105,6 @@ export prandn
 export consistent!
 export pvector_coo!
 export assemble_coo!
+export neutral_element
 include("p_vector.jl")
 

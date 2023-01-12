@@ -1845,10 +1845,11 @@ function vector_assembler(indices;kwargs...)
 end
 
 """
-    assemble!(f,a,assembler[,buffer_snd[,buffer_rcv]])
+    assemble!(f,a,assembler[,buffer_snd[,buffer_rcv]]) -> Task
 
 Assemble the values in `a` using the insertion operation `f`. If the optional arguments are not given,
 they are computed as `assembly_buffer_snd(a,assembler)` and `assembly_buffer_rcv(a,assembler)` respectively.
+This function returns a task that produces `a` with the updated values.
 
 During the assembly, the values of `a` are updated (conceptually) as follows.
 

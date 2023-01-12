@@ -665,7 +665,7 @@ function is_consistent(graph::ExchangeGraph)
 end
 
 """
-    exchange(snd,graph::ExchangeGraph)
+    exchange(snd,graph::ExchangeGraph) -> Task
 
 Send the data in `snd` according the directed graph `graph`.
 This function returns immediately
@@ -760,7 +760,7 @@ function allocate_exchange_impl(snd,graph,::Type{T}) where T<:AbstractVector
 end
 
 """
-    exchange!(rcv,snd,graph::ExchangeGraph)
+    exchange!(rcv,snd,graph::ExchangeGraph) -> Task
 
 In-place and asynchronous version of [`exchange`](@ref). This function
 returns immediately and returns a task that produces `rcv` with the updated values.

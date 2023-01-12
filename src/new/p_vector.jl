@@ -27,10 +27,36 @@ function get_ghost_values(values,indices)
     view(values,ghost_to_local)
 end
 
+"""
+    struct OwnAndGhostValues{A,C,T}
+
+Vector type that stores the local values of a [`PVector`](@ref) instance
+using a vector of own values, a vector of ghost values, and a permutation.
+This is not the default data layout of [`PVector`](@ref) (which is a plain vector),
+but corresponds to the layout of distributed vectors in other packages, such as PETSc.
+Use this type to avoid duplicating memory when passing data to these other packages.
+
+# Properties
+
+- `own_values::A`: The vector of own values.
+- `ghost_values::A`: The vector of ghost values.
+- `perm::C`: A permutation vector such that `vcat(own_values,ghost_values)[perm]` corresponds to the local values.
+
+# Supertype hierarchy
+
+    OwnAndGhostValues{A,C,T} <: AbstractVector{T}
+"""
 struct OwnAndGhostValues{A,C,T} <: AbstractVector{T}
     own_values::A
     ghost_values::A
     perm::C
+    @doc """
+        OwnAndGhostValues{A,C}(own_values,ghost_values,perm) where {A,C}
+        OwnAndGhostValues{A}(own_values,ghost_values,perm) where {A}
+        OwnAndGhostValues(own_values::A,ghost_values::A,perm) where A
+
+    Build an instance of [`OwnAndGhostValues`](@ref) from the underlying fields.
+    """
     function OwnAndGhostValues{A,C}(own_values,ghost_values,perm) where {A,C}
         T = eltype(A)
         new{A,C,T}(
@@ -94,9 +120,34 @@ function allocate_local_values(::Type{<:OwnAndGhostValues{A}},indices) where {A}
     OwnAndGhostValues{A}(own_values,ghost_values,perm)
 end
 
+"""
+    struct PVector{V,A,B,T}
+
+`PVector` (partitioned vector) is a type representing a vector whose entries are
+distributed (a.k.a. partitioned) over different parts for distributed-memory
+parallel computations.
+
+This type overloads numerous array-like operations with corresponding
+parallel implementations.
+
+# Properties
+
+- `values::A`: A vector such that `values[i]` contains the vector of local values of the `i`-th part in the data distribution. The first type parameter `V` corresponds to `typeof(values[i])` i.e. the vector type used to store the local values.
+- `rows::B`: An instance of `PRange` describing the distributed data layout.
+
+# Supertype hierarchy
+
+    PVector{V,A,B,T} <: AbstractVector{T}
+"""
 struct PVector{V,A,B,T} <: AbstractVector{T}
     values::A
     rows::B
+    @doc """
+        PVector(values,rows::PRange)
+
+    Create an instance of [`PVector`](@ref) from the underlying fields
+    `values` and `rows`.
+    """
     function PVector(values,rows::PRange)
         V = eltype(values)
         T = eltype(V)
@@ -110,14 +161,34 @@ function Base.show(io::IO,k::MIME"text/plain",data::PVector)
     println(io,typeof(data)," on $(length(data.values)) parts")
 end
 
+
+"""
+    get_local_values(a::PVector)
+
+Get a vector of vectors containing the local values
+in each part of `a`.
+"""
 function get_local_values(a::PVector)
-    map(get_local_values,a.values,a.rows.indices)
+    #map(get_local_values,a.values,a.rows.indices)
+    a.values
 end
 
+"""
+    get_own_values(a::PVector)
+
+Get a vector of vectors containing the own values
+in each part of `a`.
+"""
 function get_own_values(a::PVector)
     map(get_own_values,a.values,a.rows.indices)
 end
 
+"""
+    get_ghost_values(a::PVector)
+
+Get a vector of vectors containing the ghost values
+in each part of `a`.
+"""
 function get_ghost_values(a::PVector)
     map(get_ghost_values,a.values,a.rows.indices)
 end
@@ -132,6 +203,37 @@ function Base.setindex(a::PVector,v,gid::Int)
     scalar_indexing_action(a)
 end
 
+"""
+    assemble!([op,] a::PVector) -> Task
+
+Transfer the ghost values to its owner part
+and insert them according with the insertion operation `op` (`+` by default).
+It returns a task that produces `a` with updated values. After the transfer,
+the source ghost values are set to zero.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
+    1:1:6
+    
+    julia> a = pones(rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Float64}}:
+     [1.0, 1.0, 1.0, 1.0]
+     [1.0, 1.0, 1.0, 1.0]
+    
+    julia> assemble!(a) |> wait
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Float64}}:
+     [1.0, 1.0, 2.0, 0.0]
+     [0.0, 2.0, 1.0, 1.0]
+"""
 function assemble!(a::PVector)
     assemble!(+,a)
 end
@@ -140,10 +242,43 @@ function assemble!(o,a::PVector)
     t = assemble!(o,a.values,a.rows.assembler)
     @async begin
         wait(t)
+        map(get_ghost_values(a)) do a
+            fill!(a,zero(eltype(a)))
+        end
         a
     end
 end
 
+"""
+    consistent!(a::PVector) -> Task
+
+Make the local values of `a` globally consistent. I.e., the
+ghost values are updated with the corresponding own value in the
+part that owns the associated global global id.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
+    1:1:6
+    
+    julia> a = pvector(inds->fill(get_owner(inds),length(inds)),rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Int32}}:
+     [1, 1, 1, 1]
+     [2, 2, 2, 2]
+    
+    julia> consistent!(a) |> wait
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Int32}}:
+     [1, 1, 1, 2]
+     [1, 2, 2, 2]
+"""
 function consistent!(a::PVector)
     insert(a,b) = b
     t = assemble!(insert,a.values,reverse(a.rows.assembler))
@@ -192,23 +327,120 @@ function Base.fill!(a::PVector,v)
     a
 end
 
+"""
+    pvector(f,rows::PRange)
+
+Create a [`PVector`](@ref) instance defined over the partitioned range `rows`,
+by initializing the local values with function `f`. The signature of `f` is
+`f(indices)`, where `indices` are the local indices in the corresponding part.
+
+Equivalent to 
+
+    values = map(f,rows.indices)
+    PVector(values,rows)
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
+    1:1:6
+
+    julia> a = pvector(i->rand(1:3,length(i)),rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Int64}}:
+     [2, 1, 1, 3]
+     [3, 3, 2, 3]
+"""
 function pvector(f,rows)
-    values = map(rows.indices) do indices
-        f(indices)
-    end
+    values = map(f,rows.indices)
     PVector(values,rows)
 end
 
-PVector(::UndefInitializer,rows::PRange) = PVector{Vector{Float64}}(undef,rows)
+"""
+    PVector{V}(::UndefInitializer,rows::PRange) where V
+    PVector(::UndefInitializer,rows::PRange)
+
+Allocate an uninitialized instance of [`Pvector`](@ref) with the partition in `rows`
+whose local values are a vector of type `V`.
+The default value for `V` is `Vector{Float64}`.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
+    1:1:6
+
+    julia> a = PVector(undef,rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Float64}}:
+     [6.90182496006166e-310, 4.925e-320, NaN, 0.0]
+     [6.90182496007115e-310, 2.9614e-320, NaN, 0.0]
+    
+    julia> a = PVector{OwnAndGhostValues{Vector{Int32}}}(undef,rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{OwnAndGhostValues{Vector{Int32}, Vector{Int32}, Int32}}:
+     [-1831434400, 32524, -1832234496, 66]
+     [-1808351792, -1803592080, 32524, -1803592016]
+"""
 PVector{V}(::UndefInitializer,rows::PRange) where V = pvector(indices->allocate_local_values(V,indices),rows)
+PVector(::UndefInitializer,rows::PRange) = PVector{Vector{Float64}}(undef,rows)
+
+
+"""
+    pfill(v,rows::PRange)
+
+Create a [`Pvector`](@ref) object with the data partition in `rows`
+with all entries equal to `v`.
+"""
 pfill(v,rows) = pvector(indices->fill(v,get_n_local(indices)),rows)
+
+"""
+    pzeros(rows::PRange)
+    pzeros(::Type{T},rows::PRange) where T
+
+Equivalent to
+
+    pfill(zero(T),rows)
+"""
 pzeros(rows) = pzeros(Float64,rows)
 pzeros(::Type{T},rows) where T = pvector(indices->zeros(T,get_n_local(indices)),rows)
+
+"""
+    pones(rows::PRange)
+    pones(::Type{T},rows::PRange) where T
+
+Equivalent to
+
+    pfill(one(T),rows)
+"""
 pones(rows) = pones(Float64,rows)
 pones(::Type{T},rows) where T = pvector(indices->ones(T,get_n_local(indices)),rows)
+
+"""
+    prand([rng,][s,]rows::PRange)
+
+Create a [`Pvector`](@ref) object with uniform random values and the data partition in `rows`.
+The optional arguments have the same meaning and default values as in [`rand`](@ref).
+"""
 prand(rows) = pvector(indices->rand(get_n_local(indices)),rows)
 prand(s,rows) = pvector(indices->rand(S,get_n_local(indices)),rows)
 prand(rng,s,rows) = pvector(indices->rand(rng,S,get_n_local(indices)),rows)
+
+"""
+    prandn([rng,][s,]rows::PRange)
+
+Create a [`Pvector`](@ref) object with normally distributed random values and the data partition in `rows`.
+The optional arguments have the same meaning and default values as in [`randn`](@ref).
+"""
 prandn(rows) = pvector(indices->randn(get_n_local(indices)),rows)
 prandn(s,rows) = pvector(indices->randn(S,get_n_local(indices)),rows)
 prandn(rng,s,rows) = pvector(indices->randn(rng,S,get_n_local(indices)),rows)
@@ -407,6 +639,52 @@ for M in Distances.metrics
     end
 end
 
+"""
+    pvector_coo!([[op,] T,] I, V, rows; [owners,] [init,]) -> Task
+
+Generate a [`PVector`](@ref) object with the data partition in `rows` from the coordinate
+vectors `I` and `V`. At each part `part`, the vectors `I[part]` and `V[part]` contain 
+global row ids and their corresponding values. The type of the generated local
+values is `T` (`Vector{Float64}` by default) and it is initialized 
+with value `init`, which defaults to `neutral_element(op,eltype(T))`. Values
+in `V` are inserted using operation `op` (`+` by default). Repeated row ids
+are allowed. In this case, they will be combined with operation `op`.
+`owners` can be provided
+to skip the discovery of the part owner for the global ids in `rows`. It defaults to
+`find_owner(rows,I)`. The result is a task that produces the [`PVector`](@ref) object.
+This function modifies `I` and `V`.
+
+# Examples
+
+
+    julia> using PartitionedArrays
+
+    julia> rank = LinearIndices((2,));
+
+    julia> rows = PRange(ConstantBlockSize(),rank,2,10)
+    1:1:10
+
+    julia> I = [[3,6,2,3],[1,7,9,7,10,1]]
+    2-element Vector{Vector{Int64}}:
+     [3, 6, 2, 3]
+     [1, 7, 9, 7, 10, 1]
+    
+    julia> V = 10*I
+    2-element Vector{Vector{Int64}}:
+     [30, 60, 20, 30]
+     [10, 70, 90, 70, 100, 10]
+    
+    julia> t = pvector_coo!(Vector{Float32},I,V,rows)
+    Task (done) @0x00007f0c92f933d0
+    
+    julia> a = fetch(t);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Float32}}:
+     [0.0, 20.0, 30.0, 0.0, 0.0, 0.0]
+     [0.0, 70.0, 0.0, 90.0, 100.0, 0.0, 0.0]
+
+"""
 function pvector_coo!(I,V,rows;kwargs...)
     pvector_coo!(+,Vector{Float64},I,V,rows;kwargs...)
 end
@@ -443,6 +721,50 @@ function insert_coo!(op,a::PVector,I,V;init)
     a
 end
 
+"""
+    assemble_coo!(I [,J], V, rows) -> Task
+
+Assemble the coordinate vectors `I`, `J`, `V`. Entries corresponding to
+ghost values are sent to the owner part and appended at the end 
+of the given entries. Note: global ids `I` should be in the local
+values of `rows`. You can achieve this, e.g., with `rows=union_ghost(rows,I)`.
+The source ghost values are set to zero.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,10)
+    1:1:10
+    
+    julia> I = [[3,6,2,3],[1,7,9,7,10,1]]
+    2-element Vector{Vector{Int64}}:
+     [3, 6, 2, 3]
+     [1, 7, 9, 7, 10, 1]
+    
+    julia> V = 10*I
+    2-element Vector{Vector{Int64}}:
+     [30, 60, 20, 30]
+     [10, 70, 90, 70, 100, 10]
+    
+    julia> rows = union_ghost(rows,I)
+    1:1:10
+    
+    julia> assemble_coo!(I,V,rows) |> wait
+    
+    julia> I
+    2-element Vector{Vector{Int64}}:
+     [3, 6, 2, 3, 1, 1]
+     [1, 7, 9, 7, 10, 1, 6]
+    
+    julia> V
+    2-element Vector{Vector{Int64}}:
+     [30, 0, 20, 30, 10, 10]
+     [0, 70, 90, 70, 100, 0, 60]
+
+"""
 function assemble_coo!(I,V,rows)
     t = assemble_coo!(I,V,V,rows)
     @async begin
