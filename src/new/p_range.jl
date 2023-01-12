@@ -479,6 +479,7 @@ The key-word arguments `kwargs...` are passed to [`vector_assembler`](@ref)
 when re-generating the assembler object.
 
 Equivalent to
+
     indices = map(replace_ghost,pr.indices,gids,owners)
     assembler = vector_assembler(indices;kwargs...)
     PRange(pr.n_global,indices,assembler)
@@ -498,6 +499,7 @@ The key-word arguments `kwargs...` are passed to [`vector_assembler`](@ref)
 when re-generating the assembler object.
 
 Equivalent to
+
     indices = map(union_ghost,pr.indices,gids,owners)
     assembler = vector_assembler(indices;kwargs...)
     PRange(pr.n_global,indices,assembler)
@@ -1669,7 +1671,7 @@ index is `0` for `p==1` and the last ghost index is `n+1`  for `p==np`
 
 # Examples
 
-## Without ghost entries
+Without ghost entries
 
     julia> using PartitionedArrays
     
@@ -1682,7 +1684,7 @@ index is `0` for `p==1` and the last ghost index is `n+1`  for `p==np`
     julia> local_range(3,3,10)
     7:10
 
-## With ghost entries
+With ghost entries
 
     julia> using PartitionedArrays
     
@@ -1695,7 +1697,7 @@ index is `0` for `p==1` and the last ghost index is `n+1`  for `p==np`
     julia> local_range(3,3,10,true)
     6:10
 
-## With periodic boundaries
+With periodic boundaries
 
     julia> using PartitionedArrays
     
