@@ -132,6 +132,27 @@ function Base.setindex(a::PVector,v,gid::Int)
     scalar_indexing_action(a)
 end
 
+function assemble!(a::PVector)
+    assemble!(+,a)
+end
+
+function assemble!(o,a::PVector)
+    t = assemble!(o,a.values,a.assembler)
+    @async begin
+        wait(t)
+        a
+    end
+end
+
+function consistent!(a::PVector)
+    insert(a,b) = b
+    t = assemble!(insert,a.values,reverse(a.assembler))
+    @async begin
+        wait(t)
+        a
+    end
+end
+
 function Base.similar(a::PVector,::Type{T},inds::Tuple{<:PRange}) where T
     rows = inds[1]
     values = map(a.values,rows.indices) do values, indices
@@ -383,6 +404,129 @@ for M in Distances.metrics
                        init=Distances.eval_start(d, a, b))
             Distances.eval_end(d,s)
         end
+    end
+end
+
+function pvector_coo!(I,V,rows;kwargs...)
+    pvector_coo(+,Vector{Float64},I,V,rows;kwargs...)
+end
+
+function pvector_coo!(::Type{T},I,V,rows;kwargs...) where T
+    pvector_coo(+,T,I,V,rows;kwargs...)
+end
+
+function pvector_coo!(op,::Type{T},I,V,rows;owners=find_owner(rows,I),init=neutral_element(op,eltype(T))) where T
+    rows = union_ghost(rows,I,owners)
+    t = assemble_coo!(I,V,rows)
+    a = PVector{T}(undef,rows)
+    @async begin
+        I,V = fetch(t)
+        insert_coo!(op,a,I,V;init)
+    end
+end
+
+function insert_coo!(op,values,I,V,indices;init)
+    fill!(values,init)
+    global_to_local = get_global_to_local(indices)
+    for k in 1:length(I)
+        gi = I[k]
+        li = global_to_local[gi]
+        values[li] = V[k]
+    end
+    values
+end
+
+function insert_coo!(op,a::PVector,I,V;init)
+    map(a.values,I,V,a.rows.indices) do values,I,V,indices
+        insert_coo!(op,values,I,V,indices;init)
+    end
+    a
+end
+
+function assemble_coo!(I,V,rows)
+    t = assemble_coo!(I,V,V,rows)
+    @async begin
+        I,J,V = fetch(t)
+        I,V
+    end
+end
+
+function assemble_coo!(I,J,V,rows)
+    part = linear_indices(rows.indices)
+    parts_snd = rows.assembler.parts_snd
+    parts_rcv = rows.assembler.parts_rcv
+    coo_values = map_parts(tuple,I,J,V)
+    function setup_snd(part,parts_snd,row_lids,coo_values)
+        global_to_local = get_global_to_local(row_lids)
+        local_to_owner = get_local_to_owner(row_lids)
+        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
+        ptrs = zeros(Int32,length(parts_snd)+1)
+        k_gi, k_gj, k_v = coo_values
+        for k in 1:length(k_gi)
+            gi = k_gi[k]
+            li = global_to_local[gi]
+            owner = local_to_owner[li]
+            if owner != part
+                ptrs[owner_to_i[owner]+1] +=1
+            end
+        end
+        length_to_ptrs!(ptrs)
+        gi_snd_data = zeros(Int,ptrs[end]-1)
+        gj_snd_data = zeros(Int,ptrs[end]-1)
+        v_snd_data = zeros(eltype(k_v),ptrs[end]-1)
+        for k in 1:length(k_gi)
+            gi = k_gi[k]
+            li = global_to_local[gi]
+            owner = local_to_owner[li]
+            if owner != part
+                gj = k_gj[k]
+                v = k_v[k]
+                p = ptrs[owner_to_i[owner]]
+                gi_snd_data[p] = gi
+                gj_snd_data[p] = gj
+                v_snd_data[p] = v
+                k_v[k] = zero(v)
+                ptrs[owner_to_i[owner]] += 1
+            end
+        end
+        rewind_ptrs!(ptrs)
+        gi_snd = JaggedArray(gi_snd_data,ptrs)
+        gj_snd = JaggedArray(gj_snd_data,ptrs)
+        v_snd = JaggedArray(v_snd_data,ptrs)
+        gi_snd, gj_snd, v_snd
+    end
+    function setup_rcv(part,row_lids,gi_rcv,gj_rcv,v_rcv,coo_values)
+        k_gi, k_gj, k_v = coo_values
+        ptrs = gi_rcv.ptrs
+        current_n = length(k_gi)
+        new_n = current_n + length(gi_rcv.data)
+        resize!(k_gi,new_n)
+        resize!(k_gj,new_n)
+        resize!(k_v,new_n)
+        for p in 1:length(gi_rcv.data)
+            gi = gi_rcv.data[p]
+            gj = gj_rcv.data[p]
+            v = v_rcv.data[p]
+            k_gi[current_n+p] = gi
+            k_gj[current_n+p] = gj
+            k_v[current_n+p] = v
+        end
+    end
+    aux1 = map(setup_snd,part,parts_snd,rows.indices,coo_values)
+    gi_snd, gj_snd, v_snd = aux1 |> unpack
+    t1 = exchange(gi_snd,parts_rcv,parts_snd)
+    t3 = exchange(v_snd,parts_rcv,parts_snd)
+    if J !== V
+        t2 = exchange(gj_snd,parts_rcv,parts_snd)
+    else
+        t2 = t3
+    end
+    @async begin
+        gi_snd = fetch(t1)
+        gj_snd = fetch(t2)
+        v_snd = fetch(t3) 
+        map(setup_rcv,part,rows.indices,gi_rcv,gj_rcv,v_rcv,coo_values)
+        I,J,V
     end
 end
 
