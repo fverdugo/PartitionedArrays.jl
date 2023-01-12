@@ -1831,7 +1831,7 @@ function vector_assembler(indices;kwargs...)
     parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
     graph = ExchangeGraph(parts_snd;kwargs...)
     parts_rcv = graph.rcv
-    global_indices_rcv = exchange(global_indices_snd,graph)
+    global_indices_rcv = exchange_fetch(global_indices_snd,graph)
     local_indices_rcv = map(rank,global_indices_rcv,indices) do ids,global_indices_rcv,indices
         ptrs = global_indices_rcv.ptrs
         data_lids = zeros(Int32,ptrs[end]-1)
@@ -1885,9 +1885,9 @@ function assemble!(f,a,assembler,
     t = exchange!(buffer_rcv,buffer_snd,graph)
     # Fill a from rcv buffer asynchronously
     local_indices_rcv = assembler.local_indices_rcv
-    map(t,a,local_indices_rcv,buffer_rcv) do t,a,local_indices_rcv,buffer_rcv
-        @async begin
-            wait(t)
+    @async begin
+        wait(t)
+        map(a,local_indices_rcv,buffer_rcv) do a,local_indices_rcv,buffer_rcv
             for (p,lid) in enumerate(local_indices_rcv.data)
                 a[lid] = f(a[lid],buffer_rcv.data[p])
             end

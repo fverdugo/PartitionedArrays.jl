@@ -583,7 +583,7 @@ function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
         end
         [ dict_rcv[n] for n in neighbors_snd ]
     end
-    data_rcv = exchange(data_snd,neighbors)
+    data_rcv = exchange_fetch(data_snd,neighbors)
     # build rcv_ids
     rcv_ids = map(data_rcv) do data_rcv
         k = findall(j->j>0,data_rcv)
@@ -668,7 +668,10 @@ end
     exchange(snd,graph::ExchangeGraph)
 
 Send the data in `snd` according the directed graph `graph`.
-The object `snd` and the return of this function `rcv`
+This function returns immediately
+and returns a task that produces the result, allowing for latency hiding.
+Use [`fetch`](@ref) to wait and get the result.
+The object `snd` and `rcv=fetch(exchange(snd,graph))`
 are array of vectors. The  value `snd[i][j]` is sent
 to node `graph.snd[i][j]`. The value `rcv[i][j]` is the one
 received from  node `graph.rcv[i][j]`.
@@ -695,19 +698,30 @@ received from  node `graph.rcv[i][j]`.
      [30, 30]
      [40]
     
-    julia> rcv = exchange(snd,graph)
+    julia> t = exchange(snd,graph)
+    Task (done) @0x00007fe9e3850460
+    
+    julia> rcv = fetch(t)
     4-element Vector{Vector{Int64}}:
      [20, 30]
      [40]
      [10, 20]
      [10, 30]
-    
 """
 function exchange(snd,graph::ExchangeGraph)
     rcv = allocate_exchange(snd,graph)
-    tasks = exchange!(rcv,snd,graph)
-    map(wait,tasks)
-    rcv
+    task = exchange!(rcv,snd,graph)
+    task
+end
+
+"""
+    exchange_fetch(snd,graph::ExchangeGraph)
+
+Equivalent to `fetch(exchange(snd,graph))`, but
+it can consider more optimizations.
+"""
+function exchange_fetch(snd,graph::ExchangeGraph)
+    fetch(exchange(snd,graph))
 end
 
 """
@@ -732,7 +746,7 @@ function allocate_exchange_impl(snd,graph,::Type{T}) where T<:AbstractVector
     n_snd = map(snd) do snd
         map(length,snd)
     end
-    n_rcv = exchange(n_snd,graph)
+    n_rcv = exchange_fetch(n_snd,graph)
     S = eltype(eltype(eltype(snd)))
     rcv = map(n_rcv) do n_rcv
         ptrs = zeros(Int32,length(n_rcv)+1)
@@ -749,10 +763,9 @@ end
     exchange!(rcv,snd,graph::ExchangeGraph)
 
 In-place and asynchronous version of [`exchange`](@ref). This function
-returns immediately and provides an array of tasks `t`.
-When task `t[i]` is done, then the
-results in `rcv[i]`  can be consumed, not before.
-The result `rcv` can be allocated with [`allocate_exchange`](@ref).
+returns immediately and returns a task that produces `rcv` with the updated values.
+Use [`fetch`](@ref) to get the updated version of `rcv`.
+The input `rcv` can be allocated with [`allocate_exchange`](@ref).
 
 # Examples
 
@@ -775,32 +788,31 @@ The result `rcv` can be allocated with [`allocate_exchange`](@ref).
      [0]
      [140477373823312, 140477373823344]
      [140477691773008, 140480035219440]
-    
-    julia> t = exchange!(rcv,snd,graph)
-    4-element Vector{Task}:
-     Task (done) @0x00007fc36dd27de0
-     Task (done) @0x00007fc36f8c4010
-     Task (done) @0x00007fc36f8c4180
-     Task (done) @0x00007fc36f8c42f0
 
-    julia> map(wait,t)
-    4-element Vector{Nothing}:
-     nothing
-     nothing
-     nothing
-     nothing
+
+    julia> t = exchange!(rcv,snd,graph)
+    Task (done) @0x00007fe9e73c1cd0
     
-    julia> rcv
+    julia> rcv = fetch(t)
     4-element Vector{Vector{Int64}}:
      [20, 30]
      [40]
      [10, 20]
      [10, 30]
-
 """
 function exchange!(rcv,snd,graph::ExchangeGraph)
     T = eltype(eltype(snd))
     exchange_impl!(rcv,snd,graph,T)
+end
+
+"""
+    exchange_fetch!(rcv,snd,graph::ExchangeGraph)
+
+Equivalent to `fetch(exchange_fetch!(rcv,snd,graph))`, but
+it can consider more optimizations.
+"""
+function exchange_fetch!(rcv,snd,graph::ExchangeGraph)
+    fetch(exchange!(rcv,snd,graph))
 end
 
 function exchange_impl!(rcv,snd,graph,::Type{T}) where T
@@ -815,9 +827,7 @@ function exchange_impl!(rcv,snd,graph,::Type{T}) where T
             rcv[rcv_id][i] = snd[snd_id][j]
         end
     end
-    map(snd) do snd
-        @async nothing
-    end
+    @async rcv
 end
 
 function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
@@ -841,9 +851,7 @@ function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
             end
         end
     end
-    map(snd) do snd
-        @async nothing
-    end
+    @async rcv
 end
 
 

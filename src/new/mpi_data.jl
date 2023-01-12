@@ -396,6 +396,11 @@ function Base.wait(t::MPITask)
     t
 end
 
+function Base.fetch(t::MPITask)
+    wait(t)
+    fetch(t.task)
+end
+
 function exchange_impl!(
     rcv::MPIData,
     snd::MPIData,
@@ -427,9 +432,11 @@ function exchange_impl!(
         else
             MPI.Waitall!(req_all)
         end
+        rcv
     end
     t = MPITask(task)
-    MPIData(Ref(t),comm,snd.size)
+    #MPIData(Ref(t),comm,snd.size)
+    t
 end
 
 function exchange_impl!(
@@ -468,8 +475,10 @@ function exchange_impl!(
         else
             MPI.Waitall!(req_all)
         end
+        rcv
     end
     t = MPITask(task)
-    MPIData(Ref(t),comm,snd.size)
+    #MPIData(Ref(t),comm,snd.size)
+    t
 end
 

@@ -36,7 +36,9 @@ export reduction
 export reduction!
 export ExchangeGraph
 export exchange
+export exchange_fetch
 export exchange!
+export exchange_fetch!
 export allocate_exchange
 include("primitives.jl")
 

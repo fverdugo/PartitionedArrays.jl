@@ -153,7 +153,7 @@ function primitives_tests(distribute)
    graph = ExchangeGraph(snd_ids,rcv_ids)
 
    snd = map(i->10*i,snd_ids)
-   rcv = exchange(snd,graph)
+   rcv = exchange_fetch(snd,graph)
 
    map(rank,rcv) do rank, rcv
        if rank == 1
@@ -175,7 +175,7 @@ function primitives_tests(distribute)
    map(==,graph2.rcv,graph.rcv)
 
    snd = map(i->map(j->collect(1:j),i),snd_ids)
-   rcv = exchange(snd,graph)
+   rcv = exchange_fetch(snd,graph)
 
    map(rank,rcv) do rank,rcv
        if rank == 1

@@ -166,7 +166,9 @@ function exchange_impl!(
     graph::ExchangeGraph{<:SequentialData},
     ::Type{T}) where T
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    SequentialData(exchange_impl!(rcv.items,snd.items,g,T))
+    t = exchange_impl!(rcv.items,snd.items,g,T)
+    rcv = SequentialData(fetch(t))
+    @async rcv
 end
 
 function exchange_impl!(
@@ -175,6 +177,8 @@ function exchange_impl!(
     graph::ExchangeGraph{<:SequentialData},
     ::Type{T}) where T <: AbstractVector
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    SequentialData(exchange_impl!(rcv.items,snd.items,g,T))
+    t = exchange_impl!(rcv.items,snd.items,g,T)
+    rcv = SequentialData(fetch(t))
+    @async rcv
 end
 
