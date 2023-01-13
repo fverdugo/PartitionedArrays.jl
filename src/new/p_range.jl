@@ -29,12 +29,13 @@ The following functions form the `AbstractLocalIndices` interface:
 
 # Supertype hierarchy
 
-    AbstractLocalIndices <: AbstractUnitRange{Int}
+    AbstractLocalIndices <: AbstractVector{Int}
 
 """
-abstract type AbstractLocalIndices <: AbstractUnitRange{Int} end
-Base.first(a::AbstractLocalIndices) = 1
-Base.last(a::AbstractLocalIndices) = Int(get_n_local(a))
+abstract type AbstractLocalIndices <: AbstractVector{Int} end
+Base.size(a::AbstractLocalIndices) = (get_n_local(a),)
+Base.IndexStyle(::Type{<:AbstractLocalIndices}) = IndexLinear()
+@inline Base.getindex(a::AbstractLocalIndices,i::Int) = get_local_to_global(a)[i]
 
 """
     get_n_local(indices)
@@ -324,6 +325,10 @@ struct PRange{A} <: AbstractUnitRange{Int}
 end
 Base.first(a::PRange) = 1
 Base.last(a::PRange) = a.n_global
+function Base.show(io::IO,k::MIME"text/plain",data::PRange)
+    #println(io,typeof(data),":")
+    println(io,"PRange 1:$(length(data)) partitioned in $(length(data.indices)) parts")
+end
 
 """
     get_n_global(pr::PRange)
@@ -513,49 +518,6 @@ function matching_ghost_indices(a::PRange,b::PRange)
     a.indices === b.indices && return true
     c = map(matching_ghost_indices,a.indices,b.indices)
     reduce(&,c,init=true)
-end
-
-"""
-    PRange(ConstantBlockSize(),ranks,np,n[,ghost[,periodic]])
-
-Generate an instance of `PRange` by using an `N` dimensional
-block partition with a (roughly) constant block size.
-
-# Arguments
-- `ranks::AbstractArray{<:Integer}`: Array containing the distribution of ranks.
--  `np::NTuple{N,Int}`: Number of parts per direction.
--  `n::NTuple{N,Int}`: Number of global indices per direction.
--  `ghost::NTuple{N,Bool}=ntuple(i->false,N)`: Use or not ghost indices per direction.
--  `periodic::NTuple{N,Bool}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
-
-For convenience, one can also provide scalar inputs instead tuples
-to create 1D block partitions.
-
-# Examples
-
-1D partition of 10 indices into 4 parts
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> pr = PRange(ConstantBlockSize(),rank,4,10)
-    1:1:10
-    
-    julia> get_local_to_global(pr)
-    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{1, UnitRange{Int64}}}:
-     [1, 2]
-     [3, 4]
-     [5, 6, 7]
-     [8, 9, 10]
-
-"""
-function PRange(::ConstantBlockSize,ranks,np,n,args...)
-    @assert prod(np) == length(ranks)
-    indices = map(ranks) do rank
-        block_with_constant_size(rank,np,n,args...)
-    end
-    PRange(prod(n),indices)
 end
 
 """

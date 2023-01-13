@@ -121,7 +121,7 @@ function allocate_local_values(::Type{<:OwnAndGhostValues{A}},indices) where {A}
 end
 
 """
-    struct PVector{V,A,B,T}
+    struct PVector{T,A,B}
 
 `PVector` (partitioned vector) is a type representing a vector whose entries are
 distributed (a.k.a. partitioned) over different parts for distributed-memory
@@ -133,24 +133,24 @@ parallel implementations.
 # Properties
 
 - `values::A`: A vector such that `values[i]` contains the vector of local values of the `i`-th part in the data distribution. The first type parameter `V` corresponds to `typeof(values[i])` i.e. the vector type used to store the local values.
-- `rows::B`: An instance of `PRange` describing the distributed data layout.
+- `rows::B`: An instance of `PRange` describing the distribution of the rows.
 
 # Supertype hierarchy
 
-    PVector{V,A,B,T} <: AbstractVector{T}
+    PVector{T,A,B} <: AbstractVector{T}
 """
 struct PVector{V,A,B,T} <: AbstractVector{T}
     values::A
     rows::B
     @doc """
-        PVector(values,rows::PRange)
+        PVector(values,rows)
 
-    Create an instance of [`PVector`](@ref) from the underlying fields
+    Create an instance of [`PVector`](@ref) from the underlying properties
     `values` and `rows`.
     """
-    function PVector(values,rows::PRange)
+    function PVector(values,rows)
+        T = eltype(eltype(values))
         V = eltype(values)
-        T = eltype(V)
         A = typeof(values)
         B = typeof(rows)
         new{V,A,B,T}(values,rows)
@@ -158,9 +158,8 @@ struct PVector{V,A,B,T} <: AbstractVector{T}
 end
 
 function Base.show(io::IO,k::MIME"text/plain",data::PVector)
-    println(io,typeof(data)," on $(length(data.values)) parts")
+    println(io,"PVector with $(length(data)) items on $(length(data.values)) parts")
 end
-
 
 """
     get_local_values(a::PVector)
@@ -203,91 +202,6 @@ function Base.setindex(a::PVector,v,gid::Int)
     scalar_indexing_action(a)
 end
 
-"""
-    assemble!([op,] a::PVector) -> Task
-
-Transfer the ghost values to its owner part
-and insert them according with the insertion operation `op` (`+` by default).
-It returns a task that produces `a` with updated values. After the transfer,
-the source ghost values are set to zero.
-
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
-    1:1:6
-    
-    julia> a = pones(rows);
-    
-    julia> get_local_values(a)
-    2-element Vector{Vector{Float64}}:
-     [1.0, 1.0, 1.0, 1.0]
-     [1.0, 1.0, 1.0, 1.0]
-    
-    julia> assemble!(a) |> wait
-    
-    julia> get_local_values(a)
-    2-element Vector{Vector{Float64}}:
-     [1.0, 1.0, 2.0, 0.0]
-     [0.0, 2.0, 1.0, 1.0]
-"""
-function assemble!(a::PVector)
-    assemble!(+,a)
-end
-
-function assemble!(o,a::PVector)
-    t = assemble!(o,a.values,a.rows.assembler)
-    @async begin
-        wait(t)
-        map(get_ghost_values(a)) do a
-            fill!(a,zero(eltype(a)))
-        end
-        a
-    end
-end
-
-"""
-    consistent!(a::PVector) -> Task
-
-Make the local values of `a` globally consistent. I.e., the
-ghost values are updated with the corresponding own value in the
-part that owns the associated global global id.
-
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
-    1:1:6
-    
-    julia> a = pvector(inds->fill(get_owner(inds),length(inds)),rows);
-    
-    julia> get_local_values(a)
-    2-element Vector{Vector{Int32}}:
-     [1, 1, 1, 1]
-     [2, 2, 2, 2]
-    
-    julia> consistent!(a) |> wait
-    
-    julia> get_local_values(a)
-    2-element Vector{Vector{Int32}}:
-     [1, 1, 1, 2]
-     [1, 2, 2, 2]
-"""
-function consistent!(a::PVector)
-    insert(a,b) = b
-    t = assemble!(insert,a.values,reverse(a.rows.assembler))
-    @async begin
-        wait(t)
-        a
-    end
-end
-
 function Base.similar(a::PVector,::Type{T},inds::Tuple{<:PRange}) where T
     rows = inds[1]
     values = map(a.values,rows.indices) do values, indices
@@ -297,11 +211,18 @@ function Base.similar(a::PVector,::Type{T},inds::Tuple{<:PRange}) where T
 end
 
 function Base.similar(::Type{<:PVector{V}},inds::Tuple{<:PRange}) where V
-  rows = inds[1]
-  values = map(rows.indices) do indices
-      allocate_local_values(V,indices)
-  end
-  PVector(values,rows)
+    rows = inds[1]
+    values = map(rows.indices) do indices
+        allocate_local_values(V,indices)
+    end
+    PVector(values,rows)
+end
+
+function PVector{V}(::UndefInitializer,rows::PRange) where V
+    values = map(rows.indices) do indices
+        allocate_local_values(V,indices)
+    end
+    PVector(values,rows)
 end
 
 function Base.copy!(a::PVector,b::PVector)
@@ -360,40 +281,36 @@ function pvector(f,rows)
     PVector(values,rows)
 end
 
-"""
-    PVector{V}(::UndefInitializer,rows::PRange) where V
-    PVector(::UndefInitializer,rows::PRange)
+function pvector(f,I,V,rows)
+    values = map(f,I,V,rows.indices)
+    rows = union_ghost(rows,I)
+    PVector(values,rows)
+end
 
-Allocate an uninitialized instance of [`Pvector`](@ref) with the partition in `rows`
-whose local values are a vector of type `V`.
-The default value for `V` is `Vector{Float64}`.
+function pvector(rows)
+    pvector(default_local_values,rows)
+end
 
-# Examples
+function pvector(I,V,rows)
+    rows = union_ghost(rows,I)
+    pvector(default_local_values,I,V,rows)
+end
 
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
-    1:1:6
+function default_local_values(indices)
+    Vector{Float64}(undef,get_n_local(indices))
+end
 
-    julia> a = PVector(undef,rows);
-    
-    julia> get_local_values(a)
-    2-element Vector{Vector{Float64}}:
-     [6.90182496006166e-310, 4.925e-320, NaN, 0.0]
-     [6.90182496007115e-310, 2.9614e-320, NaN, 0.0]
-    
-    julia> a = PVector{OwnAndGhostValues{Vector{Int32}}}(undef,rows);
-    
-    julia> get_local_values(a)
-    2-element Vector{OwnAndGhostValues{Vector{Int32}, Vector{Int32}, Int32}}:
-     [-1831434400, 32524, -1832234496, 66]
-     [-1808351792, -1803592080, 32524, -1803592016]
-"""
-PVector{V}(::UndefInitializer,rows::PRange) where V = pvector(indices->allocate_local_values(V,indices),rows)
-PVector(::UndefInitializer,rows::PRange) = PVector{Vector{Float64}}(undef,rows)
-
+function default_local_values(I,V,indices)
+    values = Vector{Float64}(undef,get_n_local(indices))
+    fill!(values,zero(eltype(values)))
+    global_to_local = get_global_to_local(indices)
+    for k in 1:length(I)
+        gi = I[k]
+        li = global_to_local[gi]
+        values[li] = V[k]
+    end
+    values
+end
 
 """
     pfill(v,rows::PRange)
@@ -432,8 +349,8 @@ Create a [`Pvector`](@ref) object with uniform random values and the data partit
 The optional arguments have the same meaning and default values as in [`rand`](@ref).
 """
 prand(rows) = pvector(indices->rand(get_n_local(indices)),rows)
-prand(s,rows) = pvector(indices->rand(S,get_n_local(indices)),rows)
-prand(rng,s,rows) = pvector(indices->rand(rng,S,get_n_local(indices)),rows)
+prand(s,rows) = pvector(indices->rand(s,get_n_local(indices)),rows)
+prand(rng,s,rows) = pvector(indices->rand(rng,s,get_n_local(indices)),rows)
 
 """
     prandn([rng,][s,]rows::PRange)
@@ -442,8 +359,8 @@ Create a [`Pvector`](@ref) object with normally distributed random values and th
 The optional arguments have the same meaning and default values as in [`randn`](@ref).
 """
 prandn(rows) = pvector(indices->randn(get_n_local(indices)),rows)
-prandn(s,rows) = pvector(indices->randn(S,get_n_local(indices)),rows)
-prandn(rng,s,rows) = pvector(indices->randn(rng,S,get_n_local(indices)),rows)
+prandn(s,rows) = pvector(indices->randn(s,get_n_local(indices)),rows)
+prandn(rng,s,rows) = pvector(indices->randn(rng,s,get_n_local(indices)),rows)
 
 function Base.:(==)(a::PVector,b::PVector)
     length(a) == length(b) &&
@@ -639,268 +556,9 @@ for M in Distances.metrics
     end
 end
 
-"""
-    pvector_coo!([[op,] T,] I, V, rows; [owners,] [init,]) -> Task
-
-Generate a [`PVector`](@ref) object with the data partition in `rows` from the coordinate
-vectors `I` and `V`. At each part `part`, the vectors `I[part]` and `V[part]` contain 
-global row ids and their corresponding values. The type of the generated local
-values is `T` (`Vector{Float64}` by default) and it is initialized 
-with value `init`, which defaults to `neutral_element(op,eltype(T))`. Values
-in `V` are inserted using operation `op` (`+` by default). Repeated row ids
-are allowed. In this case, they will be combined with operation `op`.
-`owners` can be provided
-to skip the discovery of the part owner for the global ids in `rows`. It defaults to
-`find_owner(rows,I)`. The result is a task that produces the [`PVector`](@ref) object.
-This function modifies `I` and `V`.
-
-# Examples
-
-
-    julia> using PartitionedArrays
-
-    julia> rank = LinearIndices((2,));
-
-    julia> rows = PRange(ConstantBlockSize(),rank,2,10)
-    1:1:10
-
-    julia> I = [[3,6,2,3],[1,7,9,7,10,1]]
-    2-element Vector{Vector{Int64}}:
-     [3, 6, 2, 3]
-     [1, 7, 9, 7, 10, 1]
-    
-    julia> V = 10*I
-    2-element Vector{Vector{Int64}}:
-     [30, 60, 20, 30]
-     [10, 70, 90, 70, 100, 10]
-    
-    julia> t = pvector_coo!(Vector{Float32},I,V,rows)
-    Task (done) @0x00007f0c92f933d0
-    
-    julia> a = fetch(t);
-    
-    julia> get_local_values(a)
-    2-element Vector{Vector{Float32}}:
-     [0.0, 20.0, 30.0, 0.0, 0.0, 0.0]
-     [0.0, 70.0, 0.0, 90.0, 100.0, 0.0, 0.0]
-
-"""
-function pvector_coo!(I,V,rows;kwargs...)
-    pvector_coo!(+,Vector{Float64},I,V,rows;kwargs...)
-end
-
-function pvector_coo!(::Type{T},I,V,rows;kwargs...) where T
-    pvector_coo!(+,T,I,V,rows;kwargs...)
-end
-
-function pvector_coo!(op,::Type{T},I,V,rows;owners=find_owner(rows,I),init=neutral_element(op,eltype(T))) where T
-    rows = union_ghost(rows,I,owners)
-    t = assemble_coo!(I,V,rows)
-    a = PVector{T}(undef,rows)
-    @async begin
-        I,V = fetch(t)
-        insert_coo!(op,a,I,V;init)
-    end
-end
-
-function insert_coo!(op,values,I,V,indices;init)
-    fill!(values,init)
-    global_to_local = get_global_to_local(indices)
-    for k in 1:length(I)
-        gi = I[k]
-        li = global_to_local[gi]
-        values[li] = V[k]
-    end
-    values
-end
-
-function insert_coo!(op,a::PVector,I,V;init)
-    map(a.values,I,V,a.rows.indices) do values,I,V,indices
-        insert_coo!(op,values,I,V,indices;init)
-    end
-    a
-end
-
-"""
-    assemble_coo!(I [,J], V, rows) -> Task
-
-Assemble the coordinate vectors `I`, `J`, `V`. Entries corresponding to
-ghost values are sent to the owner part and appended at the end 
-of the given entries. Note: global ids `I` should be in the local
-values of `rows`. You can achieve this, e.g., with `rows=union_ghost(rows,I)`.
-The source ghost values are set to zero.
-
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,10)
-    1:1:10
-    
-    julia> I = [[3,6,2,3],[1,7,9,7,10,1]]
-    2-element Vector{Vector{Int64}}:
-     [3, 6, 2, 3]
-     [1, 7, 9, 7, 10, 1]
-    
-    julia> V = 10*I
-    2-element Vector{Vector{Int64}}:
-     [30, 60, 20, 30]
-     [10, 70, 90, 70, 100, 10]
-    
-    julia> rows = union_ghost(rows,I)
-    1:1:10
-    
-    julia> assemble_coo!(I,V,rows) |> wait
-    
-    julia> I
-    2-element Vector{Vector{Int64}}:
-     [3, 6, 2, 3, 1, 1]
-     [1, 7, 9, 7, 10, 1, 6]
-    
-    julia> V
-    2-element Vector{Vector{Int64}}:
-     [30, 0, 20, 30, 10, 10]
-     [0, 70, 90, 70, 100, 0, 60]
-
-"""
-function assemble_coo!(I,V,rows)
-    t = assemble_coo!(I,V,V,rows)
-    @async begin
-        I,J,V = fetch(t)
-        I,V
-    end
-end
-
-function assemble_coo!(I,J,V,rows)
-    function setup_snd(part,parts_snd,row_lids,coo_values)
-        global_to_local = get_global_to_local(row_lids)
-        local_to_owner = get_local_to_owner(row_lids)
-        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
-        ptrs = zeros(Int32,length(parts_snd)+1)
-        k_gi, k_gj, k_v = coo_values
-        for k in 1:length(k_gi)
-            gi = k_gi[k]
-            li = global_to_local[gi]
-            owner = local_to_owner[li]
-            if owner != part
-                ptrs[owner_to_i[owner]+1] +=1
-            end
-        end
-        length_to_ptrs!(ptrs)
-        gi_snd_data = zeros(eltype(k_gi),ptrs[end]-1)
-        gj_snd_data = zeros(eltype(k_gj),ptrs[end]-1)
-        v_snd_data = zeros(eltype(k_v),ptrs[end]-1)
-        for k in 1:length(k_gi)
-            gi = k_gi[k]
-            li = global_to_local[gi]
-            owner = local_to_owner[li]
-            if owner != part
-                gj = k_gj[k]
-                v = k_v[k]
-                p = ptrs[owner_to_i[owner]]
-                gi_snd_data[p] = gi
-                gj_snd_data[p] = gj
-                v_snd_data[p] = v
-                k_v[k] = zero(v)
-                ptrs[owner_to_i[owner]] += 1
-            end
-        end
-        rewind_ptrs!(ptrs)
-        gi_snd = JaggedArray(gi_snd_data,ptrs)
-        gj_snd = JaggedArray(gj_snd_data,ptrs)
-        v_snd = JaggedArray(v_snd_data,ptrs)
-        gi_snd, gj_snd, v_snd
-    end
-    function setup_rcv(part,row_lids,gi_rcv,gj_rcv,v_rcv,coo_values)
-        k_gi, k_gj, k_v = coo_values
-        ptrs = gi_rcv.ptrs
-        current_n = length(k_gi)
-        new_n = current_n + length(gi_rcv.data)
-        resize!(k_gi,new_n)
-        resize!(k_gj,new_n)
-        resize!(k_v,new_n)
-        for p in 1:length(gi_rcv.data)
-            gi = gi_rcv.data[p]
-            gj = gj_rcv.data[p]
-            v = v_rcv.data[p]
-            k_gi[current_n+p] = gi
-            k_gj[current_n+p] = gj
-            k_v[current_n+p] = v
-        end
-    end
-    part = linear_indices(rows.indices)
-    parts_snd = rows.assembler.parts_snd
-    parts_rcv = rows.assembler.parts_rcv
-    graph = ExchangeGraph(parts_snd,parts_rcv)
-    coo_values = map(tuple,I,J,V)
-    aux1 = map(setup_snd,part,parts_snd,rows.indices,coo_values)
-    gi_snd, gj_snd, v_snd = aux1 |> unpack
-    t1 = exchange(gi_snd,graph)
-    t3 = exchange(v_snd,graph)
-    if J !== V
-        t2 = exchange(gj_snd,graph)
-    else
-        t2 = t3
-    end
-    @async begin
-        gi_rcv = fetch(t1)
-        gj_rcv = fetch(t2)
-        v_rcv = fetch(t3) 
-        map(setup_rcv,part,rows.indices,gi_rcv,gj_rcv,v_rcv,coo_values)
-        I,J,V
-    end
-end
-
-
-"""
-    struct Assembler{A,B}
-
-Container type storing symbolic information needed in assembly-like operations.
-
-# Properties
-
-- `exchange_graph::A`: Instance of `ExchangeGraph` indicating to which parts we need to send and receive to/from.
-- `local_indices_snd::B`: Contains the local ids of the data we want to send.
-- `local_indices_rcv::B`: Contains the local ids of the data we want to receive.
-
-See [`assemble!](@ref) for full details on the format of these fields.
-
-# Supertype hierarchy
-
-    Assembler{A,B} <: Any
-"""
-struct Assembler{A,B}
-    parts_snd::A
-    parts_rcv::A
-    local_indices_snd::B
-    local_indices_rcv::B
-end
-Base.reverse(g::Assembler) = Assembler(g.parts_rcv,g.parts_snd,g.local_indices_rcv,g.local_indices_snd)
-function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
-    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
-
-end
-
-function empty_assembler(indices)
-    parts_snd = map(i->Int32[],indices)
-    parts_rcv = parts_snd
-    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
-    local_indices_rcv = local_indices_snd
-    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
-end
-
-"""
-    vector_assembler(indices; kwargs...)
-
-Returns an instance of [`Assembler`](@ref) containing the symbolic information needed for performing 
-assembly operations in [`PVector`](@ref). The key-word arguments `kwargs...` are passed to the [`ExchangeGraph`](@ref)
-to help discover the ids of the parts we want to receive from, given the parts we want to send to.
-"""
-function vector_assembler(indices;kwargs...)
-    rank = linear_indices(indices)
-    aux1 = map(rank,indices) do rank, indices
+function assembly_neighbors(indices;kwargs...)
+    parts_snd = map(indices) do indices
+        rank = get_owner(indices)
         local_to_owner = get_local_to_owner(indices)
         set = Set{Int32}()
         for owner in local_to_owner
@@ -908,7 +566,17 @@ function vector_assembler(indices;kwargs...)
                 push!(set,owner)
             end
         end
-        parts_snd = sort(collect(set))
+        sort(collect(set))
+    end
+    ExchangeGraph(parts_snd;kwargs...)
+end
+
+function assembly_local_ids(indices,neighbors)
+    parts_snd = neighbors.snd
+    parts_rcv = neighbors.rcv
+    aux1 = map(indices,parts_snd) do indices,parts_snd
+        rank = get_owner(indices)
+        local_to_owner = get_local_to_owner(indices)
         owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
         ptrs = zeros(Int32,length(parts_snd)+1)
         for owner in local_to_owner
@@ -934,10 +602,8 @@ function vector_assembler(indices;kwargs...)
         parts_snd, local_indices_snd, global_indices_snd
     end
     parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
-    graph = ExchangeGraph(parts_snd;kwargs...)
-    parts_rcv = graph.rcv
-    global_indices_rcv = exchange_fetch(global_indices_snd,graph)
-    local_indices_rcv = map(rank,global_indices_rcv,indices) do ids,global_indices_rcv,indices
+    global_indices_rcv = exchange_fetch(global_indices_snd,neighbors)
+    local_indices_rcv = map(global_indices_rcv,indices) do global_indices_rcv,indices
         ptrs = global_indices_rcv.ptrs
         data_lids = zeros(Int32,ptrs[end]-1)
         global_to_local = get_global_to_local(indices)
@@ -946,85 +612,176 @@ function vector_assembler(indices;kwargs...)
         end
         local_indices_rcv = JaggedArray(data_lids,ptrs)
     end
-    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
+    local_indices_snd, local_indices_rcv
 end
 
-"""
-    assemble!(f,a,assembler[,buffer_snd[,buffer_rcv]]) -> Task
-
-Assemble the values in `a` using the insertion operation `f`. If the optional arguments are not given,
-they are computed as `assembly_buffer_snd(a,assembler)` and `assembly_buffer_rcv(a,assembler)` respectively.
-This function returns a task that produces `a` with the updated values.
-
-During the assembly, the values of `a` are updated (conceptually) as follows.
-
-    parts_snd = assembler.parts_snd
-    parts_rcv = assembler.parts_rcv
-    local_indices_snd = assembler.local_indices_snd
-    local_indices_rcv = assembler.local_indices_rcv
-    for p_snd in 1:length(a)
-      for i in 1:length(parts_snd[p_snd])
-         p_rcv = parts_snd[p_snd][i]
-         j = findfirst(p->p==p_snd,parts_rcv[p_rcv])
-         for l_snd in local_indices_snd[p_snd][i]
-             for l_rcv in local_indices_rcv[p_rcv][j]
-                a[p_rcv][l_rcv] = f(a[p_rcv][l_rcv],a[p_snd][l_snd])
-             end
-         end
-      end
+function assembly_buffers(::Type{T},local_indices_snd,local_indices_rcv) where T
+    buffer_snd = map(local_indices_snd) do local_indices_snd
+        ptrs = local_indices_snd.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
     end
+    buffer_rcv = map(local_indices_rcv) do local_indices_rcv
+        ptrs = local_indices_rcv.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+    buffer_snd, buffer_rcv
+end
 
-This algorithm is never executed like this, but a parallel version using function [`exchange`](@ref)
-for communications.
-"""
-function assemble!(f,a,assembler,
-    buffer_snd = assembly_buffer_snd(a,assembler),
-    buffer_rcv = assembly_buffer_rcv(a,assembler))
+struct AssemblyCache{A,B,C}
+    parts_snd::A
+    parts_rcv::A
+    local_indices_snd::B
+    local_indices_rcv::B
+    buffer_snd::C
+    buffer_rcv::C
+end
+
+function Base.reverse(g::AssemblyCache)
+    AssemblyCache(
+        g.parts_rcv,g.parts_snd,
+        g.local_indices_rcv,g.local_indices_snd,
+        g.buffer_rcv,g.buffer_snd)
+end
+
+function Base.show(io::IO,k::MIME"text/plain",data::AssemblyCache)
+    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
+end
+
+function assembly_cache(values,indices;kwargs...)
+    V = eltype(values)
+    assembly_cache_impl(V,values,indices;kwargs...)
+end
+
+function assembly_cache_impl(::Type{<:AbstractVector},values,indices;kwargs...)
+    neighbors = assembly_neighbors(indices;kwargs...)
+    local_indices_snd, local_indices_rcv = assembly_local_ids(indices,neighbors)
+    T = eltype(eltype(values))
+    buffer_snd, buffer_rcv = assembly_buffers(T,local_indices_snd,local_indices_rcv)
+    AssemblyCache(
+        neighbors.snd,neighbors.rcv,
+        local_indices_snd,local_indices_rcv,
+        buffer_snd, buffer_rcv)
+end
+
+function assemble!(f,values,indices,cache)
+    V = eltype(values)
+    assemble_impl!(f,V,values,indices,cache)
+end
+
+function assemble_impl!(f,::Type{<:AbstractVector},values,indices,cache)
+    buffer_snd = cache.buffer_snd
+    buffer_rcv = cache.buffer_rcv
     # Fill snd buffer
-    local_indices_snd = assembler.local_indices_snd
-    map(a,local_indices_snd,buffer_snd) do a,local_indices_snd,buffer_snd
+    local_indices_snd = cache.local_indices_snd
+    map(values,local_indices_snd,buffer_snd) do values,local_indices_snd,buffer_snd
         for (p,lid) in enumerate(local_indices_snd.data)
-            buffer_snd.data[p] = a[lid]
+            buffer_snd.data[p] = values[lid]
         end
     end
-    graph = ExchangeGraph(assembler.parts_snd,assembler.parts_rcv)
+    graph = ExchangeGraph(cache.parts_snd,cache.parts_rcv)
     t = exchange!(buffer_rcv,buffer_snd,graph)
     # Fill a from rcv buffer asynchronously
-    local_indices_rcv = assembler.local_indices_rcv
+    local_indices_rcv = cache.local_indices_rcv
     @async begin
         wait(t)
-        map(a,local_indices_rcv,buffer_rcv) do a,local_indices_rcv,buffer_rcv
+        map(values,local_indices_rcv,buffer_rcv) do values,local_indices_rcv,buffer_rcv
             for (p,lid) in enumerate(local_indices_rcv.data)
-                a[lid] = f(a[lid],buffer_rcv.data[p])
+                values[lid] = f(values[lid],buffer_rcv.data[p])
             end
         end
     end
 end
 
 """
-    assembly_buffer_rcv(a,assembler)
+    assemble!([op,] a::PVector) -> Task
 
-Allocate and return `buff_rcv` in [`assemble!`](@ref).
+Transfer the ghost values to its owner part
+and insert them according with the insertion operation `op` (`+` by default).
+It returns a task that produces `a` with updated values. After the transfer,
+the source ghost values are set to zero.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
+    1:1:6
+    
+    julia> a = pones(rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Float64}}:
+     [1.0, 1.0, 1.0, 1.0]
+     [1.0, 1.0, 1.0, 1.0]
+    
+    julia> assemble!(a) |> wait
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Float64}}:
+     [1.0, 1.0, 2.0, 0.0]
+     [0.0, 2.0, 1.0, 1.0]
 """
-function assembly_buffer_rcv(a,assembler)
-    T = eltype(eltype(a))
-    map(assembler.local_indices_rcv) do local_indices_rcv
-        ptrs = local_indices_rcv.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
+function assemble!(a::PVector,args...)
+    assemble!(+,a,args...)
+end
+
+function assemble!(o,a::PVector,cache=assembly_cache(a))
+    t = assemble!(o,a.values,a.rows.indices,cache)
+    @async begin
+        wait(t)
+        map(get_ghost_values(a)) do a
+            fill!(a,zero(eltype(a)))
+        end
+        a
     end
 end
 
 """
-    assembly_buffer_snd(a,assembler)
-
-Allocate and return `buff_snd` in [`assemble!`](@ref).
 """
-function assembly_buffer_snd(a,assembler)
-    T = eltype(eltype(a))
-    map(assembler.local_indices_snd) do local_indices_snd
-        ptrs = local_indices_snd.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
+function assembly_cache(a::PVector)
+    assembly_cache(a.values,a.rows.indices)
+end
+
+"""
+    consistent!(a::PVector) -> Task
+
+Make the local values of `a` globally consistent. I.e., the
+ghost values are updated with the corresponding own value in the
+part that owns the associated global global id.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((2,));
+    
+    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
+    1:1:6
+    
+    julia> a = pvector(inds->fill(get_owner(inds),length(inds)),rows);
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Int32}}:
+     [1, 1, 1, 1]
+     [2, 2, 2, 2]
+    
+    julia> consistent!(a) |> wait
+    
+    julia> get_local_values(a)
+    2-element Vector{Vector{Int32}}:
+     [1, 1, 1, 2]
+     [1, 2, 2, 2]
+"""
+function consistent!(a::PVector,cache=reverse(assembly_cache(a)))
+    insert(a,b) = b
+    t = assemble!(insert,a.values,a.rows.indices,cache)
+    @async begin
+        wait(t)
+        a
     end
 end
+

@@ -8,11 +8,11 @@ function p_vector_tests(distribute)
 
     np = 4
     rank = distribute(LinearIndices((np,)))
-    rows = PRange(ConstantBlockSize(),rank,(2,2),(6,6))
+    rows = uniform_partition(rank,(2,2),(6,6))
 
-    a1 = PVector(undef,rows)
-    a2 = PVector{Vector{Int}}(undef,rows)
-    a3 = PVector{OwnAndGhostValues{Vector{Float64}}}(undef,rows)
+    a1 = pvector(rows)
+    a2 = pvector(inds->zeros(Int,length(inds)),rows)
+    a3 = PVector{OwnAndGhostValues{Vector{Int}}}(undef,rows)
     for a in [a1,a2,a3]
         b = similar(a)
         b = similar(a,Int)
@@ -45,8 +45,8 @@ function p_vector_tests(distribute)
         I,V
     end |> unpack
 
-    rows = PRange(ConstantBlockSize(),rank,np,n)
-    a = pvector_coo!(I,V,rows) |> fetch
+    rows = uniform_partition(rank,n)
+    a = pvector(I,V,rows)
 
     @test any(i->i>n,a) == false
     @test all(i->i<n,a)
