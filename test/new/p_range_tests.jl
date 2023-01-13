@@ -19,47 +19,47 @@ function p_range_tests(distribute)
    # Uniform linear partition without ghost
    np = 4
    n = 10
-   pr = PRange(ConstantBlockSize(),rank,np,n)
+   pr = uniform_partition(rank,n)
 
    # Uniform linear partition with one layer of ghost
    ghost = true
-   pr = PRange(ConstantBlockSize(),rank,np,n,ghost)
+   pr = uniform_partition(rank,n,ghost)
 
    # Uniform linear partition with one layer of ghost
    # and periodic ghost
    periodic = true
-   pr = PRange(ConstantBlockSize(),rank,np,n,ghost,periodic)
+   pr = uniform_partition(rank,n,ghost,periodic)
 
    # uniform Cartesian partition without ghost
    np = (2,2)
    n = (10,10)
-   pr = PRange(ConstantBlockSize(),rank,np,n)
+   pr = uniform_partition(rank,np,n)
 
    # uniform Cartesian partition with one layer of ghost
    # in the selected directions
    np = (2,2)
    n = (10,10)
    ghost = (true,true)
-   pr = PRange(ConstantBlockSize(),rank,np,n,ghost)
+   pr = uniform_partition(rank,np,n,ghost)
 
    # uniform Cartesian partition with one layer of ghost
    # in the selected directions
    np = (2,2)
    n = (10,10)
    periodic = (true,true)
-   pr = PRange(ConstantBlockSize(),rank,np,n,ghost,periodic)
+   pr = uniform_partition(rank,np,n,ghost,periodic)
 
    # Custom linear partition with no ghost
    n_own = map(rank) do rank
        mod(rank,3) + 2
    end
    n=sum(n_own)
-   pr = PRange(VariableBlockSize(),rank,n_own,n)
+   pr = variable_partition(n_own,n)
 
    # Custom linear partition with no ghost
    # scan to find the first id in each block is done by the caller
    start = scan(+,n_own,type=:exclusive,init=1)
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   pr = variable_partition(n_own,n;start)
 
    # Custom linear partition with arbitrary ghost
    # Here the ghost need to be non-repeated and actual ghost values
@@ -69,7 +69,7 @@ function p_range_tests(distribute)
        Int[]
    end
    # First create a PRange without ghost
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   pr = variable_partition(n_own,n;start)
    # Then replace the ghost
    pr = replace_ghost(pr,gids)
 
@@ -78,7 +78,7 @@ function p_range_tests(distribute)
    owners = map(rank) do rank
        Int32[]
    end
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   pr = variable_partition(n_own,n;start)
    pr = replace_ghost(pr,gids,owners)
 
    # Custom linear partition with ghost
@@ -86,12 +86,12 @@ function p_range_tests(distribute)
    # Only the ghost not already present will be added
    # This requires a lot of communication to find
    # the owner of each given gid
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   pr = variable_partition(n_own,n;start)
    pr = union_ghost(pr,gids)
 
    # Same as before but save some communications
    # by providing the owners
-   pr = PRange(VariableBlockSize(),rank,n_own,n;start)
+   pr = variable_partition(n_own,n;start)
    pr = union_ghost(pr,gids,owners)
 
    # Custom general partition by providing
@@ -101,7 +101,7 @@ function p_range_tests(distribute)
    n = (10,10)
    ghost = (true,true)
    n_global = prod(n)
-   old_pr = PRange(ConstantBlockSize(),rank,np,n,ghost)
+   old_pr = uniform_partition(rank,np,n,ghost)
    indices = map(old_pr.indices) do old_local_indices
        local_to_global = get_local_to_global(old_local_indices) |> collect
        local_to_owner = get_local_to_owner(old_local_indices) |> collect

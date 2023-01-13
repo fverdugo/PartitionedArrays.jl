@@ -54,8 +54,8 @@ include("mpi_data.jl")
 export local_range
 export boundary_owner
 export PRange
-export ConstantBlockSize
-export VariableBlockSize
+export uniform_partition
+export variable_partition
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices

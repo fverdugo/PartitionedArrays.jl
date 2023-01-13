@@ -854,3 +854,177 @@ function assemble_coo!(I,J,V,rows)
 end
 
 
+"""
+    struct Assembler{A,B}
+
+Container type storing symbolic information needed in assembly-like operations.
+
+# Properties
+
+- `exchange_graph::A`: Instance of `ExchangeGraph` indicating to which parts we need to send and receive to/from.
+- `local_indices_snd::B`: Contains the local ids of the data we want to send.
+- `local_indices_rcv::B`: Contains the local ids of the data we want to receive.
+
+See [`assemble!](@ref) for full details on the format of these fields.
+
+# Supertype hierarchy
+
+    Assembler{A,B} <: Any
+"""
+struct Assembler{A,B}
+    parts_snd::A
+    parts_rcv::A
+    local_indices_snd::B
+    local_indices_rcv::B
+end
+Base.reverse(g::Assembler) = Assembler(g.parts_rcv,g.parts_snd,g.local_indices_rcv,g.local_indices_snd)
+function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
+    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
+
+end
+
+function empty_assembler(indices)
+    parts_snd = map(i->Int32[],indices)
+    parts_rcv = parts_snd
+    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
+    local_indices_rcv = local_indices_snd
+    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
+end
+
+"""
+    vector_assembler(indices; kwargs...)
+
+Returns an instance of [`Assembler`](@ref) containing the symbolic information needed for performing 
+assembly operations in [`PVector`](@ref). The key-word arguments `kwargs...` are passed to the [`ExchangeGraph`](@ref)
+to help discover the ids of the parts we want to receive from, given the parts we want to send to.
+"""
+function vector_assembler(indices;kwargs...)
+    rank = linear_indices(indices)
+    aux1 = map(rank,indices) do rank, indices
+        local_to_owner = get_local_to_owner(indices)
+        set = Set{Int32}()
+        for owner in local_to_owner
+            if owner != rank
+                push!(set,owner)
+            end
+        end
+        parts_snd = sort(collect(set))
+        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
+        ptrs = zeros(Int32,length(parts_snd)+1)
+        for owner in local_to_owner
+            if owner != rank
+                ptrs[owner_to_i[owner]+1] +=1
+            end
+        end
+        length_to_ptrs!(ptrs)
+        data_lids = zeros(Int32,ptrs[end]-1)
+        data_gids = zeros(Int,ptrs[end]-1)
+        local_to_global = get_local_to_global(indices)
+        for (lid,owner) in enumerate(local_to_owner)
+            if owner != rank
+                p = ptrs[owner_to_i[owner]]
+                data_lids[p]=lid
+                data_gids[p]=local_to_global[lid]
+                ptrs[owner_to_i[owner]] += 1
+            end
+        end
+        rewind_ptrs!(ptrs)
+        local_indices_snd = JaggedArray(data_lids,ptrs)
+        global_indices_snd = JaggedArray(data_gids,ptrs)
+        parts_snd, local_indices_snd, global_indices_snd
+    end
+    parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
+    graph = ExchangeGraph(parts_snd;kwargs...)
+    parts_rcv = graph.rcv
+    global_indices_rcv = exchange_fetch(global_indices_snd,graph)
+    local_indices_rcv = map(rank,global_indices_rcv,indices) do ids,global_indices_rcv,indices
+        ptrs = global_indices_rcv.ptrs
+        data_lids = zeros(Int32,ptrs[end]-1)
+        global_to_local = get_global_to_local(indices)
+        for (k,gid) in enumerate(global_indices_rcv.data)
+            data_lids[k] = global_to_local[gid]
+        end
+        local_indices_rcv = JaggedArray(data_lids,ptrs)
+    end
+    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
+end
+
+"""
+    assemble!(f,a,assembler[,buffer_snd[,buffer_rcv]]) -> Task
+
+Assemble the values in `a` using the insertion operation `f`. If the optional arguments are not given,
+they are computed as `assembly_buffer_snd(a,assembler)` and `assembly_buffer_rcv(a,assembler)` respectively.
+This function returns a task that produces `a` with the updated values.
+
+During the assembly, the values of `a` are updated (conceptually) as follows.
+
+    parts_snd = assembler.parts_snd
+    parts_rcv = assembler.parts_rcv
+    local_indices_snd = assembler.local_indices_snd
+    local_indices_rcv = assembler.local_indices_rcv
+    for p_snd in 1:length(a)
+      for i in 1:length(parts_snd[p_snd])
+         p_rcv = parts_snd[p_snd][i]
+         j = findfirst(p->p==p_snd,parts_rcv[p_rcv])
+         for l_snd in local_indices_snd[p_snd][i]
+             for l_rcv in local_indices_rcv[p_rcv][j]
+                a[p_rcv][l_rcv] = f(a[p_rcv][l_rcv],a[p_snd][l_snd])
+             end
+         end
+      end
+    end
+
+This algorithm is never executed like this, but a parallel version using function [`exchange`](@ref)
+for communications.
+"""
+function assemble!(f,a,assembler,
+    buffer_snd = assembly_buffer_snd(a,assembler),
+    buffer_rcv = assembly_buffer_rcv(a,assembler))
+    # Fill snd buffer
+    local_indices_snd = assembler.local_indices_snd
+    map(a,local_indices_snd,buffer_snd) do a,local_indices_snd,buffer_snd
+        for (p,lid) in enumerate(local_indices_snd.data)
+            buffer_snd.data[p] = a[lid]
+        end
+    end
+    graph = ExchangeGraph(assembler.parts_snd,assembler.parts_rcv)
+    t = exchange!(buffer_rcv,buffer_snd,graph)
+    # Fill a from rcv buffer asynchronously
+    local_indices_rcv = assembler.local_indices_rcv
+    @async begin
+        wait(t)
+        map(a,local_indices_rcv,buffer_rcv) do a,local_indices_rcv,buffer_rcv
+            for (p,lid) in enumerate(local_indices_rcv.data)
+                a[lid] = f(a[lid],buffer_rcv.data[p])
+            end
+        end
+    end
+end
+
+"""
+    assembly_buffer_rcv(a,assembler)
+
+Allocate and return `buff_rcv` in [`assemble!`](@ref).
+"""
+function assembly_buffer_rcv(a,assembler)
+    T = eltype(eltype(a))
+    map(assembler.local_indices_rcv) do local_indices_rcv
+        ptrs = local_indices_rcv.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+end
+
+"""
+    assembly_buffer_snd(a,assembler)
+
+Allocate and return `buff_snd` in [`assemble!`](@ref).
+"""
+function assembly_buffer_snd(a,assembler)
+    T = eltype(eltype(a))
+    map(assembler.local_indices_snd) do local_indices_snd
+        ptrs = local_indices_snd.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+end

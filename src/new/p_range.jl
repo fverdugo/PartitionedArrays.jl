@@ -274,8 +274,6 @@ The same rationale applies for ghost and local indices.
 # Properties
 - `n_global::Int`: Number of global indices.
 - `indices::A`: Array-like object with `length(indices)` equal to the number of parts in the partitioned range.
-- `assembler::B`: Result of `vector_assembler(indices)`. We precompute this value and store it here since it is
-an expensive operation that we want to reuse.
 
 
 The item `indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`.
@@ -288,16 +286,14 @@ interface to access the underlying information about own, ghost, and local indic
     PRange{A} <: AbstractUnitRange{Int}
 
 """
-struct PRange{A,B} <: AbstractUnitRange{Int}
+struct PRange{A} <: AbstractUnitRange{Int}
     n_global::Int
     indices::A
-    assembler::B
     @doc """
-        PRange(n_global,indices[,assembler])
+        PRange(n_global,indices)
 
     Build an instance of [`Prange`](@ref) from the underlying properties
-    `n_global`, `indices`, and `assembler`. If `assembler` is not provided,
-    it will be computed as `assembler = vector_assembler(indices)`.
+    `n_global` and `indices`.
 
     # Examples
    
@@ -321,10 +317,9 @@ struct PRange{A,B} <: AbstractUnitRange{Int}
          [1, 2, 3, 4, 5]
          [4, 5, 6, 7, 8]
     """
-    function PRange(n_global,indices,assembler = vector_assembler(indices))
+    function PRange(n_global,indices)
         A = typeof(indices)
-        B = typeof(assembler)
-        new{A,B}(Int(n_global),indices,assembler)
+        new{A}(Int(n_global),indices)
     end
 end
 Base.first(a::PRange) = 1
@@ -471,43 +466,35 @@ look for the owners in parallel, when using a parallel back-end.
 find_owner(pr::PRange,global_ids) = find_owner(pr.indices,global_ids)
 
 """
-    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
 
 Return an object of the same type as `pr` obtained by replacing the ghost
 ids in `pr` by the global ids in `gids`.
-The key-word arguments `kwargs...` are passed to [`vector_assembler`](@ref)
-when re-generating the assembler object.
 
 Equivalent to
 
     indices = map(replace_ghost,pr.indices,gids,owners)
-    assembler = vector_assembler(indices;kwargs...)
-    PRange(pr.n_global,indices,assembler)
+    PRange(pr.n_global,indices)
 """
-function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
     indices = map(replace_ghost,pr.indices,gids,owners)
-    assembler = vector_assembler(indices;kwargs...)
-    PRange(pr.n_global,indices,assembler)
+    PRange(pr.n_global,indices)
 end
 
 """
-    union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+    union_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
 
 Return an object of the same type as `pr` that contains the union of the ghost
 ids in `pr` and the global ids in `gids`. 
-The key-word arguments `kwargs...` are passed to [`vector_assembler`](@ref)
-when re-generating the assembler object.
 
 Equivalent to
 
     indices = map(union_ghost,pr.indices,gids,owners)
-    assembler = vector_assembler(indices;kwargs...)
-    PRange(pr.n_global,indices,assembler)
+    PRange(pr.n_global,indices)
 """
-function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
     indices = map(union_ghost,pr.indices,gids,owners)
-    assembler = vector_assembler(indices;kwargs...)
-    PRange(pr.n_global,indices,assembler)
+    PRange(pr.n_global,indices)
 end
 
 function matching_local_indices(a::PRange,b::PRange)
@@ -527,30 +514,6 @@ function matching_ghost_indices(a::PRange,b::PRange)
     c = map(matching_ghost_indices,a.indices,b.indices)
     reduce(&,c,init=true)
 end
-
-"""
-    struct ConstantBlockSize end
-
-Trait-like type used to build [`PRange`](@ref) instances with constant size block partitions.
-
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> pr = PRange(ConstantBlockSize(),rank,(2,2),(4,4),(true,true))
-    1:1:16
-    
-    julia> get_local_to_global(pr)
-    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{2, Vector{Int32}}}:
-     [1, 2, 3, 5, 6, 7, 9, 10, 11]
-     [2, 3, 4, 6, 7, 8, 10, 11, 12]
-     [5, 6, 7, 9, 10, 11, 13, 14, 15]
-     [6, 7, 8, 10, 11, 12, 14, 15, 16]
-
-"""
-struct ConstantBlockSize end
 
 """
     PRange(ConstantBlockSize(),ranks,np,n[,ghost[,periodic]])
@@ -586,13 +549,40 @@ to create 1D block partitions.
      [5, 6, 7]
      [8, 9, 10]
 
+"""
+function PRange(::ConstantBlockSize,ranks,np,n,args...)
+    @assert prod(np) == length(ranks)
+    indices = map(ranks) do rank
+        block_with_constant_size(rank,np,n,args...)
+    end
+    PRange(prod(n),indices)
+end
+
+"""
+    uniform_partition(ranks,np,n[,ghost[,periodic]])
+
+Generate an instance of `PRange` by using an `N` dimensional
+block partition with a (roughly) constant block size.
+
+# Arguments
+- `ranks`: Array containing the distribution of ranks.
+-  `np::NTuple{N}`: Number of parts per direction.
+-  `n::NTuple{N}`: Number of global indices per direction.
+-  `ghost::NTuple{N}=ntuple(i->false,N)`: Use or not ghost indices per direction.
+-  `periodic::NTuple{N}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
+
+For convenience, one can also provide scalar inputs instead tuples
+to create 1D block partitions.
+
+# Examples
+
 2D partition of 4x4 indices into 2x2 parts with ghost
 
     julia> using PartitionedArrays
     
     julia> rank = LinearIndices((4,));
     
-    julia> pr = PRange(ConstantBlockSize(),rank,(2,2),(4,4),(true,true))
+    julia> pr = uniform_partition(rank,(2,2),(4,4),(true,true))
     1:1:16
     
     julia> get_local_to_global(pr)
@@ -601,41 +591,53 @@ to create 1D block partitions.
      [2, 3, 4, 6, 7, 8, 10, 11, 12]
      [5, 6, 7, 9, 10, 11, 13, 14, 15]
      [6, 7, 8, 10, 11, 12, 14, 15, 16]
+
 """
-function PRange(::ConstantBlockSize,ranks,np,n,args...)
-    @assert prod(np) == length(ranks)
-    indices = map(ranks) do rank
+function uniform_partition(rank,np,n,args...)
+    @assert prod(np) == length(rank)
+    indices = map(rank) do rank
         block_with_constant_size(rank,np,n,args...)
     end
-    if length(args) == 0
-        assembler = empty_assembler(indices)
-    else
-        assembler = vector_assembler(indices;symmetric=true)
-    end
-    PRange(prod(n),indices,assembler)
+    PRange(prod(n),indices)
 end
 
-function block_with_constant_size(rank::Int,np::Int,n::Int)
-    block_with_constant_size(rank,(np,),(n,))
+"""
+    uniform_partition(ranks,n::Integer[,ghost::Bool[,periodic::Bool]])
+
+Generate an instance of `PRange` by using an 1d dimensional
+block partition with a (roughly) constant block size by inferring the number of parts to use from `ranks`.
+
+# Arguments
+- `ranks`: Array containing the distribution of ranks. The number of parts is taken as `length(ranks)`.
+-  `n`: Number of global indices.
+-  `ghost`: Use or not ghost indices.
+-  `periodic`: Use or not periodic boundaries.
+"""
+function uniform_partition(rank,n::Integer)
+    uniform_partition(rank,length(rank),n)
 end
 
-function block_with_constant_size(
-    rank::Int,np::Int,n::Int,ghost::Bool,periodic::Bool=false)
-    block_with_constant_size(rank,(np,),(n,),(ghost,),(periodic,))
+function uniform_partition(rank,n::Integer,ghost::Bool,periodic::Bool=false)
+    uniform_partition(rank,length(rank),n,ghost,periodic)
 end
 
-function block_with_constant_size(
-    rank::Int,np::Dims{N},n::Dims{N}) where N
+function uniform_partition(rank,np::Integer,n::Integer)
+    uniform_partition(rank,(np,),(n,))
+end
+
+function uniform_partition(rank,np::Integer,n::Integer,ghost::Bool,periodic::Bool=false)
+    uniform_partition(rank,(np,),(n,),(ghost,),(periodic,))
+end
+
+function block_with_constant_size(rank,np,n)
+    N = length(n)
     p = CartesianIndices(np)[rank]
     ghost = GhostIndices(prod(n))
     LocalIndicesWithConstantBlockSize(p,np,n,ghost)
 end
 
-function block_with_constant_size(
-    rank::Int,np::Dims{N},n::Dims{N},
-    ghost::NTuple{N,Bool},
-    periodic::NTuple{N,Bool}=ntuple(i->false,N)) where N
-
+function block_with_constant_size(rank,np,n,ghost,periodic=map(i->false,ghost))
+    N = length(n)
     p = CartesianIndices(np)[rank]
     own_ranges = map(local_range,Tuple(p),np,n)
     local_ranges = map(local_range,Tuple(p),np,n,ghost,periodic)
@@ -693,42 +695,17 @@ function block_with_constant_size(
 end
 
 """
-    struct VariableBlockSize end
-
-Trait-like type used to build [`PRange`](@ref) instances with variable size block partitions.
-
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> n_own = [3,2,2,3];
-    
-    julia> pr = PRange(VariableBlockSize(),rank,n_own,sum(n_own))
-    1:1:10
-    
-    julia> get_own_to_global(pr)
-    4-element Vector{PartitionedArrays.BlockPartitionOwnToGlobal{1}}:
-     [1, 2, 3]
-     [4, 5]
-     [6, 7]
-     [8, 9, 10]
-
-"""
-struct VariableBlockSize end
-
-"""
-    PRange(VariableBlockSize(),rank,n_own,n_global[;start])
+    variable_partition(n_own,n_global[;start])
 
 Build an instance of [`PRange`](@ref) using a 1D variable-size block partition.
 
 # Arguments
 
-- `ranks::AbstractArray{<:Integer}`: Array containing the distribution of ranks.
 -  `n_own::AbstractArray{<:Integer}`: Array containing the block size for each part.
 -  `n_global::Integer`: Number of global indices. It should be equal to `sum(n_own)`.
 -  `start::AbstractArray{Int}=scan(+,n_own,type=:exclusive,init=1)`: First global index in each part.
+
+We ask the user to provide `n_global` and (optionally) `start` since discovering them requires communications.
 
 # Examples
 
@@ -738,7 +715,7 @@ Build an instance of [`PRange`](@ref) using a 1D variable-size block partition.
     
     julia> n_own = [3,2,2,3];
     
-    julia> pr = PRange(VariableBlockSize(),rank,n_own,sum(n_own))
+    julia> pr = variable_partition(n_own,sum(n_own))
     1:1:10
     
     julia> get_own_to_global(pr)
@@ -749,16 +726,13 @@ Build an instance of [`PRange`](@ref) using a 1D variable-size block partition.
      [8, 9, 10]
 
 """
-function PRange(::VariableBlockSize,
-    rank,
+function variable_partition(
     n_own,
     n_global,
     ghost=false,
     periodic=false;
     start=scan(+,n_own,type=:exclusive,init=one(eltype(n_own))))
-
-    @assert length(rank) == length(n_own)
-
+    rank = linear_indices(n_own)
     if ghost == true || periodic == true
         error("This case is not yet implemented.")
     end
@@ -771,12 +745,7 @@ function PRange(::VariableBlockSize,
         ghost = GhostIndices(n_global)
         LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
     end
-    if ghost == false
-        assembler = empty_assembler(indices)
-    else
-        assembler = vector_assembler(indices;symmetric=true)
-    end
-    PRange(n_global,indices,assembler)
+    PRange(n_global,indices)
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
@@ -1752,177 +1721,3 @@ function boundary_owner(p,np,n,ghost=false,periodic=false)
     (start,p,stop)
 end
 
-"""
-    struct Assembler{A,B}
-
-Container type storing symbolic information needed in assembly-like operations.
-
-# Properties
-
-- `exchange_graph::A`: Instance of `ExchangeGraph` indicating to which parts we need to send and receive to/from.
-- `local_indices_snd::B`: Contains the local ids of the data we want to send.
-- `local_indices_rcv::B`: Contains the local ids of the data we want to receive.
-
-See [`assemble!](@ref) for full details on the format of these fields.
-
-# Supertype hierarchy
-
-    Assembler{A,B} <: Any
-"""
-struct Assembler{A,B}
-    parts_snd::A
-    parts_rcv::A
-    local_indices_snd::B
-    local_indices_rcv::B
-end
-Base.reverse(g::Assembler) = Assembler(g.parts_rcv,g.parts_snd,g.local_indices_rcv,g.local_indices_snd)
-function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
-    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
-
-end
-
-function empty_assembler(indices)
-    parts_snd = map(i->Int32[],indices)
-    parts_rcv = parts_snd
-    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
-    local_indices_rcv = local_indices_snd
-    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
-end
-
-"""
-    vector_assembler(indices; kwargs...)
-
-Returns an instance of [`Assembler`](@ref) containing the symbolic information needed for performing 
-assembly operations in [`PVector`](@ref). The key-word arguments `kwargs...` are passed to the [`ExchangeGraph`](@ref)
-to help discover the ids of the parts we want to receive from, given the parts we want to send to.
-"""
-function vector_assembler(indices;kwargs...)
-    rank = linear_indices(indices)
-    aux1 = map(rank,indices) do rank, indices
-        local_to_owner = get_local_to_owner(indices)
-        set = Set{Int32}()
-        for owner in local_to_owner
-            if owner != rank
-                push!(set,owner)
-            end
-        end
-        parts_snd = sort(collect(set))
-        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
-        ptrs = zeros(Int32,length(parts_snd)+1)
-        for owner in local_to_owner
-            if owner != rank
-                ptrs[owner_to_i[owner]+1] +=1
-            end
-        end
-        length_to_ptrs!(ptrs)
-        data_lids = zeros(Int32,ptrs[end]-1)
-        data_gids = zeros(Int,ptrs[end]-1)
-        local_to_global = get_local_to_global(indices)
-        for (lid,owner) in enumerate(local_to_owner)
-            if owner != rank
-                p = ptrs[owner_to_i[owner]]
-                data_lids[p]=lid
-                data_gids[p]=local_to_global[lid]
-                ptrs[owner_to_i[owner]] += 1
-            end
-        end
-        rewind_ptrs!(ptrs)
-        local_indices_snd = JaggedArray(data_lids,ptrs)
-        global_indices_snd = JaggedArray(data_gids,ptrs)
-        parts_snd, local_indices_snd, global_indices_snd
-    end
-    parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
-    graph = ExchangeGraph(parts_snd;kwargs...)
-    parts_rcv = graph.rcv
-    global_indices_rcv = exchange_fetch(global_indices_snd,graph)
-    local_indices_rcv = map(rank,global_indices_rcv,indices) do ids,global_indices_rcv,indices
-        ptrs = global_indices_rcv.ptrs
-        data_lids = zeros(Int32,ptrs[end]-1)
-        global_to_local = get_global_to_local(indices)
-        for (k,gid) in enumerate(global_indices_rcv.data)
-            data_lids[k] = global_to_local[gid]
-        end
-        local_indices_rcv = JaggedArray(data_lids,ptrs)
-    end
-    Assembler(parts_snd,parts_rcv,local_indices_snd,local_indices_rcv)
-end
-
-"""
-    assemble!(f,a,assembler[,buffer_snd[,buffer_rcv]]) -> Task
-
-Assemble the values in `a` using the insertion operation `f`. If the optional arguments are not given,
-they are computed as `assembly_buffer_snd(a,assembler)` and `assembly_buffer_rcv(a,assembler)` respectively.
-This function returns a task that produces `a` with the updated values.
-
-During the assembly, the values of `a` are updated (conceptually) as follows.
-
-    parts_snd = assembler.parts_snd
-    parts_rcv = assembler.parts_rcv
-    local_indices_snd = assembler.local_indices_snd
-    local_indices_rcv = assembler.local_indices_rcv
-    for p_snd in 1:length(a)
-      for i in 1:length(parts_snd[p_snd])
-         p_rcv = parts_snd[p_snd][i]
-         j = findfirst(p->p==p_snd,parts_rcv[p_rcv])
-         for l_snd in local_indices_snd[p_snd][i]
-             for l_rcv in local_indices_rcv[p_rcv][j]
-                a[p_rcv][l_rcv] = f(a[p_rcv][l_rcv],a[p_snd][l_snd])
-             end
-         end
-      end
-    end
-
-This algorithm is never executed like this, but a parallel version using function [`exchange`](@ref)
-for communications.
-"""
-function assemble!(f,a,assembler,
-    buffer_snd = assembly_buffer_snd(a,assembler),
-    buffer_rcv = assembly_buffer_rcv(a,assembler))
-    # Fill snd buffer
-    local_indices_snd = assembler.local_indices_snd
-    map(a,local_indices_snd,buffer_snd) do a,local_indices_snd,buffer_snd
-        for (p,lid) in enumerate(local_indices_snd.data)
-            buffer_snd.data[p] = a[lid]
-        end
-    end
-    graph = ExchangeGraph(assembler.parts_snd,assembler.parts_rcv)
-    t = exchange!(buffer_rcv,buffer_snd,graph)
-    # Fill a from rcv buffer asynchronously
-    local_indices_rcv = assembler.local_indices_rcv
-    @async begin
-        wait(t)
-        map(a,local_indices_rcv,buffer_rcv) do a,local_indices_rcv,buffer_rcv
-            for (p,lid) in enumerate(local_indices_rcv.data)
-                a[lid] = f(a[lid],buffer_rcv.data[p])
-            end
-        end
-    end
-end
-
-"""
-    assembly_buffer_rcv(a,assembler)
-
-Allocate and return `buff_rcv` in [`assemble!`](@ref).
-"""
-function assembly_buffer_rcv(a,assembler)
-    T = eltype(eltype(a))
-    map(assembler.local_indices_rcv) do local_indices_rcv
-        ptrs = local_indices_rcv.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
-    end
-end
-
-"""
-    assembly_buffer_snd(a,assembler)
-
-Allocate and return `buff_snd` in [`assemble!`](@ref).
-"""
-function assembly_buffer_snd(a,assembler)
-    T = eltype(eltype(a))
-    map(assembler.local_indices_snd) do local_indices_snd
-        ptrs = local_indices_snd.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
-    end
-end
