@@ -90,21 +90,24 @@ export assembly_buffer_snd
 export assembly_buffer_rcv
 include("p_range.jl")
 
-export get_local_values
-export get_own_values
-export get_ghost_values
-export allocate_local_values
-export OwnAndGhostValues
-export PVector
-export pvector
-export pfill
-export pzeros
-export pones
-export prand
-export prandn
-export consistent!
-export pvector_coo!
-export assemble_coo!
-export neutral_element
-include("p_vector.jl")
+#export get_local_values
+#export get_own_values
+#export get_ghost_values
+#export allocate_local_values
+#export OwnAndGhostValues
+#export PVector
+#export pvector
+#export pfill
+#export pzeros
+#export pones
+#export prand
+#export prandn
+#export consistent!
+#export pvector_coo!
+#export assemble_coo!
+#export neutral_element
+#include("p_vector.jl")
+
+
+
 
