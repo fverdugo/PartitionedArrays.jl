@@ -384,23 +384,6 @@ function Base.collect(a::MPIData)
     c.item[]
 end
 
-# This is just a workaround to
-# https://discourse.julialang.org/t/how-to-combine-mpi-non-blocking-isend-irecv-and-julia-tasks/52524
-struct MPITask
-    task::Task
-end
-
-function Base.wait(t::MPITask)
-    schedule(t.task)
-    wait(t.task)
-    t
-end
-
-function Base.fetch(t::MPITask)
-    wait(t)
-    fetch(t.task)
-end
-
 function exchange_impl!(
     rcv::MPIData,
     snd::MPIData,
@@ -426,17 +409,18 @@ function exchange_impl!(
         reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
         push!(req_all,reqs)
     end
-    task = @task begin
-        @static if isdefined(MPI,:Waitall)
-            MPI.Waitall(req_all,MPI.Status)
+    @async begin
+        @static if isdefined(MPI,:Testall)
+            while ! MPI.Testall(req_all)
+                yield()
+            end
         else
-            MPI.Waitall!(req_all)
+            while ! MPI.Testall!(req_all)[1]
+                yield()
+            end
         end
         rcv
     end
-    t = MPITask(task)
-    #MPIData(Ref(t),comm,snd.size)
-    t
 end
 
 function exchange_impl!(
@@ -469,16 +453,17 @@ function exchange_impl!(
         reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
         push!(req_all,reqs)
     end
-    task = @task begin
-        @static if isdefined(MPI,:Waitall)
-            MPI.Waitall(req_all,MPI.Status)
+    @async begin
+        @static if isdefined(MPI,:Testall)
+            while ! MPI.Testall(req_all)
+                yield()
+            end
         else
-            MPI.Waitall!(req_all)
+            while ! MPI.Testall!(req_all)[1]
+                yield()
+            end
         end
         rcv
     end
-    t = MPITask(task)
-    #MPIData(Ref(t),comm,snd.size)
-    t
 end
 
