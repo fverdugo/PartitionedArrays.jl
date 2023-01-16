@@ -290,7 +290,7 @@ interface to access the underlying information about own, ghost, and local indic
 struct PRange{A,B} <: AbstractUnitRange{Int}
     n_global::Int
     indices::A
-    assembly::B
+    assembler::B
     @doc """
         PRange(n_global,indices)
 
@@ -319,10 +319,10 @@ struct PRange{A,B} <: AbstractUnitRange{Int}
          [1, 2, 3, 4, 5]
          [4, 5, 6, 7, 8]
     """
-    function PRange(n_global,indices,assembly=symbolic_assembly(indices))
+    function PRange(n_global,indices,assembler=setup_assembler(indices))
         A = typeof(indices)
-        B = typeof(assembly)
-        new{A,B}(Int(n_global),indices,assembly)
+        B = typeof(assembler)
+        new{A,B}(Int(n_global),indices,assembler)
     end
 end
 Base.first(a::PRange) = 1
@@ -485,8 +485,8 @@ Equivalent to
 """
 function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(replace_ghost,pr.indices,gids,owners)
-    assembly = symbolic_assembly(indices;kwargs...)
-    PRange(pr.n_global,indices,assembly)
+    assembler = setup_assembler(indices;kwargs...)
+    PRange(pr.n_global,indices,assembler)
 end
 
 """
@@ -502,8 +502,8 @@ Equivalent to
 """
 function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(union_ghost,pr.indices,gids,owners;kwargs...)
-    assembly = symbolic_assembly(indices;kwargs...)
-    PRange(pr.n_global,indices,assembly)
+    assembler = setup_assembler(indices;kwargs...)
+    PRange(pr.n_global,indices,assembler)
 end
 
 function matching_local_indices(a::PRange,b::PRange)
@@ -524,45 +524,36 @@ function matching_ghost_indices(a::PRange,b::PRange)
     reduce(&,c,init=true)
 end
 
-struct SymbolicAssembly{A,B}
+struct Assembler{A,B}
     neighbors::A
     local_indices::B
 end
-function Base.show(io::IO,k::MIME"text/plain",data::SymbolicAssembly)
+function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
     println(io,nameof(typeof(data))," partitioned in $(length(data.neighbors.snd)) parts")
 end
-Base.reverse(a::SymbolicAssembly) = SymbolicAssembly(reverse(a.neighbors),reverse(a.local_indices))
+Base.reverse(a::Assembler) = Assembler(reverse(a.neighbors),reverse(a.local_indices))
 
-struct AssemblyIndices{A,B}
+struct AssemblyLocalIndices{A,B}
     snd::A
     rcv::B
 end
-function Base.show(io::IO,k::MIME"text/plain",data::AssemblyIndices)
+function Base.show(io::IO,k::MIME"text/plain",data::AssemblyLocalIndices)
     println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
 end
-Base.reverse(a::AssemblyIndices) = AssemblyIndices(a.rcv,a.snd)
+Base.reverse(a::AssemblyLocalIndices) = AssemblyLocalIndices(a.rcv,a.snd)
 
-struct AssemblyBuffers{A,B}
-    snd::A
-    rcv::B
-end
-function Base.show(io::IO,k::MIME"text/plain",data::AssemblyBuffers)
-    println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
-end
-Base.reverse(a::AssemblyBuffers) = AssemblyBuffers(a.rcv,a.snd)
-
-function symbolic_assembly(indices;kwargs...)
+function setup_assembler(indices;kwargs...)
     neighbors = assembly_neighbors(indices;kwargs...)
     local_indices = assembly_local_indices(indices,neighbors)
-    SymbolicAssembly(neighbors,local_indices)
+    Assembler(neighbors,local_indices)
 end
 
-function empty_symbolic_assembly(indices)
+function empty_assembler(indices)
     neigs_snd = map(i->Int32[],indices)
     neighbors = ExchangeGraph(neigs_snd,neigs_snd)
     local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
-    local_indices = AssemblyIndices(local_indices_snd,local_indices_snd)
-    SymbolicAssembly(neighbors,local_indices)
+    local_indices = AssemblyLocalIndices(local_indices_snd,local_indices_snd)
+    Assembler(neighbors,local_indices)
 end
 
 function assembly_neighbors(indices;kwargs...)
@@ -621,23 +612,8 @@ function assembly_local_indices(indices,neighbors)
         end
         local_indices_rcv = JaggedArray(data_lids,ptrs)
     end
-    AssemblyIndices(local_indices_snd,local_indices_rcv)
+    AssemblyLocalIndices(local_indices_snd,local_indices_rcv)
 end
-
-function assembly_buffers(::Type{T},local_indices::AssemblyIndices) where T
-    buffer_snd = map(local_indices.snd) do local_indices_snd
-        ptrs = local_indices_snd.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
-    end
-    buffer_rcv = map(local_indices.rcv) do local_indices_rcv
-        ptrs = local_indices_rcv.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
-    end
-    AssemblyBuffers(buffer_snd, buffer_rcv)
-end
-
 
 """
     uniform_partition(ranks,np,n[,ghost[,periodic]])
@@ -680,11 +656,11 @@ function uniform_partition(rank,np,n,args...)
         block_with_constant_size(rank,np,n,args...)
     end
     if length(args) == 0
-        assembly = empty_symbolic_assembly(indices)
+        assembler = empty_assembler(indices)
     else
-        assembly = symbolic_assembly(indices,symmetric=true)
+        assembler = setup_assembler(indices,symmetric=true)
     end
-    PRange(prod(n),indices,assembly)
+    PRange(prod(n),indices,assembler)
 end
 
 """
@@ -831,8 +807,8 @@ function variable_partition(
         ghost = GhostIndices(n_global)
         LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
     end
-    assembly = empty_symbolic_assembly(indices)
-    PRange(n_global,indices,assembly)
+    assembler = empty_assembler(indices)
+    PRange(n_global,indices,assembler)
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}

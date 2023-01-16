@@ -139,21 +139,23 @@ parallel implementations.
 
     PVector{T,A,B} <: AbstractVector{T}
 """
-struct PVector{V,A,B,T} <: AbstractVector{T}
+struct PVector{V,A,B,C,T} <: AbstractVector{T}
     values::A
     rows::B
+    buffers::C
     @doc """
         PVector(values,rows)
 
     Create an instance of [`PVector`](@ref) from the underlying properties
     `values` and `rows`.
     """
-    function PVector(values,rows)
+    function PVector(values,rows,buffers=assembly_buffers(values,rows.assembler))
         T = eltype(eltype(values))
         V = eltype(values)
         A = typeof(values)
         B = typeof(rows)
-        new{V,A,B,T}(values,rows)
+        C = typeof(buffers)
+        new{V,A,B,C,T}(values,rows,buffers)
     end
 end
 
@@ -556,25 +558,44 @@ for M in Distances.metrics
     end
 end
 
-function assembly_cache(values,assembly::SymbolicAssembly)
+struct AssemblyBuffers{A,B}
+    snd::A
+    rcv::B
+end
+function Base.show(io::IO,k::MIME"text/plain",data::AssemblyBuffers)
+    println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
+end
+Base.reverse(a::AssemblyBuffers) = AssemblyBuffers(a.rcv,a.snd)
+
+function assembly_buffers(values,assembler)
     V = eltype(values)
-    assembly_cache_impl(V,values,assembly)
+    assembly_buffers_impl(V,values,assembler)
 end
 
-function assemble!(f,values,assembly::SymbolicAssembly,cache)
+function assemble!(f,values,assembler,buffers)
     V = eltype(values)
-    assemble_impl!(f,V,values,assembly,cache)
+    assemble_impl!(f,V,values,assembler,buffers)
 end
 
-function assembly_cache_impl(::Type{<:AbstractVector},values,assembly)
+function assembly_buffers_impl(::Type{<:AbstractVector},values,assembler)
     T = eltype(eltype(values))
-    assembly_buffers(T,assembly.local_indices)
+    buffer_snd = map(assembler.local_indices.snd) do local_indices_snd
+        ptrs = local_indices_snd.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+    buffer_rcv = map(assembler.local_indices.rcv) do local_indices_rcv
+        ptrs = local_indices_rcv.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+    AssemblyBuffers(buffer_snd, buffer_rcv)
 end
 
-function assemble_impl!(f,::Type{<:AbstractVector},values,assembly,buffers)
-    neighbors = assembly.neighbors
-    local_indices_snd = assembly.local_indices.snd
-    local_indices_rcv = assembly.local_indices.rcv
+function assemble_impl!(f,::Type{<:AbstractVector},values,assembler,buffers)
+    neighbors = assembler.neighbors
+    local_indices_snd = assembler.local_indices.snd
+    local_indices_rcv = assembler.local_indices.rcv
     buffer_snd = buffers.snd
     buffer_rcv = buffers.rcv
     # Fill snd buffer
@@ -593,10 +614,6 @@ function assemble_impl!(f,::Type{<:AbstractVector},values,assembly,buffers)
             end
         end
     end
-end
-
-function assembly_cache(a::PVector)
-    assembly_cache(a.values,a.rows.assembly)
 end
 
 """
@@ -630,12 +647,12 @@ the source ghost values are set to zero.
      [1.0, 1.0, 2.0, 0.0]
      [0.0, 2.0, 1.0, 1.0]
 """
-function assemble!(a::PVector,args...)
-    assemble!(+,a,args...)
+function assemble!(a::PVector)
+    assemble!(+,a)
 end
 
-function assemble!(o,a::PVector,cache=assembly_cache(a))
-    t = assemble!(o,a.values,a.rows.assembly,cache)
+function assemble!(o,a::PVector)
+    t = assemble!(o,a.values,a.rows.assembler,a.buffers)
     @async begin
         wait(t)
         map(get_ghost_values(a)) do a
@@ -675,9 +692,9 @@ part that owns the associated global global id.
      [1, 1, 1, 2]
      [1, 2, 2, 2]
 """
-function consistent!(a::PVector,cache=assembly_cache(a))
+function consistent!(a::PVector)
     insert(a,b) = b
-    t = assemble!(insert,a.values,reverse(a.rows.assembly),reverse(cache))
+    t = assemble!(insert,a.values,reverse(a.rows.assembler),reverse(a.buffers))
     @async begin
         wait(t)
         a
