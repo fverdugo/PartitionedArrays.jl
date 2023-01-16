@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Usage · PartitionedArrays.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.039/juliamono-regular.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><script src="../../copy.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/custom.css" rel="stylesheet" type="text/css"/><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="PartitionedArrays.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">PartitionedArrays.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Usage</a><ul class="internal"><li><a class="tocitem" href="#Basic-example"><span>Basic example</span></a></li><li><a class="tocitem" href="#Advanced-example"><span>Advanced example</span></a></li></ul></li><li><a class="tocitem" href="../reference/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Usage</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Usage</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/fverdugo/PartitionedArrays.jl/blob/master/docs/src/usage.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Usage"><a class="docs-heading-anchor" href="#Usage">Usage</a><a id="Usage-1"></a><a class="docs-heading-anchor-permalink" href="#Usage" title="Permalink"></a></h1><p>Distributed linear algebra frameworks are the backbone for efficient parallel codes in data analytics, scientific computing and machine learning. The central idea is that vectors and matrices can be partitioned into potentially overlapping chunks which are distributed across a set of workers on which we define the usual operations like products and norms.</p><h2 id="Basic-example"><a class="docs-heading-anchor" href="#Basic-example">Basic example</a><a id="Basic-example-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-example" title="Permalink"></a></h2><p>In this section we take a look on solving the finite difference discretization of a Laplace problem in 1D over the domain [0,1]. As a reminder, the Laplace problem states to find function u(x) such that Δu(x) = 0 for all x ∈ [0,1]. Without boundary conditions the problem is not well-posed, hence we introduce the Dirichlet condition u(0) = 1.</p><p>Applying the finite difference method with length 0.25 we discretize the problem into linear system with 5 unkowns (u₁,...,u₅), which we call degrees of freedom:</p><p class="math-container">\[\frac{1}{4}
+\begin{pmatrix}
+1 &amp;  0 &amp;  0 &amp;  0 &amp;  0 \\
+0 &amp; -2 &amp;  1 &amp;  0 &amp;  0 \\
+0 &amp;  1 &amp; -2 &amp;  1 &amp;  0 \\
+0 &amp;  0 &amp;  1 &amp; -2 &amp;  1 \\
+0 &amp;  0 &amp;  0 &amp;  1 &amp; -1
+\end{pmatrix}
+\begin{pmatrix}
+u₁ \\
+u₂ \\
+u₃ \\
+u₄ \\
+u₅
+\end{pmatrix}
+=
+\begin{pmatrix}
+ 1 \\
+-1 \\
+ 0 \\
+ 0 \\
+ 0
+\end{pmatrix}\]</p><p>A detailed derivation can be found in standard numerical analysis lecture notes and books e.g. <a href="https://people.sc.fsu.edu/~jburkardt/classes/math2071_2020/poisson_steady_1d/poisson_steady_1d.pdf">these</a>. The linear system is then solved with conjugate gradients.</p><h3 id="Commented-Code"><a class="docs-heading-anchor" href="#Commented-Code">Commented Code</a><a id="Commented-Code-1"></a><a class="docs-heading-anchor-permalink" href="#Commented-Code" title="Permalink"></a></h3><p>To distribute the problem across two workers we have do choose a partitioning. Here we arbitrarily assign the first 3 columns and rows to worker 1 and the remaining 2 rows and columns to worker 2.</p><p>First include the packages which are used.</p><pre><code class="language-julia hljs">using PartitionedArrays, SparseArrays, IterativeSolvers</code></pre><p>We want a partitioning into 2 pieces and chose the sequential backend to handle the task sequentially so that the code can be executed in a standard Julia REPL (e.g., to simplify debugging).</p><pre><code class="language-julia hljs">np = 2
+backend = SequentialBackend()</code></pre><p>Most of the codes using <code>PartitionedArrays</code> start creating a distributed object that for each part contains its part id. We call it <code>parts</code>.</p><pre><code class="language-julia hljs">parts = get_part_ids(backend,np)</code></pre><p>Now, we generate a partitioning of rows and columns. Note that the entry in row 3 column 4 is visible to the first worker</p><pre><code class="language-julia hljs">neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
+    if part == 1
+        (
+        Int32[2],
+        IndexSet(part, [1,2,3], Int32[1,1,1]),
+        IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
+        )
+    else
+        (
+        Int32[1],
+        IndexSet(part, [3,4,5], Int32[1,2,2]),
+        IndexSet(part, [3,4,5], Int32[1,2,2])
+        )
+    end
+end</code></pre><p>We create information exchangers to manage the synchronization of visible shared portions of the sparse matrix and the actual row/col</p><pre><code class="language-julia hljs">global_number_of_dofs = 5
+row_exchanger = Exchanger(row_partitioning,neighbors)
+rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
+
+col_exchanger = Exchanger(col_partitioning,neighbors)
+cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)</code></pre><p>Next we create the sparse matrix entries in COO format in their worker-local numbering. A note about the exact values of the sparse matrices can be found in the subsection below.</p><pre><code class="language-julia hljs">I, J, V = map_parts(parts) do part
+    if part == 1
+        (
+        [ 1, 1, 2, 2, 2, 3, 3, 3],
+        [ 1, 2, 1, 2, 3, 2, 3, 4],
+        0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
+        )
+    else
+        (
+        [ 1, 1, 2, 2, 2, 3, 3],
+        [ 1, 2, 1, 2, 3, 2, 3],
+        0.25*Float64[-1, 1, 1,-2, 1, 1,-1])
+    end
+end
+A = PSparseMatrix(I, J, V, rows, cols, ids=:local)</code></pre><p>Since the previous lines created the local prtions we have to trigger sync between the workers.</p><pre><code class="language-julia hljs">assemble!(A)</code></pre><p>Construct the right hand side. Note that the first entry of the rhs of worker 2 is shared with worker 1.</p><pre><code class="language-julia hljs">b = PVector{Float64}(undef, A.rows)
+map_parts(parts,local_view(b, b.rows)) do part, b_local
+    if part == 1
+        b_local .= [1.0, -1.0, 0.0]
+    else
+        b_local .= [0.0, 0.0, 0.0]
+    end
+end</code></pre><p>Now the sparse matrix and right hand side of the linear system are assembled globally and we can solve problem with cg. With the end in the last line we close the parallel environment.</p><pre><code class="language-julia hljs">u = IterativeSolvers.cg(A,b)</code></pre><h3 id="Parallel-Code"><a class="docs-heading-anchor" href="#Parallel-Code">Parallel Code</a><a id="Parallel-Code-1"></a><a class="docs-heading-anchor-permalink" href="#Parallel-Code" title="Permalink"></a></h3><p>Now changing the backend to the MPI backend we can solve the problem in parallel. This just requires to change the line</p><pre><code class="language-julia hljs">backend = SequentialBackend()</code></pre><p>to</p><pre><code class="language-julia hljs">backend = MPIBackend()</code></pre><p>and including and initializing MPI. Now launching the script with MPI makes the run parallel.</p><pre><code class="language-sh hljs">$ mpirun -n 2 julia my-script.jl</code></pre><p>Hence the full MPI code is given in the next code box. Note that we have used the <code>with_backend</code> function that automatically includes and initializes MPI for us.</p><pre><code class="language-julia hljs">using PartitionedArrays, SparseArrays, IterativeSolvers
+
+np = 2
+backend = MPIBackend()
+
+with_backend(backend,np) do parts
+    # Construct the partitioning
+    neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
+        if part == 1
+            (
+            Int32[2],
+            IndexSet(part, [1,2,3], Int32[1,1,1]),
+            IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
+            )
+        else
+            (
+            Int32[1],
+            IndexSet(part, [3,4,5], Int32[1,2,2]),
+            IndexSet(part, [3,4,5], Int32[1,2,2])
+            )
+        end
+    end
+
+    global_number_of_dofs = 5
+
+    row_exchanger = Exchanger(row_partitioning,neighbors)
+    rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
+
+    col_exchanger = Exchanger(col_partitioning,neighbors)
+    cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
+
+    # Construct the sparse matrix
+    I, J, V = map_parts(parts) do part
+      if part == 1
+          (
+          [ 1, 1, 2, 2, 2, 3, 3, 3],
+          [ 1, 2, 1, 2, 3, 2, 3, 4],
+          0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
+          )
+      else
+          (
+          [ 1, 1, 2, 2, 2, 3, 3],
+          [ 1, 2, 1, 2, 3, 2, 3],
+          0.25*Float64[-1, 1, 1,-2, 1, 1,-1])
+      end
+    end
+    A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
+    assemble!(A)
+
+    # Construct the dense right hand side
+    b = PVector{Float64}(undef, A.rows)
+    map_parts(parts,local_view(b, b.rows)) do part, b_local
+        if part == 1
+            b_local .= [1.0, -1.0, 0.0]
+        else
+            b_local .= [0.0, 0.0, 0.0]
+        end
+    end
+
+    # Solve the linear problem
+    u = IterativeSolvers.cg(A,b)
+end</code></pre><h3 id="Note-on-Local-Matrices"><a class="docs-heading-anchor" href="#Note-on-Local-Matrices">Note on Local Matrices</a><a id="Note-on-Local-Matrices-1"></a><a class="docs-heading-anchor-permalink" href="#Note-on-Local-Matrices" title="Permalink"></a></h3><p>It should be noted that the local matrices are constructed as if they were locally assembled on a process without knowledge of the remaining processes. Dropping the coefficient 0.25 the global and local matrices look as follows:</p><pre><code class="nohighlight hljs">     Global Matrix
+   P1  P1  P1  P2  P2
+P1  1   0   0   0   0
+P1  0  -2   1   0   0
+P1  0   1  -2   1   0
+P2  0   0   1  -2   1
+P2  0   0   0   1  -1
+
+           =
+
+   Process 1 Portion
+   P1  P1  P1  P2  P2
+P1  1   0   0   0   0
+P1  0  -2   1   0   0
+P1  0   1  -1   0   0
+P2  x   x   x   x   x
+P2  x   x   x   x   x
+
+          +
+
+   Process 2 Portion
+   P1  P1  P1  P2  P2
+P1  x   x   x   x   x
+P1  x   x   x   x   x
+P1  0   0  -1   1   0
+P2  0   0   1  -2   1
+P2  0   0   0   1  -1</code></pre><h2 id="Advanced-example"><a class="docs-heading-anchor" href="#Advanced-example">Advanced example</a><a id="Advanced-example-1"></a><a class="docs-heading-anchor-permalink" href="#Advanced-example" title="Permalink"></a></h2><p>A more complex example can be found in the package <a href="https://github.com/fverdugo/PartitionedPoisson.jl">PartitionedPoisson.jl</a>, which describes the assembly of the finite element discretization of a Poisson problem in 3D.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../reference/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.12 on <span class="colophon-date" title="Monday 16 January 2023 13:30">Monday 16 January 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
