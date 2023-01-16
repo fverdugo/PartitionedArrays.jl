@@ -55,8 +55,10 @@ function p_vector_tests(distribute)
     b = 2*a
     b = a*2
     b = a/2
-    #c = a .+ b .+ a
-    #c = a - b
+    c = a .+ a
+    c = a .+ b .+ a
+    c = a - b
+    c = a + b
 
     r = reduce(+,a)
     @test sum(a) == r

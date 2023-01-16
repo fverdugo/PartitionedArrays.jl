@@ -475,8 +475,8 @@ get_ghost_values(a::PBroadcasted) = a.ghost_values
 function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
     a1 = first(args)
     @boundscheck @assert all(ai->matching_own_indices(ai.rows,a1.rows),args)
-    owned_values_in = map(get_own_values,args)
-    own_values = map((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
+    own_values_in = map(get_own_values,args)
+    own_values = map((largs...)->Base.broadcasted(f,largs...),own_values_in...)
     if all(ai->ai.rows===a1.rows,args) && !any(ai->get_ghost_values(ai)===nothing,args)
         ghost_values_in = map(get_ghost_values,args)
         ghost_values = map((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
@@ -507,7 +507,8 @@ function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
 end
 
 function Base.materialize(b::PBroadcasted)
-    T = eltype(eltype(b.own_values))
+    own_values = map(Base.materialize,b.own_values)
+    T = eltype(eltype(own_values))
     a = PVector{Vector{T}}(undef,b.rows)
     Base.materialize!(a,b)
     a
