@@ -62,6 +62,13 @@ function get_part_ids(b::MPIBackend,nparts::Tuple)
 end
 
 function _get_part_ids_body(root_comm,rank,size,need,nparts)
+  # For compatibility between MPI post and pre v0.20
+  @static if isdefined(MPI,:MPI_UNDEFINED)
+    mpi_undefined = MPI.MPI_UNDEFINED[]
+  else
+    mpi_undefined = MPI.API.MPI_UNDEFINED[]
+  end
+
   if size < need
     throw("Not enough MPI ranks, please run mpiexec with -n $need (at least)")
   elseif size > need
@@ -69,7 +76,7 @@ function _get_part_ids_body(root_comm,rank,size,need,nparts)
       comm = MPI.Comm_split(root_comm, 0, 0)
       MPIData(get_part_id(comm),comm,Tuple(nparts))
     else
-      comm = MPI.Comm_split(root_comm, MPI.API.MPI_UNDEFINED[], MPI.API.MPI_UNDEFINED[])
+      comm = MPI.Comm_split(root_comm, mpi_undefined, mpi_undefined)
       MPIData(get_part_id(comm),comm,(-1,))
     end
   else
