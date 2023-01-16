@@ -556,134 +556,35 @@ for M in Distances.metrics
     end
 end
 
-function assembly_neighbors(indices;kwargs...)
-    parts_snd = map(indices) do indices
-        rank = get_owner(indices)
-        local_to_owner = get_local_to_owner(indices)
-        set = Set{Int32}()
-        for owner in local_to_owner
-            if owner != rank
-                push!(set,owner)
-            end
-        end
-        sort(collect(set))
-    end
-    ExchangeGraph(parts_snd;kwargs...)
-end
-
-function assembly_local_ids(indices,neighbors)
-    parts_snd = neighbors.snd
-    parts_rcv = neighbors.rcv
-    aux1 = map(indices,parts_snd) do indices,parts_snd
-        rank = get_owner(indices)
-        local_to_owner = get_local_to_owner(indices)
-        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
-        ptrs = zeros(Int32,length(parts_snd)+1)
-        for owner in local_to_owner
-            if owner != rank
-                ptrs[owner_to_i[owner]+1] +=1
-            end
-        end
-        length_to_ptrs!(ptrs)
-        data_lids = zeros(Int32,ptrs[end]-1)
-        data_gids = zeros(Int,ptrs[end]-1)
-        local_to_global = get_local_to_global(indices)
-        for (lid,owner) in enumerate(local_to_owner)
-            if owner != rank
-                p = ptrs[owner_to_i[owner]]
-                data_lids[p]=lid
-                data_gids[p]=local_to_global[lid]
-                ptrs[owner_to_i[owner]] += 1
-            end
-        end
-        rewind_ptrs!(ptrs)
-        local_indices_snd = JaggedArray(data_lids,ptrs)
-        global_indices_snd = JaggedArray(data_gids,ptrs)
-        parts_snd, local_indices_snd, global_indices_snd
-    end
-    parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
-    global_indices_rcv = exchange_fetch(global_indices_snd,neighbors)
-    local_indices_rcv = map(global_indices_rcv,indices) do global_indices_rcv,indices
-        ptrs = global_indices_rcv.ptrs
-        data_lids = zeros(Int32,ptrs[end]-1)
-        global_to_local = get_global_to_local(indices)
-        for (k,gid) in enumerate(global_indices_rcv.data)
-            data_lids[k] = global_to_local[gid]
-        end
-        local_indices_rcv = JaggedArray(data_lids,ptrs)
-    end
-    local_indices_snd, local_indices_rcv
-end
-
-function assembly_buffers(::Type{T},local_indices_snd,local_indices_rcv) where T
-    buffer_snd = map(local_indices_snd) do local_indices_snd
-        ptrs = local_indices_snd.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
-    end
-    buffer_rcv = map(local_indices_rcv) do local_indices_rcv
-        ptrs = local_indices_rcv.ptrs
-        data = zeros(T,ptrs[end]-1)
-        JaggedArray(data,ptrs)
-    end
-    buffer_snd, buffer_rcv
-end
-
-struct AssemblyCache{A,B,C}
-    parts_snd::A
-    parts_rcv::A
-    local_indices_snd::B
-    local_indices_rcv::B
-    buffer_snd::C
-    buffer_rcv::C
-end
-
-function Base.reverse(g::AssemblyCache)
-    AssemblyCache(
-        g.parts_rcv,g.parts_snd,
-        g.local_indices_rcv,g.local_indices_snd,
-        g.buffer_rcv,g.buffer_snd)
-end
-
-function Base.show(io::IO,k::MIME"text/plain",data::AssemblyCache)
-    println(io,typeof(data)," on $(length(data.local_indices_snd)) parts")
-end
-
-function assembly_cache(values,indices;kwargs...)
+function assembly_cache(values,assembly::SymbolicAssembly)
     V = eltype(values)
-    assembly_cache_impl(V,values,indices;kwargs...)
+    assembly_cache_impl(V,values,assembly)
 end
 
-function assembly_cache_impl(::Type{<:AbstractVector},values,indices;kwargs...)
-    neighbors = assembly_neighbors(indices;kwargs...)
-    local_indices_snd, local_indices_rcv = assembly_local_ids(indices,neighbors)
+function assemble!(f,values,assembly::SymbolicAssembly,cache)
+    V = eltype(values)
+    assemble_impl!(f,V,values,assembly,cache)
+end
+
+function assembly_cache_impl(::Type{<:AbstractVector},values,assembly)
     T = eltype(eltype(values))
-    buffer_snd, buffer_rcv = assembly_buffers(T,local_indices_snd,local_indices_rcv)
-    AssemblyCache(
-        neighbors.snd,neighbors.rcv,
-        local_indices_snd,local_indices_rcv,
-        buffer_snd, buffer_rcv)
+    assembly_buffers(T,assembly.local_indices)
 end
 
-function assemble!(f,values,indices,cache)
-    V = eltype(values)
-    assemble_impl!(f,V,values,indices,cache)
-end
-
-function assemble_impl!(f,::Type{<:AbstractVector},values,indices,cache)
-    buffer_snd = cache.buffer_snd
-    buffer_rcv = cache.buffer_rcv
+function assemble_impl!(f,::Type{<:AbstractVector},values,assembly,buffers)
+    neighbors = assembly.neighbors
+    local_indices_snd = assembly.local_indices.snd
+    local_indices_rcv = assembly.local_indices.rcv
+    buffer_snd = buffers.snd
+    buffer_rcv = buffers.rcv
     # Fill snd buffer
-    local_indices_snd = cache.local_indices_snd
     map(values,local_indices_snd,buffer_snd) do values,local_indices_snd,buffer_snd
         for (p,lid) in enumerate(local_indices_snd.data)
             buffer_snd.data[p] = values[lid]
         end
     end
-    graph = ExchangeGraph(cache.parts_snd,cache.parts_rcv)
-    t = exchange!(buffer_rcv,buffer_snd,graph)
-    # Fill a from rcv buffer asynchronously
-    local_indices_rcv = cache.local_indices_rcv
+    t = exchange!(buffer_rcv,buffer_snd,neighbors)
+    # Fill values from rcv buffer asynchronously
     @async begin
         wait(t)
         map(values,local_indices_rcv,buffer_rcv) do values,local_indices_rcv,buffer_rcv
@@ -692,6 +593,10 @@ function assemble_impl!(f,::Type{<:AbstractVector},values,indices,cache)
             end
         end
     end
+end
+
+function assembly_cache(a::PVector)
+    assembly_cache(a.values,a.rows.assembly)
 end
 
 """
@@ -730,7 +635,7 @@ function assemble!(a::PVector,args...)
 end
 
 function assemble!(o,a::PVector,cache=assembly_cache(a))
-    t = assemble!(o,a.values,a.rows.indices,cache)
+    t = assemble!(o,a.values,a.rows.assembly,cache)
     @async begin
         wait(t)
         map(get_ghost_values(a)) do a
@@ -738,12 +643,6 @@ function assemble!(o,a::PVector,cache=assembly_cache(a))
         end
         a
     end
-end
-
-"""
-"""
-function assembly_cache(a::PVector)
-    assembly_cache(a.values,a.rows.indices)
 end
 
 """
@@ -776,9 +675,9 @@ part that owns the associated global global id.
      [1, 1, 1, 2]
      [1, 2, 2, 2]
 """
-function consistent!(a::PVector,cache=reverse(assembly_cache(a)))
+function consistent!(a::PVector,cache=assembly_cache(a))
     insert(a,b) = b
-    t = assemble!(insert,a.values,a.rows.indices,cache)
+    t = assemble!(insert,a.values,reverse(a.rows.assembly),reverse(cache))
     @async begin
         wait(t)
         a

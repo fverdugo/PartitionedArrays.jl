@@ -287,9 +287,10 @@ interface to access the underlying information about own, ghost, and local indic
     PRange{A} <: AbstractUnitRange{Int}
 
 """
-struct PRange{A} <: AbstractUnitRange{Int}
+struct PRange{A,B} <: AbstractUnitRange{Int}
     n_global::Int
     indices::A
+    assembly::B
     @doc """
         PRange(n_global,indices)
 
@@ -318,9 +319,10 @@ struct PRange{A} <: AbstractUnitRange{Int}
          [1, 2, 3, 4, 5]
          [4, 5, 6, 7, 8]
     """
-    function PRange(n_global,indices)
+    function PRange(n_global,indices,assembly=symbolic_assembly(indices))
         A = typeof(indices)
-        new{A}(Int(n_global),indices)
+        B = typeof(assembly)
+        new{A,B}(Int(n_global),indices,assembly)
     end
 end
 Base.first(a::PRange) = 1
@@ -481,9 +483,10 @@ Equivalent to
     indices = map(replace_ghost,pr.indices,gids,owners)
     PRange(pr.n_global,indices)
 """
-function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
+function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(replace_ghost,pr.indices,gids,owners)
-    PRange(pr.n_global,indices)
+    assembly = symbolic_assembly(indices;kwargs...)
+    PRange(pr.n_global,indices,assembly)
 end
 
 """
@@ -497,9 +500,10 @@ Equivalent to
     indices = map(union_ghost,pr.indices,gids,owners)
     PRange(pr.n_global,indices)
 """
-function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
-    indices = map(union_ghost,pr.indices,gids,owners)
-    PRange(pr.n_global,indices)
+function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+    indices = map(union_ghost,pr.indices,gids,owners;kwargs...)
+    assembly = symbolic_assembly(indices;kwargs...)
+    PRange(pr.n_global,indices,assembly)
 end
 
 function matching_local_indices(a::PRange,b::PRange)
@@ -519,6 +523,121 @@ function matching_ghost_indices(a::PRange,b::PRange)
     c = map(matching_ghost_indices,a.indices,b.indices)
     reduce(&,c,init=true)
 end
+
+struct SymbolicAssembly{A,B}
+    neighbors::A
+    local_indices::B
+end
+function Base.show(io::IO,k::MIME"text/plain",data::SymbolicAssembly)
+    println(io,nameof(typeof(data))," partitioned in $(length(data.neighbors.snd)) parts")
+end
+Base.reverse(a::SymbolicAssembly) = SymbolicAssembly(reverse(a.neighbors),reverse(a.local_indices))
+
+struct AssemblyIndices{A,B}
+    snd::A
+    rcv::B
+end
+function Base.show(io::IO,k::MIME"text/plain",data::AssemblyIndices)
+    println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
+end
+Base.reverse(a::AssemblyIndices) = AssemblyIndices(a.rcv,a.snd)
+
+struct AssemblyBuffers{A,B}
+    snd::A
+    rcv::B
+end
+function Base.show(io::IO,k::MIME"text/plain",data::AssemblyBuffers)
+    println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
+end
+Base.reverse(a::AssemblyBuffers) = AssemblyBuffers(a.rcv,a.snd)
+
+function symbolic_assembly(indices;kwargs...)
+    neighbors = assembly_neighbors(indices;kwargs...)
+    local_indices = assembly_local_indices(indices,neighbors)
+    SymbolicAssembly(neighbors,local_indices)
+end
+
+function empty_symbolic_assembly(indices)
+    neigs_snd = map(i->Int32[],indices)
+    neighbors = ExchangeGraph(neigs_snd,neigs_snd)
+    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
+    local_indices = AssemblyIndices(local_indices_snd,local_indices_snd)
+    SymbolicAssembly(neighbors,local_indices)
+end
+
+function assembly_neighbors(indices;kwargs...)
+    parts_snd = map(indices) do indices
+        rank = get_owner(indices)
+        local_to_owner = get_local_to_owner(indices)
+        set = Set{Int32}()
+        for owner in local_to_owner
+            if owner != rank
+                push!(set,owner)
+            end
+        end
+        sort(collect(set))
+    end
+    ExchangeGraph(parts_snd;kwargs...)
+end
+
+function assembly_local_indices(indices,neighbors)
+    parts_snd = neighbors.snd
+    parts_rcv = neighbors.rcv
+    aux1 = map(indices,parts_snd) do indices,parts_snd
+        rank = get_owner(indices)
+        local_to_owner = get_local_to_owner(indices)
+        owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
+        ptrs = zeros(Int32,length(parts_snd)+1)
+        for owner in local_to_owner
+            if owner != rank
+                ptrs[owner_to_i[owner]+1] +=1
+            end
+        end
+        length_to_ptrs!(ptrs)
+        data_lids = zeros(Int32,ptrs[end]-1)
+        data_gids = zeros(Int,ptrs[end]-1)
+        local_to_global = get_local_to_global(indices)
+        for (lid,owner) in enumerate(local_to_owner)
+            if owner != rank
+                p = ptrs[owner_to_i[owner]]
+                data_lids[p]=lid
+                data_gids[p]=local_to_global[lid]
+                ptrs[owner_to_i[owner]] += 1
+            end
+        end
+        rewind_ptrs!(ptrs)
+        local_indices_snd = JaggedArray(data_lids,ptrs)
+        global_indices_snd = JaggedArray(data_gids,ptrs)
+        parts_snd, local_indices_snd, global_indices_snd
+    end
+    parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
+    global_indices_rcv = exchange_fetch(global_indices_snd,neighbors)
+    local_indices_rcv = map(global_indices_rcv,indices) do global_indices_rcv,indices
+        ptrs = global_indices_rcv.ptrs
+        data_lids = zeros(Int32,ptrs[end]-1)
+        global_to_local = get_global_to_local(indices)
+        for (k,gid) in enumerate(global_indices_rcv.data)
+            data_lids[k] = global_to_local[gid]
+        end
+        local_indices_rcv = JaggedArray(data_lids,ptrs)
+    end
+    AssemblyIndices(local_indices_snd,local_indices_rcv)
+end
+
+function assembly_buffers(::Type{T},local_indices::AssemblyIndices) where T
+    buffer_snd = map(local_indices.snd) do local_indices_snd
+        ptrs = local_indices_snd.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+    buffer_rcv = map(local_indices.rcv) do local_indices_rcv
+        ptrs = local_indices_rcv.ptrs
+        data = zeros(T,ptrs[end]-1)
+        JaggedArray(data,ptrs)
+    end
+    AssemblyBuffers(buffer_snd, buffer_rcv)
+end
+
 
 """
     uniform_partition(ranks,np,n[,ghost[,periodic]])
@@ -560,7 +679,12 @@ function uniform_partition(rank,np,n,args...)
     indices = map(rank) do rank
         block_with_constant_size(rank,np,n,args...)
     end
-    PRange(prod(n),indices)
+    if length(args) == 0
+        assembly = empty_symbolic_assembly(indices)
+    else
+        assembly = symbolic_assembly(indices,symmetric=true)
+    end
+    PRange(prod(n),indices,assembly)
 end
 
 """
@@ -707,7 +831,8 @@ function variable_partition(
         ghost = GhostIndices(n_global)
         LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
     end
-    PRange(n_global,indices)
+    assembly = empty_symbolic_assembly(indices)
+    PRange(n_global,indices,assembly)
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
