@@ -389,6 +389,98 @@ function default_local_values(I,J,V,row_indices,col_indices)
     sparse(I,J,V,m,n)
 end
 
+function trivial_partition(rows::PRange)
+    destination = 1
+    indices = map(rows.indices) do indices
+        rank = get_owner(indices)
+        n = get_n_global(indices)
+        if rank == destination
+            LocalIndices(n,rank,collect(Int,1:n),fill(Int32(rank),n))
+        else
+            n_own = get_n_own(indices)
+            own_to_global = get_own_to_global(indices)
+            LocalIndices(n,rank,collect(Int,own_to_global),fill(Int32(destination),n_own))
+        end
+    end
+    PRange(n,indices)
+end
+
+function to_trivial_partition(b::PVector,rows_in_main::PRange)
+    destination = 1
+    T = eltype(b)
+    b_in_main = similar(b,T,rows_in_main)
+    map(get_own_values(b),b_in_main.values,b.rows.indices) do bown,b_in_main,indices
+        part = get_owner(indices)
+        if part == destination
+            own_to_global = get_own_to_global(indices)
+            b_in_main[own_to_global] .= bown
+        else
+            b_in_main .= bown
+        end
+    end
+    assemble!(b_in_main)
+    b_in_main
+end
+
+function from_trivial_partition!(c::PVector,c_in_main::PVector)
+    destination = 1
+    consistent!(c_in_main)
+    map(get_own_values(c),c_in_main.values,c.rows.indices) do cown, c_in_main, indices
+        part = get_owner(indices)
+        if part == destination
+            own_to_global = get_own_to_global(indices)
+            cown .= view(c_in_main,own_to_global)
+        else
+            cown .= c_in_main
+        end
+    end
+    c
+end
+
+function to_trivial_partition(a::PSparseMatrix{M},rows_in_main::PRange,cols_in_main::PRange) where M
+  I,J,V = map(a.values,a.rows.indices,a.cols.indices) do a,row_indices,col_indices
+    n = 0
+    local_to_owner = get_local_to_owner(row_indices)
+    owner = get_owner(row_indices)
+    local_to_global_row = get_local_to_global(row_indices)
+    local_to_global_col = get_local_to_global(col_indices)
+    for (i,j,v) in nziterator(a)
+      if local_to_owner[i] == owner
+        n += 1
+      end
+    end
+    I = zeros(Int,n)
+    J = zeros(Int,n)
+    V = zeros(Ta,n)
+    n = 0
+    for (i,j,v) in nziterator(a)
+      if local_to_owner[i] == owner
+        n += 1
+        I[n] = local_to_global_row[i]
+        J[n] = local_to_global_col[j]
+        V[n] = v
+      end
+    end
+    I,J,V
+  end |> unpack
+  assemble_coo!(I,J,V,rows_in_main)
+  I,J,V = map(a.rows.indices,I,J,V) do indices,I,J,V
+    owner = get_owner(row_indices)
+    if owner == destination
+      I,J,V
+    else
+      similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
+    end
+  end |> unpack
+  values(I,J,V,rows.indices,cols.indices) do I,J,V,row_indices,col_indices
+      m = get_n_local(row_indices)
+      n = get_n_local(col_indices)
+      compresscoo(M,I,J,V,m,n)
+  end
+  PSparseMatrix(values,rows_in_main,cols_in_main)
+end
+
+
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)

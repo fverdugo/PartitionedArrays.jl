@@ -209,3 +209,52 @@ function nzindex(A::SparseMatrixCSR, i0::Integer, i1::Integer)
   k = searchsortedfirst(colvals(A), i1o, r1, r2, Base.Order.Forward)
   ((k > r2) || (colvals(A)[k] != i1o)) ? 0 : k
 end
+
+compresscoo(a::AbstractSparseMatrix,args...) = compresscoo(typeof(a),args...)
+
+function compresscoo(
+  ::Type{SparseMatrixCSC{Tv,Ti}},
+  I::AbstractVector,
+  J::AbstractVector,
+  V::AbstractVector,
+  m::Integer,
+  n::Integer,
+  combine=+) where {Tv,Ti}
+
+  sparse(
+    EltypeVector(Ti,I),
+    EltypeVector(Ti,J),
+    EltypeVector(Tv,V),
+    m,n,combine)
+end
+
+function compresscoo(
+  ::Type{SparseMatrixCSR{Bi,Tv,Ti}},
+  I::AbstractVector,
+  J::AbstractVector,
+  V::AbstractVector,
+  m::Integer,
+  n::Integer,
+  combine=+) where {Bi,Tv,Ti}
+
+  sparsecsr(
+    Val(Bi),
+    EltypeVector(Ti,I),
+    EltypeVector(Ti,J),
+    EltypeVector(Tv,V),
+    m,n,combine)
+end
+
+struct EltypeVector{T,V} <: AbstractVector{T}
+  parent::V
+  function EltypeVector(::Type{T},parent::V) where {T,V<:AbstractVector}
+    new{T,V}(parent)
+  end
+end
+EltypeVector(::Type{T},parent::AbstractVector{T}) where T = parent
+Base.size(v::EltypeVector) = size(v.parent)
+Base.axes(v::EltypeVector) = axes(v.parent)
+Base.@propagate_inbounds Base.getindex(v::EltypeVector{T},i::Integer) where T = convert(T,v.parent[i])
+Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.parent[i] = w)
+Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
+
