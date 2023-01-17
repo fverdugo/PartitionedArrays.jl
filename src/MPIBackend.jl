@@ -95,8 +95,10 @@ function with_backend(driver,b::MPIBackend,nparts,args...;kwargs...)
     driver(part,args...;kwargs...)
   else
     try
-       part = get_part_ids(b,nparts)
-       driver(part,args...;kwargs...)
+      part = get_part_ids(b,nparts)
+      if i_am_in(part)
+        driver(part,args...;kwargs...)
+      end
     catch e
       @error "" exception=(e, catch_backtrace())
       if MPI.Initialized() && !MPI.Finalized()
