@@ -319,7 +319,7 @@ struct PRange{A,B} <: AbstractUnitRange{Int}
          [1, 2, 3, 4, 5]
          [4, 5, 6, 7, 8]
     """
-    function PRange(n_global,indices,assembler=setup_assembler(indices))
+    function PRange(n_global,indices,assembler=vector_assembler(indices))
         A = typeof(indices)
         B = typeof(assembler)
         new{A,B}(Int(n_global),indices,assembler)
@@ -485,7 +485,7 @@ Equivalent to
 """
 function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(replace_ghost,pr.indices,gids,owners)
-    assembler = setup_assembler(indices;kwargs...)
+    assembler = vector_assembler(indices;kwargs...)
     PRange(pr.n_global,indices,assembler)
 end
 
@@ -501,8 +501,8 @@ Equivalent to
     PRange(pr.n_global,indices)
 """
 function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
-    indices = map(union_ghost,pr.indices,gids,owners;kwargs...)
-    assembler = setup_assembler(indices;kwargs...)
+    indices = map(union_ghost,pr.indices,gids,owners)
+    assembler = vector_assembler(indices;kwargs...)
     PRange(pr.n_global,indices,assembler)
 end
 
@@ -524,6 +524,26 @@ function matching_ghost_indices(a::PRange,b::PRange)
     reduce(&,c,init=true)
 end
 
+function to_local!(I,rows::PRange)
+    map(I,rows.indices) do I, indices
+        global_to_local = get_global_to_local(indices)
+        for k in 1:length(I)
+            I[k] = global_to_local[I[k]]
+        end
+    end
+    I
+end
+
+function to_global!(I,rows::PRange)
+    map(I,rows.indices) do I, indices
+        local_to_global = get_local_to_global(indices)
+        for k in 1:length(I)
+            I[k] = local_to_global[I[k]]
+        end
+    end
+    I
+end
+
 struct Assembler{A,B}
     neighbors::A
     local_indices::B
@@ -542,7 +562,7 @@ function Base.show(io::IO,k::MIME"text/plain",data::AssemblyLocalIndices)
 end
 Base.reverse(a::AssemblyLocalIndices) = AssemblyLocalIndices(a.rcv,a.snd)
 
-function setup_assembler(indices;kwargs...)
+function vector_assembler(indices;kwargs...)
     neighbors = assembly_neighbors(indices;kwargs...)
     local_indices = assembly_local_indices(indices,neighbors)
     Assembler(neighbors,local_indices)
@@ -658,7 +678,7 @@ function uniform_partition(rank,np,n,args...)
     if length(args) == 0
         assembler = empty_assembler(indices)
     else
-        assembler = setup_assembler(indices,symmetric=true)
+        assembler = vector_assembler(indices,symmetric=true)
     end
     PRange(prod(n),indices,assembler)
 end

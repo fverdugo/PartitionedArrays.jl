@@ -9,6 +9,8 @@ using PartitionedArrays
 
 @testset "p_range" begin include("p_range_tests.jl")  end
 
-#@testset "p_vector" begin include("p_vector_tests.jl")  end
+@testset "p_vector" begin include("p_vector_tests.jl")  end
+
+@testset "p_sparse_matrix" begin include("p_sparse_matrix_tests.jl")  end
 
 end #module

@@ -139,28 +139,38 @@ parallel implementations.
 
     PVector{T,A,B} <: AbstractVector{T}
 """
-struct PVector{V,A,B,C,T} <: AbstractVector{T}
+struct PVector{V,A,B,C,D,T} <: AbstractVector{T}
     values::A
     rows::B
-    buffers::C
+    assembler::C
+    buffers::D
     @doc """
         PVector(values,rows)
 
     Create an instance of [`PVector`](@ref) from the underlying properties
     `values` and `rows`.
     """
-    function PVector(values,rows,buffers=assembly_buffers(values,rows.assembler))
+    function PVector(
+            values,
+            rows,
+            assembler=vector_assembler(values,rows),
+            buffers=assembly_buffers(values,assembler))
         T = eltype(eltype(values))
         V = eltype(values)
         A = typeof(values)
         B = typeof(rows)
-        C = typeof(buffers)
-        new{V,A,B,C,T}(values,rows,buffers)
+        C = typeof(assembler)
+        D = typeof(buffers)
+        new{V,A,B,C,D,T}(values,rows,assembler,buffers)
     end
 end
 
 function Base.show(io::IO,k::MIME"text/plain",data::PVector)
     println(io,"PVector with $(length(data)) items on $(length(data.values)) parts")
+end
+
+function vector_assembler(values,rows::PRange)
+    rows.assembler
 end
 
 """
@@ -283,19 +293,37 @@ function pvector(f,rows)
     PVector(values,rows)
 end
 
-function pvector(f,I,V,rows)
-    values = map(f,I,V,rows.indices)
-    rows = union_ghost(rows,I)
-    PVector(values,rows)
-end
-
 function pvector(rows)
     pvector(default_local_values,rows)
 end
 
-function pvector(I,V,rows)
-    rows = union_ghost(rows,I)
-    pvector(default_local_values,I,V,rows)
+function pvector!(f,I,V,rows;kwargs...)
+    rows = union_ghost(rows,I;kwargs...)
+    to_local!(I,rows)
+    values = map(f,I,V,rows.indices)
+    v = PVector(values,rows)
+    assemble!(v)
+end
+
+function pvector!(I,V,rows;kwargs...)
+    pvector!(default_local_values,I,V,rows;kwargs...)
+end
+
+function psparsevec!(f,I,V,rows;kwargs...)
+    rows = union_ghost(rows,I;kwargs...)
+    t = assemble_coo!(I,I,V,rows)
+    @async begin
+        wait(t)
+        to_local!(I,rows)
+        values = map(f,I,V,rows.indices)
+        PVector(values,rows)
+    end
+end
+
+function psparsevec!(I,V,rows;kwargs...)
+    pvector!(I,V,rows;kwargs...) do I,V,indices
+        sparsevec(I,V,get_n_local(indices))
+    end
 end
 
 function default_local_values(indices)
@@ -305,10 +333,8 @@ end
 function default_local_values(I,V,indices)
     values = Vector{Float64}(undef,get_n_local(indices))
     fill!(values,zero(eltype(values)))
-    global_to_local = get_global_to_local(indices)
     for k in 1:length(I)
-        gi = I[k]
-        li = global_to_local[gi]
+        li = I[k]
         values[li] = V[k]
     end
     values
@@ -569,16 +595,6 @@ end
 Base.reverse(a::AssemblyBuffers) = AssemblyBuffers(a.rcv,a.snd)
 
 function assembly_buffers(values,assembler)
-    V = eltype(values)
-    assembly_buffers_impl(V,values,assembler)
-end
-
-function assemble!(f,values,assembler,buffers)
-    V = eltype(values)
-    assemble_impl!(f,V,values,assembler,buffers)
-end
-
-function assembly_buffers_impl(::Type{<:AbstractVector},values,assembler)
     T = eltype(eltype(values))
     buffer_snd = map(assembler.local_indices.snd) do local_indices_snd
         ptrs = local_indices_snd.ptrs
@@ -593,7 +609,7 @@ function assembly_buffers_impl(::Type{<:AbstractVector},values,assembler)
     AssemblyBuffers(buffer_snd, buffer_rcv)
 end
 
-function assemble_impl!(f,::Type{<:AbstractVector},values,assembler,buffers)
+function assemble!(f,values,assembler,buffers)
     neighbors = assembler.neighbors
     local_indices_snd = assembler.local_indices.snd
     local_indices_rcv = assembler.local_indices.rcv
@@ -653,7 +669,7 @@ function assemble!(a::PVector)
 end
 
 function assemble!(o,a::PVector)
-    t = assemble!(o,a.values,a.rows.assembler,a.buffers)
+    t = assemble!(o,a.values,a.assembler,a.buffers)
     @async begin
         wait(t)
         map(get_ghost_values(a)) do a
@@ -695,7 +711,7 @@ part that owns the associated global global id.
 """
 function consistent!(a::PVector)
     insert(a,b) = b
-    t = assemble!(insert,a.values,reverse(a.rows.assembler),reverse(a.buffers))
+    t = assemble!(insert,a.values,reverse(a.assembler),reverse(a.buffers))
     @async begin
         wait(t)
         a

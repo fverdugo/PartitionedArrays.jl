@@ -38,15 +38,15 @@ function p_vector_tests(distribute)
 
     n = 10
     I,V = map(rank) do rank
-        Random.seed!(123)
+        Random.seed!(rank)
         I = rand(1:n,5)
-        Random.seed!(123)
-        V = rand(5)
+        Random.seed!(2*rank)
+        V = rand(1:2,5)
         I,V
     end |> unpack
 
     rows = uniform_partition(rank,n)
-    a = pvector(I,V,rows)
+    a = pvector!(I,V,rows) |> fetch
 
     @test any(i->i>n,a) == false
     @test all(i->i<n,a)

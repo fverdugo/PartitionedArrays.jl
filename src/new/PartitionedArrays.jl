@@ -97,6 +97,8 @@ export allocate_local_values
 export OwnAndGhostValues
 export PVector
 export pvector
+export pvector!
+export psparsevec!
 export pfill
 export pzeros
 export pones
@@ -106,6 +108,10 @@ export consistent!
 export neutral_element
 include("p_vector.jl")
 
-
-
+export PSparseMatrix
+export psparse
+export psparse!
+export get_own_ghost_values
+export get_ghost_own_values
+include("p_sparse_matrix.jl")
 
