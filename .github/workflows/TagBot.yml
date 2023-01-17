@@ -5,6 +5,8 @@ on:
       - created
   workflow_dispatch:
 jobs:
+  permissions:
+    contents: write
   TagBot:
     if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
     runs-on: ubuntu-latest
