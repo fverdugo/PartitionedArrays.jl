@@ -61,16 +61,18 @@ function unpack_first_and_tail(a)
   x, y
 end
 
+const MAIN = 1
+
 """
-    map_one(f,args...;kwargs...)
+    map_main(f,args...;kwargs...)
 
 Like `map(f,args...)` but only apply `f` to one component of the arrays
 in `args` (the first component by default). Set the remaining entries to `nothing` by default.
 
 # Optional key-word arguments
 
-- `index = 1`: The linear index of the component to map
-- `otherwise = (args...)->nothing`: The function to apply when mapping indices different from `index`.
+- `main = MAIN`: The linear index of the component to map
+- `otherwise = (args...)->nothing`: The function to apply when mapping indices different from `main`.
 
 # Examples
 
@@ -83,25 +85,25 @@ in `args` (the first component by default). Set the remaining entries to `nothin
      3
      4
 
-    julia> map_one(-,a,index=2)
+    julia> map_main(-,a,main=2)
     4-element Vector{Union{Nothing, Int64}}:
        nothing
      -2
        nothing
        nothing
 """
-function map_one(f,args...;otherwise=(args...)->nothing,index=1)
-    if isa(index,Integer)
+function map_main(f,args...;otherwise=(args...)->nothing,main=MAIN)
+    if isa(main,Integer)
         rank = linear_indices(first(args))
         map(rank,args...) do rank,args...
-            if rank == index
+            if rank == main
                 f(args...)
             else
                 otherwise(args...)
             end
         end
     else
-      @assert index === :all
+      @assert main === :all
       map(f,args...)
     end
 end
@@ -163,7 +165,7 @@ function allocate_gather_impl(snd,destination,::Type{T}) where T
     f = (snd)->Vector{T}(undef,n)
     if isa(destination,Integer)
         g = (snd)->Vector{T}(undef,0)
-        rcv = map_one(f,snd;otherwise=g,index=destination)
+        rcv = map_main(f,snd;otherwise=g,main=destination)
     else
         @assert destination === :all
         rcv = map(f,snd)
@@ -186,7 +188,7 @@ function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
             data = Vector{eltype(snd)}(undef,0)
             JaggedArray(data,ptrs)
         end
-        rcv = map_one(f,l_dest,snd;otherwise=g,index=destination)
+        rcv = map_main(f,l_dest,snd;otherwise=g,main=destination)
     else
         @assert destination === :all
         rcv = map(f,l_dest,snd)

@@ -20,7 +20,8 @@ include("sparse_utils.jl")
 export linear_indices
 export cartesian_indices
 export unpack
-export map_one
+export MAIN
+export map_main
 export gather
 export gather!
 export allocate_gather

@@ -491,7 +491,7 @@ function Base.:\(a::PSparseMatrix,b::PVector)
     a_in_main = to_trivial_partition(a)
     b_in_main = to_trivial_partition(b,a_in_main.rows)
     c_in_main = to_trivial_partition(c,a_in_main.cols)
-    map_one(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
+    map_main(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
         c .= a\b
         nothing
     end
@@ -507,18 +507,18 @@ struct PLU{A,B,C}
 end
 function LinearAlgebra.lu(a::PSparseMatrix)
     a_in_main = to_trivial_partition(a)
-    lu_in_main = map_one(lu,a_in_main.values)
+    lu_in_main = map_main(lu,a_in_main.values)
     PLU(lu_in_main,a_in_main.rows,a_in_main.cols)
 end
 function LinearAlgebra.lu!(b::PLU,a::PSparseMatrix)
     a_in_main = to_trivial_partition(a,b.rows,b.cols)
-    map_one(lu!,b.lu_in_main,a_in_main.values)
+    map_main(lu!,b.lu_in_main,a_in_main.values)
     b
 end
 function LinearAlgebra.ldiv!(c::PVector,a::PLU,b::PVector)
     b_in_main = to_trivial_partition(b,a.rows)
     c_in_main = to_trivial_partition(c,a.cols)
-    map_one(ldiv!,c_in_main.values,a.lu_in_main,b_in_main.values)
+    map_main(ldiv!,c_in_main.values,a.lu_in_main,b_in_main.values)
     from_trivial_partition!(c,c_in_main)
     c
 end

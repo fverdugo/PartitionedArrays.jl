@@ -16,7 +16,7 @@ function primitives_tests(distribute)
        @test b == 10*rank
    end
 
-   a = map_one(+,b,rank;index=2)
+   a = map_main(+,b,rank;main=2)
 
    map(a,b,rank) do a,b,rank
        if rank == 2
@@ -26,11 +26,11 @@ function primitives_tests(distribute)
        end
    end
 
-   a = map_one(+,b,rank;index=:all)
+   a = map_main(+,b,rank;main=:all)
 
    snd = b
    rcv = gather(snd;destination=2)
-   map_one(rcv;index=2) do rcv
+   map_main(rcv;main=2) do rcv
      @test rcv == [10,20,30,40]
    end
 
@@ -77,32 +77,32 @@ function primitives_tests(distribute)
    end
    b = scan(+,a,type=:inclusive,init=0)
    c = gather(b)
-   map_one(c) do c
+   map_main(c) do c
        @test c == [3,9,9,12]
    end
 
    b = scan(+,a,type=:exclusive,init=1)
    c = gather(b)
-   map_one(c) do c
+   map_main(c) do c
        @test c == [1,4,10,10]
    end
 
    b = copy(a)
    scan!(+,b,b,type=:inclusive,init=0)
    c = gather(b)
-   map_one(c) do c
+   map_main(c) do c
        @test c == [3,9,9,12]
    end
 
    b = copy(a)
    scan!(+,b,b,type=:exclusive,init=1)
    c = gather(b)
-   map_one(c) do c
+   map_main(c) do c
        @test c == [1,4,10,10]
    end
 
    r = reduction(+,rank,init=0)
-   map_one(r) do r
+   map_main(r) do r
        @test r == 10
    end
    r = reduction(+,rank,init=10,destination=:all)
@@ -116,7 +116,7 @@ function primitives_tests(distribute)
 
    r = copy(rank)
    reduction!(+,r,r,init=0,destination=2)
-   map_one(r,index=2) do r
+   map_main(r,main=2) do r
        @test r == 10
    end
 
@@ -245,7 +245,7 @@ function primitives_tests(distribute)
    end
 
    a = reduction(+,parts,init=0)
-   map_one(a) do a
+   map_main(a) do a
        @test a == 1+2+3+4
    end
 
