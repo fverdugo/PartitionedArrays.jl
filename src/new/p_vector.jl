@@ -245,7 +245,7 @@ end
 function Base.copyto!(a::PVector,b::PVector)
     if a.rows.indices === b.rows.indices
         map(copy!,a.values,b.values)
-    elseif matching_own_indices(a,b)
+    elseif matching_own_indices(a.rows,b.rows)
         map(copy!,get_own_values(a),get_own_values(b))
     else
         error("Trying to copy a PVector into another one with a different data layout. This case is not implemented yet. It would require communications.")

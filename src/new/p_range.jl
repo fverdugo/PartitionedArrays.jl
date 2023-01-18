@@ -1163,7 +1163,7 @@ function get_own_to_owner(a::LocalIndices)
 end
 
 function get_global_to_own(a::LocalIndices)
-    n_own = legnth(a.own_to_local)
+    n_own = Int32(length(a.own_to_local))
     GlobalToOwn(n_own,a.global_to_local,a.perm)
 end
 
@@ -1176,7 +1176,7 @@ function get_ghost_to_owner(a::LocalIndices)
 end
 
 function get_global_to_ghost(a::LocalIndices)
-    n_own = legnth(a.own_to_local)
+    n_own = length(a.own_to_local)
     GlobalToGhost(n_own,a.global_to_local,a.perm)
 end
 
@@ -1189,12 +1189,12 @@ function get_ghost_to_local(a::LocalIndices)
 end
 
 function get_local_to_own(a::LocalIndices)
-    n_own = legnth(a.own_to_local)
+    n_own = length(a.own_to_local)
     LocalToOwn(n_own,a.perm)
 end
 
 function get_local_to_ghost(a::LocalIndices)
-    n_own = legnth(a.own_to_local)
+    n_own = length(a.own_to_local)
     LocalToGhost(n_own,a.perm)
 end
 

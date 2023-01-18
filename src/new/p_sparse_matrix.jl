@@ -127,61 +127,63 @@ function Base.similar(::Type{<:PSparseMatrix{V}},inds::Tuple{<:PRange,<:PRange})
 end
 
 function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
-  map(a.values) do values
-    LinearAlgebra.fillstored!(values,v)
-  end
-  a
+    map(a.values) do values
+        LinearAlgebra.fillstored!(values,v)
+    end
+    a
 end
 
 function Base.:*(a::Number,b::PSparseMatrix)
-  values = map(b.values) do values
-    a*values
-  end
-  PSparseMatrix(values,b.rows,b.cols,b.assembler)
+    values = map(b.values) do values
+        a*values
+    end
+    PSparseMatrix(values,b.rows,b.cols,b.assembler)
 end
 
 function Base.:*(b::PSparseMatrix,a::Number)
-  a*b
+    a*b
 end
 
-function Base.:*(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
-  T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
-  c = PVector{Vector{T}}(undef,a.rows)
-  mul!(c,a,b)
-  c
+function Base.:*(a::PSparseMatrix,b::PVector)
+    Ta = eltype(a)
+    Tb = eltype(b)
+    T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
+    c = PVector{Vector{T}}(undef,a.rows)
+    mul!(c,a,b)
+    c
 end
 
 for op in (:+,:-)
-  @eval begin
-    function Base.$op(a::PSparseMatrix)
-      values = map(a.values) do a
-        $op(a)
-      end
-      PSparseMatrix(values,a.rows,a.cols,b.assembler)
+    @eval begin
+        function Base.$op(a::PSparseMatrix)
+            values = map(a.values) do a
+                $op(a)
+            end
+            PSparseMatrix(values,a.rows,a.cols,b.assembler)
+        end
     end
-  end
 end
 
 function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β::Number)
-  @boundscheck @assert matching_own_indices(c.rows,a.rows)
-  @boundscheck @assert matching_own_indices(a.cols,b.rows)
-  @boundscheck @assert matching_ghost_indices(a.cols,b.rows)
-  # Start the exchange
-  t = consistent!(b)
-  # Meanwhile, process the owned blocks
-  map(get_own_values(c),get_own_values(a),get_own_values(b)) do co,aoo,bo
-    if β != 1
-        β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
+    @boundscheck @assert matching_own_indices(c.rows,a.rows)
+    @boundscheck @assert matching_own_indices(a.cols,b.rows)
+    @boundscheck @assert matching_ghost_indices(a.cols,b.rows)
+    # Start the exchange
+    t = consistent!(b)
+    # Meanwhile, process the owned blocks
+    map(get_own_values(c),get_own_values(a),get_own_values(b)) do co,aoo,bo
+        if β != 1
+            β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
+        end
+        mul!(co,aoo,bo,α,1)
     end
-    mul!(co,aoo,bo,α,1)
-  end
-  # Wait for the exchange to finish
-  wait(t)
-  # process the ghost block
-  map(get_own_values(c),get_own_ghost_values(a),get_ghost_values(b)) do co,aoh,bh
-    mul!(co,aoh,bh,α,1)
-  end
-  c
+    # Wait for the exchange to finish
+    wait(t)
+    # process the ghost block
+    map(get_own_values(c),get_own_ghost_values(a),get_ghost_values(b)) do co,aoh,bh
+        mul!(co,aoh,bh,α,1)
+    end
+    c
 end
 
 # this one could be also used for sparse vectors
@@ -328,9 +330,9 @@ function assemble_coo!(I,J,V,rows)
         resize!(k_gj,new_n)
         resize!(k_v,new_n)
         for p in 1:length(gi_rcv.data)
-          k_gi[current_n+p] = gi_rcv.data[p]
-          k_gj[current_n+p] = gj_rcv.data[p]
-          k_v[current_n+p] = v_rcv.data[p]
+            k_gi[current_n+p] = gi_rcv.data[p]
+            k_gj[current_n+p] = gj_rcv.data[p]
+            k_v[current_n+p] = v_rcv.data[p]
         end
     end
     part = linear_indices(rows.indices)
@@ -391,18 +393,13 @@ end
 
 function trivial_partition(rows::PRange)
     destination = 1
-    indices = map(rows.indices) do indices
-        rank = get_owner(indices)
-        n = get_n_global(indices)
-        if rank == destination
-            LocalIndices(n,rank,collect(Int,1:n),fill(Int32(rank),n))
-        else
-            n_own = get_n_own(indices)
-            own_to_global = get_own_to_global(indices)
-            LocalIndices(n,rank,collect(Int,own_to_global),fill(Int32(destination),n_own))
-        end
+    n_own = map(rows.indices) do indices
+        owner = get_owner(indices)
+        owner == destination ? Int(get_n_global(indices)) : 0
     end
-    PRange(n,indices)
+    rows_in_main = variable_partition(n_own,length(rows))
+    rows_in_main = union_ghost(rows_in_main,get_own_to_global(rows))
+    rows_in_main
 end
 
 function to_trivial_partition(b::PVector,rows_in_main::PRange)
@@ -424,7 +421,7 @@ end
 
 function from_trivial_partition!(c::PVector,c_in_main::PVector)
     destination = 1
-    consistent!(c_in_main)
+    consistent!(c_in_main) |> wait
     map(get_own_values(c),c_in_main.values,c.rows.indices) do cown, c_in_main, indices
         part = get_owner(indices)
         if part == destination
@@ -438,59 +435,63 @@ function from_trivial_partition!(c::PVector,c_in_main::PVector)
 end
 
 function to_trivial_partition(
-  a::PSparseMatrix{M},
-  rows_in_main::PRange=trivial_partition(a.rows),
-  cols_in_main::PRange=trivial_partition(a.cols)) where M
-  I,J,V = map(a.values,a.rows.indices,a.cols.indices) do a,row_indices,col_indices
-    n = 0
-    local_to_owner = get_local_to_owner(row_indices)
-    owner = get_owner(row_indices)
-    local_to_global_row = get_local_to_global(row_indices)
-    local_to_global_col = get_local_to_global(col_indices)
-    for (i,j,v) in nziterator(a)
-      if local_to_owner[i] == owner
-        n += 1
-      end
+        a::PSparseMatrix{M},
+        rows_in_main::PRange=trivial_partition(a.rows),
+        cols_in_main::PRange=trivial_partition(a.cols)) where M
+    destination = 1
+    Ta = eltype(a)
+    I,J,V = map(a.values,a.rows.indices,a.cols.indices) do a,row_indices,col_indices
+        n = 0
+        local_to_owner = get_local_to_owner(row_indices)
+        owner = get_owner(row_indices)
+        local_to_global_row = get_local_to_global(row_indices)
+        local_to_global_col = get_local_to_global(col_indices)
+        for (i,j,v) in nziterator(a)
+            if local_to_owner[i] == owner
+                n += 1
+            end
+        end
+        I = zeros(Int,n)
+        J = zeros(Int,n)
+        V = zeros(Ta,n)
+        n = 0
+        for (i,j,v) in nziterator(a)
+            if local_to_owner[i] == owner
+                n += 1
+                I[n] = local_to_global_row[i]
+                J[n] = local_to_global_col[j]
+                V[n] = v
+            end
+        end
+        I,J,V
+    end |> unpack
+    assemble_coo!(I,J,V,rows_in_main) |> wait
+    I,J,V = map(a.rows.indices,I,J,V) do row_indices,I,J,V
+        owner = get_owner(row_indices)
+        if owner == destination
+            I,J,V
+        else
+            similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
+        end
+    end |> unpack
+    values = map(I,J,V,rows_in_main.indices,cols_in_main.indices) do I,J,V,row_indices,col_indices
+        m = get_n_local(row_indices)
+        n = get_n_local(col_indices)
+        compresscoo(M,I,J,V,m,n)
     end
-    I = zeros(Int,n)
-    J = zeros(Int,n)
-    V = zeros(Ta,n)
-    n = 0
-    for (i,j,v) in nziterator(a)
-      if local_to_owner[i] == owner
-        n += 1
-        I[n] = local_to_global_row[i]
-        J[n] = local_to_global_col[j]
-        V[n] = v
-      end
-    end
-    I,J,V
-  end |> unpack
-  assemble_coo!(I,J,V,rows_in_main)
-  I,J,V = map(a.rows.indices,I,J,V) do indices,I,J,V
-    owner = get_owner(row_indices)
-    if owner == destination
-      I,J,V
-    else
-      similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
-    end
-  end |> unpack
-  values(I,J,V,rows.indices,cols.indices) do I,J,V,row_indices,col_indices
-      m = get_n_local(row_indices)
-      n = get_n_local(col_indices)
-      compresscoo(M,I,J,V,m,n)
-  end
-  PSparseMatrix(values,rows_in_main,cols_in_main)
+    PSparseMatrix(values,rows_in_main,cols_in_main)
 end
 
 # Not efficient, just for convenience and debugging purposes
-function Base.:\(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
+function Base.:\(a::PSparseMatrix,b::PVector)
+    Ta = eltype(a)
+    Tb = eltype(b)
     T = typeof(one(Ta)\one(Tb)+one(Ta)\one(Tb))
     c = PVector{Vector{T}}(undef,a.cols)
     a_in_main = to_trivial_partition(a)
     b_in_main = to_trivial_partition(b,a_in_main.rows)
     c_in_main = to_trivial_partition(c,a_in_main.cols)
-    map(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
+    map_one(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
         c .= a\b
         nothing
     end
@@ -525,8 +526,8 @@ end
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
-  T = IterativeSolvers.Adivtype(A, b)
-  x = similar(b, T, axes(A, 2))
-  fill!(x, zero(T))
-  return x
+    T = IterativeSolvers.Adivtype(A, b)
+    x = similar(b, T, axes(A, 2))
+    fill!(x, zero(T))
+    return x
 end
