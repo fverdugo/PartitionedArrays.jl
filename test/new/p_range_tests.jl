@@ -142,4 +142,14 @@ function p_range_tests(distribute)
    end
    pr = PRange(n_global,indices)
 
+   parts = rank
+   nparts = length(parts)
+   @assert nparts == 4
+
+   parts2 = linear_indices(parts)
+   map(parts,parts2) do part1, part2
+       @test part1 == part2
+   end
+
+
 end

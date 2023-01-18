@@ -437,7 +437,10 @@ function from_trivial_partition!(c::PVector,c_in_main::PVector)
     c
 end
 
-function to_trivial_partition(a::PSparseMatrix{M},rows_in_main::PRange,cols_in_main::PRange) where M
+function to_trivial_partition(
+  a::PSparseMatrix{M},
+  rows_in_main::PRange=trivial_partition(a.rows),
+  cols_in_main::PRange=trivial_partition(a.cols)) where M
   I,J,V = map(a.values,a.rows.indices,a.cols.indices) do a,row_indices,col_indices
     n = 0
     local_to_owner = get_local_to_owner(row_indices)
@@ -480,6 +483,44 @@ function to_trivial_partition(a::PSparseMatrix{M},rows_in_main::PRange,cols_in_m
   PSparseMatrix(values,rows_in_main,cols_in_main)
 end
 
+# Not efficient, just for convenience and debugging purposes
+function Base.:\(a::PSparseMatrix{Ta},b::PVector{Tb}) where {Ta,Tb}
+    T = typeof(one(Ta)\one(Tb)+one(Ta)\one(Tb))
+    c = PVector{Vector{T}}(undef,a.cols)
+    a_in_main = to_trivial_partition(a)
+    b_in_main = to_trivial_partition(b,a_in_main.rows)
+    c_in_main = to_trivial_partition(c,a_in_main.cols)
+    map(c_in_main.values,a_in_main.values,b_in_main.values) do c, a, b
+        c .= a\b
+        nothing
+    end
+    from_trivial_partition!(c,c_in_main)
+    c
+end
+
+# Not efficient, just for convenience and debugging purposes
+struct PLU{A,B,C}
+    lu_in_main::A
+    rows::B
+    cols::C
+end
+function LinearAlgebra.lu(a::PSparseMatrix)
+    a_in_main = to_trivial_partition(a)
+    lu_in_main = map_one(lu,a_in_main.values)
+    PLU(lu_in_main,a_in_main.rows,a_in_main.cols)
+end
+function LinearAlgebra.lu!(b::PLU,a::PSparseMatrix)
+    a_in_main = to_trivial_partition(a,b.rows,b.cols)
+    map_one(lu!,b.lu_in_main,a_in_main.values)
+    b
+end
+function LinearAlgebra.ldiv!(c::PVector,a::PLU,b::PVector)
+    b_in_main = to_trivial_partition(b,a.rows)
+    c_in_main = to_trivial_partition(c,a.cols)
+    map_one(ldiv!,c_in_main.values,a.lu_in_main,b_in_main.values)
+    from_trivial_partition!(c,c_in_main)
+    c
+end
 
 # Misc functions that could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)

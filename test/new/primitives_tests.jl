@@ -190,4 +190,153 @@ function primitives_tests(distribute)
        @test r == rcv
    end
 
+   parts = rank
+   nparts = length(parts)
+   @assert nparts == 4
+
+   parts2 = linear_indices(parts)
+   map(parts,parts2) do part1, part2
+       @test part1 == part2
+   end
+
+   parts_rcv = map(parts) do part
+       if part == 1
+           [2,3]
+       elseif part == 2
+           [4,]
+       elseif part == 3
+           [1,2]
+       else
+           [1,3]
+       end
+   end
+
+   parts_snd = map(parts) do part
+       if part == 1
+           [3,4]
+       elseif part == 2
+           [1,3]
+       elseif part == 3
+           [1,4]
+       else
+           [2]
+       end
+   end
+
+   data_snd = map(i->10*i,parts_snd)
+   data_rcv = map(similar,parts_rcv)
+
+   exchange_fetch!(
+                   data_rcv,
+                   data_snd,
+                   ExchangeGraph(parts_snd,parts_rcv))
+
+   map(parts,data_rcv) do part, data_rcv
+       if part == 1
+           r = [10,10]
+       elseif part == 2
+           r = [20]
+       elseif part == 3
+           r = [30,30]
+       else
+           r= [40,40]
+       end
+       @test r == data_rcv
+   end
+
+   a = reduction(+,parts,init=0)
+   map_one(a) do a
+       @test a == 1+2+3+4
+   end
+
+   b = reduction(+,parts,init=0,destination=:all)
+   map(b) do b
+       @test b == 1+2+3+4
+   end
+   @test reduce(+,parts,init=0) == 1+2+3+4
+   @test sum(parts) == 1+2+3+4
+
+   a = map(parts) do part
+       if part == 1
+           4
+       elseif part == 2
+           2
+       elseif part == 3
+           6
+       else
+           3
+       end
+   end
+   b = scan(+,a,init=0,type=:inclusive)
+   map(parts,b) do part,b
+       if part == 1
+           @test b == 4
+       elseif part == 2
+           @test b == 6
+       elseif part == 3
+           @test b == 12
+       else
+           @test b == 15
+       end
+   end
+
+   b = scan(+,a,init=1,type=:exclusive)
+   map(parts,b) do part,b
+       if part == 1
+           @test b == 1
+       elseif part == 2
+           @test b == 5
+       elseif part == 3
+           @test b == 7
+       else
+           @test b == 13
+       end
+   end
+
+
+   t = exchange(
+                data_snd,
+                ExchangeGraph(parts_snd, parts_rcv))
+
+   data_rcv = fetch(t)
+   map(parts,data_rcv) do part, data_rcv
+       if part == 1
+           r = [10,10]
+       elseif part == 2
+           r = [20]
+       elseif part == 3
+           r = [30,30]
+       else
+           r= [40,40]
+       end
+       @test r == data_rcv
+   end
+
+   data_rcv = exchange_fetch(
+                       data_snd,
+                       ExchangeGraph(parts_snd, parts_rcv))
+
+   map(parts,data_rcv) do part, data_rcv
+       if part == 1
+           r = [10,10]
+       elseif part == 2
+           r = [20]
+       elseif part == 3
+           r = [30,30]
+       else
+           r= [40,40]
+       end
+       @test r == data_rcv
+   end
+
+   graph2 = ExchangeGraph(parts_rcv)
+   parts_snd_2 = graph2.rcv
+   map(parts_snd,parts_snd_2) do parts_snd, parts_snd_2
+       @test parts_snd == parts_snd_2
+   end
+
+   PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :error
+   @test_throws ErrorException graph2 = ExchangeGraph(parts_rcv)
+   PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :allow
+
 end
