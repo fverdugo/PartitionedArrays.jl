@@ -117,4 +117,85 @@ function p_vector_tests(distribute)
         end
     end
 
+    n = 10
+
+    gids = map(parts) do part
+        if part == 1
+            [1,4,6]
+        elseif part == 2
+            [3,1,2,8]
+        elseif part == 3
+            [1,9,6]
+        else
+            [3,2,8,10]
+        end
+    end
+    rows = uniform_partition(parts,n)
+    values = map(copy,gids)
+    v = pvector!(gids,values,rows) |> fetch
+    u = 2*v
+    map(u.values,v.values) do u,v
+        @test u == 2*v
+    end
+    u = v + u
+    map(u.values,v.values) do u,v
+        @test u == 3*v
+    end
+    @test any(i->i>4,v) == true
+    @test any(i->i>17,v) == false
+    @test all(i->i<17,v) == true
+    @test all(i->i<4,v) == false
+    @test maximum(v) == 16
+    @test minimum(v) == 0
+    @test maximum(i->i-1,v) == 15
+    @test minimum(i->i-1,v) == -1
+
+    w = copy(v)
+    rmul!(w,-1)
+    @test all(i->i==0,v+w)
+
+    @test w == w
+    @test w != v
+
+    @test sqeuclidean(w,v) ≈ (norm(w-v))^2
+    @test euclidean(w,v) ≈ norm(w-v)
+
+    w = similar(v)
+    w = zero(v)
+    @test isa(w,PVector)
+    @test norm(w) == 0
+    @test sum(w) == 0
+
+    w = v .- u
+    @test isa(w,PVector)
+    w =  1 .+ v
+    @test isa(w,PVector)
+    w =  v .+ 1
+    @test isa(w,PVector)
+    w =  v .+ w .- u
+    @test isa(w,PVector)
+    w =  v .+ 1 .- u
+    @test isa(w,PVector)
+
+    w .= v .- u
+    w .= v .- 1 .- u
+    w .= u
+    map(w.values,u.values) do w,u
+        @test w == u
+    end
+
+    w = v .- u
+    @test isa(w,PVector)
+    w =  v .+ w .- u
+    @test isa(w,PVector)
+    w =  v .+ 1 .- u
+    @test isa(w,PVector)
+
+    w .= v .- u
+    w .= v .- 1 .- u
+    w .= u
+    map(get_own_values(w),get_own_values(u)) do w,u
+        @test w == u
+    end
+
 end

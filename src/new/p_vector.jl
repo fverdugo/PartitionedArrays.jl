@@ -514,7 +514,7 @@ end
 
 function Base.broadcasted( f, a::Number, b::Union{PVector,PBroadcasted})
     own_values = map(b->Base.broadcasted(f,a,b),get_own_values(b))
-    if b.ghost_values !== nothing
+    if get_ghost_values(b) !== nothing
         ghost_values = map(b->Base.broadcasted(f,a,b),get_ghost_values(b))
     else
         ghost_values = nothing
@@ -524,7 +524,7 @@ end
 
 function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
     own_values = map(a->Base.broadcasted(f,a,b),get_own_values(a))
-    if a.ghost_values !== nothing
+    if get_ghost_values(a) !== nothing
         ghost_values = map(a->Base.broadcasted(f,a,b),get_ghost_values(a))
     else
         ghost_values = nothing
