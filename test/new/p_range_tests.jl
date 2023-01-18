@@ -142,14 +142,118 @@ function p_range_tests(distribute)
    end
    pr = PRange(n_global,indices)
 
+   n = 10
    parts = rank
-   nparts = length(parts)
-   @assert nparts == 4
-
-   parts2 = linear_indices(parts)
-   map(parts,parts2) do part1, part2
-       @test part1 == part2
+   partition = map(parts) do part
+       if part == 1
+           LocalIndices(n,part,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
+       elseif part == 2
+           LocalIndices(n,part,[2,4,5,10],Int32[1,2,2,4])
+       elseif part == 3
+           LocalIndices(n,part,[6,7,8,5,4,10],Int32[3,3,3,2,2,4])
+       else
+           LocalIndices(n,part,[1,3,7,9,10],Int32[1,1,3,4,4])
+       end
    end
 
+   pr = PRange(n,partition)
+
+   ids = uniform_partition(parts,n)
+   @test length(ids) == n
+   @test length(ids.indices) == length(parts)
+
+   gids = map(parts) do part
+       if part == 1
+           [1,4,6]
+       elseif part == 2
+           [3,1,2,8]
+       elseif part == 3
+           [1,9,6]
+       else
+           [3,2,8,10]
+       end
+   end
+
+   ids3 = union_ghost(ids,gids)
+   to_local!(gids,ids3)
+   to_global!(gids,ids3)
+
+   a = map(parts) do part
+       if part == 1
+           4
+       elseif part == 2
+           2
+       elseif part == 3
+           6
+       else
+           3
+       end
+   end
+   ids5 = variable_partition(a,sum(a))
+   map(parts,get_local_to_global(ids5)) do part, local_to_global
+       if part == 1
+           @test local_to_global == [1, 2, 3, 4]
+       elseif part == 2
+           @test local_to_global == [5, 6]
+       elseif part == 3
+           @test local_to_global == [7, 8, 9, 10, 11, 12]
+       else
+           @test local_to_global == [13, 14, 15]
+       end
+   end
+
+   ids4 = uniform_partition(parts,(2,2),(5,4))
+   @test length(ids4) == 4*5
+   map(parts,get_local_to_global(ids4)) do part, lid_to_gid
+       if part == 1
+           @test lid_to_gid == [1, 2, 6, 7]
+       elseif part == 2
+           @test lid_to_gid == [3, 4, 5, 8, 9, 10]
+       elseif part == 3
+           @test lid_to_gid == [11, 12, 16, 17]
+       else
+           @test lid_to_gid == [13, 14, 15, 18, 19, 20]
+       end
+   end
+
+   ids4 = uniform_partition(parts,(2,2),(5,4),(false,false))
+   ids4 = uniform_partition(parts,(2,2),(5,4),(true,true))
+   map(parts,get_local_to_global(ids4)) do part, lid_to_gid
+       if part == 1
+           @test lid_to_gid == [1, 2, 3, 6, 7, 8, 11, 12, 13]
+       elseif part == 2
+           @test lid_to_gid == [2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15]
+       elseif part == 3
+           @test lid_to_gid == [6, 7, 8, 11, 12, 13, 16, 17, 18]
+       else
+           @test lid_to_gid == [7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20]
+       end
+   end
+
+   ids4 = uniform_partition(parts,(2,2),(4,4),(true,true),(true,true))
+   map(parts,get_local_to_global(ids4)) do part,lid_to_gid
+       if part == 1
+           @test lid_to_gid == [16, 13, 14, 15, 4, 1, 2, 3, 8, 5, 6, 7, 12, 9, 10, 11]
+       elseif part ==2
+           @test lid_to_gid == [14, 15, 16, 13, 2, 3, 4, 1, 6, 7, 8, 5, 10, 11, 12, 9]
+       elseif part == 3
+           @test lid_to_gid == [8, 5, 6, 7, 12, 9, 10, 11, 16, 13, 14, 15, 4, 1, 2, 3]
+       else
+           @test lid_to_gid == [6, 7, 8, 5, 10, 11, 12, 9, 14, 15, 16, 13, 2, 3, 4, 1]
+       end
+   end
+
+   ids4 = uniform_partition(parts,(2,2),(4,4),(true,true),(false,true))
+   map(parts,get_local_to_global(ids4)) do part,lid_to_gid
+       if part == 1
+           @test lid_to_gid == [13, 14, 15, 1, 2, 3, 5, 6, 7, 9, 10, 11]
+       elseif part ==2
+           @test lid_to_gid == [14, 15, 16, 2, 3, 4, 6, 7, 8, 10, 11, 12]
+       elseif part == 3
+           @test lid_to_gid == [5, 6, 7, 9, 10, 11, 13, 14, 15, 1, 2, 3]
+       else
+           @test lid_to_gid == [6, 7, 8, 10, 11, 12, 14, 15, 16, 2, 3, 4]
+       end
+   end
 
 end
