@@ -15,4 +15,6 @@ using PartitionedArrays
 
 @testset "p_timer" begin include("p_timer_tests.jl")  end
 
+@testset "fdm_example" begin include("fdm_example.jl")  end
+
 end #module

@@ -46,20 +46,22 @@ Convert the array of tuples `a` into a tuple of arrays.
 
 """
 function unpack(a)
-  if eltype(a) <: Tuple{<:Any}
-    x = map(first,a)
-    (x,)
-  else
-    x, y = unpack_first_and_tail(a)
-    (x,unpack(y)...)
-  end
+    function first_and_tail(a)
+        x = map(first,a)
+        y = map(Base.tail,a)
+        x, y
+    end
+    if eltype(a) <: Tuple{<:Any}
+        x = map(first,a)
+        (x,)
+    else
+        x, y = first_and_tail(a)
+        (x,unpack(y)...)
+    end
 end
 
-function unpack_first_and_tail(a)
-  x = map(first,a)
-  y = map(Base.tail,a)
-  x, y
-end
+
+i_am_main(a) = true
 
 const MAIN = 1
 

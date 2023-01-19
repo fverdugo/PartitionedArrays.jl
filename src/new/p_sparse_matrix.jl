@@ -370,13 +370,13 @@ function psparse!(I,J,V,rows,cols;kwargs...)
     psparse!(default_local_values,I,J,V,rows,cols;kwargs...)
 end
 
-function psparse(f,rows,cols)
-    values = map(f,rows.indices,cols.indices)
+function psparse(f,I,J,V,rows,cols)
+    values = map(f,I,J,V,rows.indices,cols.indices)
     PSparseMatrix(values,rows,cols)
 end
 
-function psparse(rows,cols)
-    psparse(default_local_values,rows,cols)
+function psparse(I,J,V,rows,cols)
+    psparse(default_local_values,I,J,V,rows,cols)
 end
 
 function default_local_values(row_indices,col_indices)

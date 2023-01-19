@@ -230,6 +230,9 @@ function Base.similar(::Type{<:PVector{V}},inds::Tuple{<:PRange}) where V
     PVector(values,rows)
 end
 
+function PVector(::UndefInitializer,rows::PRange)
+    PVector{Vector{Float64}}(undef,rows)
+end
 function PVector{V}(::UndefInitializer,rows::PRange) where V
     values = map(rows.indices) do indices
         allocate_local_values(V,indices)
