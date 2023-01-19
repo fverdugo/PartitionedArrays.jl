@@ -202,7 +202,7 @@ function async_exchange!(
       j = first(findall(k->k==part_rcv,parts_snd.parts[part_snd]))
       ptrs_rcv = data_rcv.parts[part_rcv].ptrs
       ptrs_snd = data_snd.parts[part_snd].ptrs
-      @check ptrs_rcv[i+1]-ptrs_rcv[i] == ptrs_snd[j+1]-ptrs_snd[j]
+      @check ptrs_rcv[i+1]-ptrs_rcv[i] == ptrs_snd[j+1]-ptrs_snd[j] "Mismatch between received and send data. Expected $(ptrs_snd[j+1]-ptrs_snd[j]) but got $(ptrs_rcv[i+1]-ptrs_rcv[i])"
       for p in 1:(ptrs_rcv[i+1]-ptrs_rcv[i])
         p_rcv = p+ptrs_rcv[i]-1
         p_snd = p+ptrs_snd[j]-1

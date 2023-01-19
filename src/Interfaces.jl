@@ -738,12 +738,24 @@ function oids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   view(a.lid_to_gid,a.oid_to_lid) == view(b.lid_to_gid,b.oid_to_lid)
 end
 
+function mismatched_oids(a::AbstractIndexSet,b::AbstractIndexSet)
+  symdiff(view(a.lid_to_gid,a.oid_to_lid), view(b.lid_to_gid,b.oid_to_lid))
+end
+
 function hids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   view(a.lid_to_gid,a.hid_to_lid) == view(b.lid_to_gid,b.hid_to_lid)
 end
 
+function mismatched_hids(a::AbstractIndexSet,b::AbstractIndexSet)
+  symdiff(view(a.lid_to_gid,a.hid_to_lid), view(b.lid_to_gid,b.hid_to_lid))
+end
+
 function lids_are_equal(a::AbstractIndexSet,b::AbstractIndexSet)
   a.lid_to_gid == b.lid_to_gid
+end
+
+function mismatched_lids(a::AbstractIndexSet,b::AbstractIndexSet)
+  symdiff(a.lid_to_gid, b.lid_to_gid)
 end
 
 function find_lid_map(a::AbstractIndexSet,b::AbstractIndexSet)
@@ -1750,7 +1762,7 @@ function Base.similar(
 end
 
 function Base.copy!(a::PVector,b::PVector)
-  @check oids_are_equal(a.rows,b.rows)
+  @check oids_are_equal(a.rows,b.rows) "The entries of a and b must have the same owner | mismatched $(mismatched_oids(a.rows,b.rows))"
   if a.rows.partition === b.rows.partition
     map_parts(copy!,a.values,b.values)
   else
@@ -1760,7 +1772,7 @@ function Base.copy!(a::PVector,b::PVector)
 end
 
 function Base.copyto!(a::PVector,b::PVector)
-  @check oids_are_equal(a.rows,b.rows)
+  @check oids_are_equal(a.rows,b.rows) "The entries of a and b must have the same owner | mismatched $(mismatched_oids(a.rows,b.rows))"
   if a.rows.partition === b.rows.partition
     map_parts(copyto!,a.values,b.values)
   else
@@ -1827,7 +1839,7 @@ function Base.broadcasted(
   args::Union{PVector,DistributedBroadcasted}...)
 
   a1 = first(args)
-  @check all(ai->oids_are_equal(ai.rows,a1.rows),args)
+  @check all(ai->oids_are_equal(ai.rows,a1.rows),args) "Trying to broadcast on vectors with different owners"
   owned_values_in = map(arg->arg.owned_values,args)
   owned_values = map_parts((largs...)->Base.broadcasted(f,largs...),owned_values_in...)
   if all(ai->ai.rows===a1.rows,args) && !any(ai->ai.ghost_values===nothing,args)
@@ -2384,9 +2396,9 @@ function LinearAlgebra.mul!(
   α::Number,
   β::Number)
 
-  @check oids_are_equal(c.rows,a.rows)
-  @check oids_are_equal(a.cols,b.rows)
-  @check hids_are_equal(a.cols,b.rows)
+  @check oids_are_equal(c.rows,a.rows) "Ownership of the output vector must match the matrix's row's ownership | mismatched $(mismatched_oids(c.rows,a.rows))"
+  @check oids_are_equal(a.cols,b.rows) "Ownership of the input vector must match the matrix's column's ownership | mismatched $(mismatched_oids(a.cols,b.rows))"
+  @check hids_are_equal(a.cols,b.rows) "Ghost layer of the input vector must match the matrix's row's ownership | mismatched $(mismatched_hids(a.cols,b.rows))"
 
   # Start the exchange
   t = async_exchange!(b)
@@ -2493,7 +2505,7 @@ function matrix_exchanger(values,row_exchanger,row_lids,col_lids)
       li = row_lids.gid_to_lid[gi]
       lj = col_lids.gid_to_lid[gj]
       k = nzindex(values,li,lj)
-      @check k > 0 "The sparsity pattern of the ghost layer is inconsistent"
+      @check k > 0 "The sparsity pattern of the ghost layer is inconsistent on part $part | local index ($li,$lj) | global index ($gi, $gj)"
       k_snd_data[p] = k
     end
     k_snd = Table(k_snd_data,ptrs)
