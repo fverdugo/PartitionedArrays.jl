@@ -388,7 +388,7 @@ function default_local_values(I,V,indices)
     fill!(values,zero(eltype(values)))
     for k in 1:length(I)
         li = I[k]
-        values[li] = V[k]
+        values[li] += V[k]
     end
     values
 end

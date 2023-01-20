@@ -204,27 +204,31 @@ only makes sense if `indices` stores ghost ids in separate vectors like in
 function replace_ghost end
 
 function filter_ghost(indices,gids,owners)
+    set = Set{Int}()
     part_owner = get_owner(indices)
     n_new_ghost = 0
     global_to_ghost = get_global_to_ghost(indices)
     for (global_i,owner) in zip(gids,owners)
         if owner != part_owner
             ghost_i = global_to_ghost[global_i]
-            if ghost_i == 0
+            if ghost_i == 0 && !(global_i in set)
                 n_new_ghost += 1
+                push!(set,global_i)
             end
         end
     end
     new_ghost_to_global = zeros(Int,n_new_ghost)
     new_ghost_to_owner = zeros(Int32,n_new_ghost)
     new_ghost_i = 0
+    set = Set{Int}()
     for (global_i,owner) in zip(gids,owners)
         if owner != part_owner
             ghost_i = global_to_ghost[global_i]
-            if ghost_i == 0
+            if ghost_i == 0 && !(global_i in set)
                 new_ghost_i += 1
                 new_ghost_to_global[new_ghost_i] = global_i
                 new_ghost_to_owner[new_ghost_i] = owner
+                push!(set,global_i)
             end
         end
     end
