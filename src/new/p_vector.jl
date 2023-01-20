@@ -170,7 +170,55 @@ function Base.show(io::IO,k::MIME"text/plain",data::PVector)
 end
 
 function vector_assembler(values,rows::PRange)
+    symbolic_assembly_impl(eltype(values),values,rows)
+end
+
+function symbolic_assembly_impl(::Type,values,rows)
     rows.assembler
+end
+
+struct JaggedArrayAssembler{A,B}
+    neighbors::A
+    local_indices::B
+end
+Base.reverse(a::JaggedArrayAssembler) = JaggedArrayAssembler(reverse(a.neighbors),reverse(a.local_indices))
+
+function symbolic_assembly_impl(::Type{<:JaggedArray},values,rows)
+    function data_index_snd(lids_snd,values)
+        tptrs = values.ptrs
+        ptrs = similar(lids_snd.ptrs)
+        fill!(ptrs,zero(eltype(ptrs)))
+        np = length(ptrs)-1
+        for p in 1:np
+            iini = lids_snd.ptrs[p]
+            iend = lids_snd.ptrs[p+1]-1
+            for i in iini:iend
+                d = lids_snd.data[i]
+                ptrs[p+1] += tptrs[d+1]-tptrs[d]
+            end
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = similar(lids_snd.data,eltype(lids_snd.data),ndata)
+        for p in 1:np
+            iini = lids_snd.ptrs[p]
+            iend = lids_snd.ptrs[p+1]-1
+            for i in iini:iend
+                d = lids_snd.data[i]
+                jini = tptrs[d]
+                jend = tptrs[d+1]-1
+                for j in jini:jend
+                    data[ptrs[p]] = j
+                    ptrs[p] += 1
+                end
+            end
+        end
+        rewind_ptrs!(ptrs)
+        JaggedArray(data,ptrs)
+    end
+    p_snd = map(data_index_snd,rows.assembler.local_indices.snd,values)
+    p_rcv = map(data_index_snd,rows.assembler.local_indices.rcv,values)
+    JaggedArrayAssembler(rows.assembler.neighbors,AssemblyLocalIndices(p_snd,p_rcv))
 end
 
 """
@@ -636,6 +684,18 @@ function assemble!(f,values,assembler,buffers)
             end
         end
     end
+end
+
+function assembly_buffers(values,assembler::JaggedArrayAssembler)
+    default_assembler = Assembler(assembler.neighbors,assembler.local_indices)
+    data = map(get_data,values)
+    assembly_buffers(data,default_assembler)
+end
+
+function assemble!(f,values,assembler::JaggedArrayAssembler,buffers)
+    default_assembler = Assembler(assembler.neighbors,assembler.local_indices)
+    data = map(get_data,values)
+    assemble!(f,data,default_assembler,buffers)
 end
 
 """

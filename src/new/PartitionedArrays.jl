@@ -63,6 +63,7 @@ export variable_partition
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices
+export permute_indices
 export PermutedLocalIndices
 export GhostIndices
 export OwnIndices

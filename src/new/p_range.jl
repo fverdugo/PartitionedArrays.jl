@@ -1330,6 +1330,8 @@ function get_local_to_owner(a::OwnAndGhostIndices)
     LocalToOwner(own_to_owner,ghost_to_owner,perm)
 end
 
+permute_indices(a,b) = PermutedLocalIndices(a,b)
+
 """
     PermutedLocalIndices{A}
 
