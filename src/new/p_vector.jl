@@ -300,8 +300,10 @@ function pvector(rows)
     pvector(default_local_values,rows)
 end
 
-function pvector!(f,I,V,rows;kwargs...)
-    rows = union_ghost(rows,I;kwargs...)
+function pvector!(f,I,V,rows;discover_rows=true,kwargs...)
+    if discover_rows
+        rows = union_ghost(rows,I;kwargs...)
+    end
     to_local!(I,rows)
     values = map(f,I,V,rows.indices)
     v = PVector(values,rows)

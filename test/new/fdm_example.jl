@@ -17,7 +17,7 @@ function fdm_example(distribute)
     u(x) = x[1]+x[2]
     f(x) = zero(x[1])
     length_in_x = 2.0
-    ls = (length_in_x,length_in_x,length_in_x)
+    length_per_dir = (length_in_x,length_in_x,length_in_x)
     nodes_in_x = 9
     nodes_per_dir = (nodes_in_x,nodes_in_x,nodes_in_x)
     n = prod(nodes_per_dir)

@@ -17,4 +17,6 @@ using PartitionedArrays
 
 @testset "fdm_example" begin include("fdm_example.jl")  end
 
+@testset "fem_example" begin include("fem_example.jl")  end
+
 end #module
