@@ -27,7 +27,7 @@ function p_sparse_matrix_tests(distribute)
             J = [1,10,9]
         end
         I,J,fill(Float64(rank),length(J))
-    end |> unpack
+    end |> tuple_of_arrays
 
     rows = prange(uniform_partition,rank,n)
     cols = rows
@@ -79,7 +79,7 @@ function p_sparse_matrix_tests(distribute)
         else
             [9,9,8,10,6], [9,3,8,10,5], [10.0,2.0,30.0,50.0,2.0]
         end
-    end |> unpack
+    end |> tuple_of_arrays
 
     A = psparse!(I,J,V,rows,cols) |> fetch
     x = pfill(1.5,axes(A,2))

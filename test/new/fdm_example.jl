@@ -80,7 +80,7 @@ function fdm_example(distribute)
     tic!(t)
     IJV = map(coo_vectors!,get_local_to_global(rows),get_local_values(b),get_local_values(x̂))
     toc!(t,"IJV")
-    I,J,V = unpack(IJV)
+    I,J,V = tuple_of_arrays(IJV)
 
     # Build a PRange taking the owned ids in rows plus ghost ids from the touched cols
     cols = union_ghost(rows,J)

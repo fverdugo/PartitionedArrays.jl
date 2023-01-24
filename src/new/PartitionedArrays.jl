@@ -21,7 +21,7 @@ include("sparse_utils.jl")
 
 export linear_indices
 export cartesian_indices
-export unpack
+export tuple_of_arrays
 export i_am_main
 export MAIN
 export map_main

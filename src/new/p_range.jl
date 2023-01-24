@@ -631,7 +631,7 @@ function assembly_local_indices(indices,neighbors)
         global_indices_snd = JaggedArray(data_gids,ptrs)
         parts_snd, local_indices_snd, global_indices_snd
     end
-    parts_snd, local_indices_snd, global_indices_snd = unpack(aux1)
+    parts_snd, local_indices_snd, global_indices_snd = tuple_of_arrays(aux1)
     global_indices_rcv = exchange_fetch(global_indices_snd,neighbors)
     local_indices_rcv = map(global_indices_rcv,indices) do global_indices_rcv,indices
         ptrs = global_indices_rcv.ptrs
@@ -1622,7 +1622,7 @@ function replace_ghost(a::LocalIndicesWithVariableBlockSize,ghost::GhostIndices)
 end
 
 function find_owner(indices,global_ids,::Type{<:LocalIndicesWithVariableBlockSize})
-    initial = map(indices->map(first,indices.ranges),indices) |> collect |> unpack
+    initial = map(indices->map(first,indices.ranges),indices) |> collect |> tuple_of_arrays
     map(indices,global_ids) do indices,global_ids
         start = map(indices.n,initial) do n,initial
             start = vcat(initial,[n+1])

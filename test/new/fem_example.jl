@@ -301,16 +301,16 @@ function fem_example(distribute)
     ghost_per_dir = (true,true)
     cells = prange(uniform_partition,rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
     grid = map(setup_grid,cells.indices)
-    n_own_dofs, space = map(setup_space,grid) |> unpack
+    n_own_dofs, space = map(setup_space,grid) |> tuple_of_arrays
     n_global_dofs = sum(n_own_dofs)
     tentative_dofs = prange(variable_partition,n_own_dofs,n_global_dofs)
     local_cell_to_global_dofs = map(setup_cell_dofs,grid,space,tentative_dofs.indices)
     cell_to_global_dofs = PVector(local_cell_to_global_dofs,cells)
     consistent!(cell_to_global_dofs) |> wait
     map(finish_cell_dofs,grid,space,tentative_dofs.indices)
-    I,J,V = map(setup_IJV,space,grid) |> unpack
+    I,J,V = map(setup_IJV,space,grid) |> tuple_of_arrays
     t = psparse!(I,J,V,tentative_dofs,tentative_dofs)
-    I,V = map(setup_b,space,grid) |> unpack
+    I,V = map(setup_b,space,grid) |> tuple_of_arrays
     A = fetch(t)
     b = pvector!(I,V,A.rows,discover_rows=false) |> fetch
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))

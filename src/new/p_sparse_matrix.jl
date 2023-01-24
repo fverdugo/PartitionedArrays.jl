@@ -249,7 +249,7 @@ function sparse_matrix_assembler(values,rows::PRange,cols::PRange)
     part = linear_indices(rows.indices)
     parts_snd = rows.assembler.neighbors.snd
     parts_rcv = rows.assembler.neighbors.rcv
-    k_snd, gi_snd, gj_snd = map(setup_snd,part,parts_snd,rows.indices,cols.indices,values) |> unpack
+    k_snd, gi_snd, gj_snd = map(setup_snd,part,parts_snd,rows.indices,cols.indices,values) |> tuple_of_arrays
     gi_rcv = exchange_fetch(gi_snd,rows.assembler.neighbors)
     gj_rcv = exchange_fetch(gj_snd,rows.assembler.neighbors)
     k_rcv = map(setup_rcv,part,rows.indices,cols.indices,gi_rcv,gj_rcv,values)
@@ -340,7 +340,7 @@ function assemble_coo!(I,J,V,rows)
     parts_snd = neighbors.snd
     parts_rcv = neighbors.rcv
     coo_values = map(tuple,I,J,V)
-    gi_snd, gj_snd, v_snd = map(setup_snd,part,parts_snd,rows.indices,coo_values) |> unpack
+    gi_snd, gj_snd, v_snd = map(setup_snd,part,parts_snd,rows.indices,coo_values) |> tuple_of_arrays
     t1 = exchange(gi_snd,neighbors)
     t2 = exchange(gj_snd,neighbors)
     t3 = exchange(v_snd,neighbors)
@@ -464,7 +464,7 @@ function to_trivial_partition(
             end
         end
         I,J,V
-    end |> unpack
+    end |> tuple_of_arrays
     assemble_coo!(I,J,V,rows_in_main) |> wait
     I,J,V = map(a.rows.indices,I,J,V) do row_indices,I,J,V
         owner = get_owner(row_indices)
@@ -473,7 +473,7 @@ function to_trivial_partition(
         else
             similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
         end
-    end |> unpack
+    end |> tuple_of_arrays
     values = map(I,J,V,rows_in_main.indices,cols_in_main.indices) do I,J,V,row_indices,col_indices
         m = get_n_local(row_indices)
         n = get_n_local(col_indices)

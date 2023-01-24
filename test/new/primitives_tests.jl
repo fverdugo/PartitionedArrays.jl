@@ -9,7 +9,7 @@ function primitives_tests(distribute)
        (2*rank,10*rank)
    end
 
-   a, b = unpack(a_and_b)
+   a, b = tuple_of_arrays(a_and_b)
 
    map(a,b,rank) do a,b,rank
        @test a == 2*rank

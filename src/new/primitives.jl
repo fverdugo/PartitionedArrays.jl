@@ -29,7 +29,7 @@ cartesian_indices(a) = CartesianIndices(a)
 getany(a) = first(a)
 
 """
-    unpack(a)
+    tuple_of_arrays(a)
 
 Convert the array of tuples `a` into a tuple of arrays.
 
@@ -43,11 +43,11 @@ Convert the array of tuples `a` into a tuple of arrays.
      (3, 4)
      (5, 6)
 
-    julia> b,c = unpack(a)
+    julia> b,c = tuple_of_arrays(a)
     ([1, 3, 5], [2, 4, 6])
 
 """
-function unpack(a)
+function tuple_of_arrays(a)
     function first_and_tail(a)
         x = map(first,a)
         y = map(Base.tail,a)
@@ -58,7 +58,7 @@ function unpack(a)
         (x,)
     else
         x, y = first_and_tail(a)
-        (x,unpack(y)...)
+        (x,tuple_of_arrays(y)...)
     end
 end
 

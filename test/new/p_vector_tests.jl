@@ -43,7 +43,7 @@ function p_vector_tests(distribute)
         Random.seed!(2*rank)
         V = rand(1:2,5)
         I,V
-    end |> unpack
+    end |> tuple_of_arrays
 
     rows = prange(uniform_partition,rank,n)
     a = pvector!(I,V,rows) |> fetch
