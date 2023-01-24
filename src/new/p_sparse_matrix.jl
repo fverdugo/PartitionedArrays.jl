@@ -397,7 +397,7 @@ function trivial_partition(rows::PRange)
         owner = get_owner(indices)
         owner == destination ? Int(get_n_global(indices)) : 0
     end
-    rows_in_main = variable_partition(n_own,length(rows))
+    rows_in_main = prange(variable_partition,n_own,length(rows))
     rows_in_main = union_ghost(rows_in_main,get_own_to_global(rows))
     rows_in_main
 end

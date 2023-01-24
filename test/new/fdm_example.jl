@@ -33,7 +33,7 @@ function fdm_example(distribute)
     # Each point in the grid will lead to an equation, including the boundary ones.
     # We use an auxiliary identity block to impose conditions at the boundary.
     # Note that we are not using ghost layer in this partition.
-    rows = uniform_partition(rank,parts_per_dir,nodes_per_dir)
+    rows = prange(uniform_partition,rank,parts_per_dir,nodes_per_dir)
 
     # We don't need the ghost layer for the rhs
     # So, it can be allocated right now.

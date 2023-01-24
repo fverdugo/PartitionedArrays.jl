@@ -255,6 +255,32 @@ function union_ghost(indices,gids,owners)
     replace_ghost(indices,ghost)
 end
 
+"""
+    find_owner(indices,global_ids)
+
+Find the owners of the global ids in `global_ids`. The input `global_ids` is
+a vector of vectors distributed over the same parts as `pr`. Each part will
+look for the owners in parallel, when using a parallel back-end.
+
+# Example
+
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((4,));
+    
+    julia> pr = PRange(ConstantBlockSize(),rank,4,10)
+    1:1:10
+    
+    julia> gids = [[3],[4,5],[7,2],[9,10,1]];
+    
+    julia> find_owner(pr,gids)
+    4-element Vector{Vector{Int32}}:
+     [2]
+     [2, 3]
+     [3, 1]
+     [4, 4, 1]
+"""
 function find_owner(indices,global_ids)
     find_owner(indices,global_ids,eltype(indices))
 end
@@ -277,7 +303,6 @@ the own indices in this part.
 The same rationale applies for ghost and local indices.
 
 # Properties
-- `n_global::Int`: Number of global indices.
 - `indices::A`: Array-like object with `length(indices)` equal to the number of parts in the partitioned range.
 
 
@@ -292,7 +317,6 @@ interface to access the underlying information about own, ghost, and local indic
 
 """
 struct PRange{A,B} <: AbstractUnitRange{Int}
-    n_global::Int
     indices::A
     assembler::B
     @doc """
@@ -323,25 +347,27 @@ struct PRange{A,B} <: AbstractUnitRange{Int}
          [1, 2, 3, 4, 5]
          [4, 5, 6, 7, 8]
     """
-    function PRange(n_global,indices,assembler=vector_assembler(indices))
+    function PRange(indices,assembler=vector_assembler(indices))
         A = typeof(indices)
         B = typeof(assembler)
-        new{A,B}(Int(n_global),indices,assembler)
+        new{A,B}(indices,assembler)
     end
 end
 Base.first(a::PRange) = 1
-Base.last(a::PRange) = a.n_global
+Base.last(a::PRange) = getany(map(get_n_global,a.indices))
 function Base.show(io::IO,k::MIME"text/plain",data::PRange)
     #println(io,typeof(data),":")
     println(io,"PRange 1:$(length(data)) partitioned in $(length(data.indices)) parts")
 end
+
+prange(f,args...) = PRange(f(args...))
 
 """
     get_n_global(pr::PRange)
 
 Return `pr.n_global`
 """
-get_n_global(pr::PRange) = a.n_global
+get_n_global(pr::PRange) = length(a)
 
 """
     get_n_local(pr::PRange)
@@ -448,33 +474,9 @@ Equivalent to `map(get_local_to_ghost,pr.indices)`.
 """
 get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.indices)
 
-"""
-    find_owner(pr::PRange,global_ids)
-
-Find the owners of the global ids in `global_ids`. The input `global_ids` is
-a vector of vectors distributed over the same parts as `pr`. Each part will
-look for the owners in parallel, when using a parallel back-end.
-
-# Example
-
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> pr = PRange(ConstantBlockSize(),rank,4,10)
-    1:1:10
-    
-    julia> gids = [[3],[4,5],[7,2],[9,10,1]];
-    
-    julia> find_owner(pr,gids)
-    4-element Vector{Vector{Int32}}:
-     [2]
-     [2, 3]
-     [3, 1]
-     [4, 4, 1]
-"""
 find_owner(pr::PRange,global_ids) = find_owner(pr.indices,global_ids)
+
+assembly_neighbors(pr::PRange) = pr.assembler.neighbors
 
 """
     replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
@@ -485,12 +487,12 @@ ids in `pr` by the global ids in `gids`.
 Equivalent to
 
     indices = map(replace_ghost,pr.indices,gids,owners)
-    PRange(pr.n_global,indices)
+    PRange(indices)
 """
 function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(replace_ghost,pr.indices,gids,owners)
     assembler = vector_assembler(indices;kwargs...)
-    PRange(pr.n_global,indices,assembler)
+    PRange(indices,assembler)
 end
 
 """
@@ -502,12 +504,20 @@ ids in `pr` and the global ids in `gids`.
 Equivalent to
 
     indices = map(union_ghost,pr.indices,gids,owners)
-    PRange(pr.n_global,indices)
+    PRange(indices)
 """
 function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
     indices = map(union_ghost,pr.indices,gids,owners)
     assembler = vector_assembler(indices;kwargs...)
-    PRange(pr.n_global,indices,assembler)
+    PRange(indices,assembler)
+end
+
+function to_local!(I,rows::PRange)
+    map(to_local!,I,rows.indices)
+end
+
+function to_global!(I,rows::PRange)
+    map(to_global!,I,rows.indices)
 end
 
 function matching_local_indices(a::PRange,b::PRange)
@@ -528,22 +538,18 @@ function matching_ghost_indices(a::PRange,b::PRange)
     reduce(&,c,init=true)
 end
 
-function to_local!(I,rows::PRange)
-    map(I,rows.indices) do I, indices
-        global_to_local = get_global_to_local(indices)
-        for k in 1:length(I)
-            I[k] = global_to_local[I[k]]
-        end
+function to_local!(I,indices)
+    global_to_local = get_global_to_local(indices)
+    for k in 1:length(I)
+        I[k] = global_to_local[I[k]]
     end
     I
 end
 
-function to_global!(I,rows::PRange)
-    map(I,rows.indices) do I, indices
-        local_to_global = get_local_to_global(indices)
-        for k in 1:length(I)
-            I[k] = local_to_global[I[k]]
-        end
+function to_global!(I,indices)
+    local_to_global = get_local_to_global(indices)
+    for k in 1:length(I)
+        I[k] = local_to_global[I[k]]
     end
     I
 end
@@ -642,7 +648,7 @@ end
 """
     uniform_partition(ranks,np,n[,ghost[,periodic]])
 
-Generate an instance of `PRange` by using an `N` dimensional
+Generate an `N` dimensional
 block partition with a (roughly) constant block size.
 
 # Arguments
@@ -679,18 +685,19 @@ function uniform_partition(rank,np,n,args...)
     indices = map(rank) do rank
         block_with_constant_size(rank,np,n,args...)
     end
-    if length(args) == 0
-        assembler = empty_assembler(indices)
-    else
-        assembler = vector_assembler(indices,symmetric=true)
-    end
-    PRange(prod(n),indices,assembler)
+    indices
+    #if length(args) == 0
+    #    assembler = empty_assembler(indices)
+    #else
+    #    assembler = vector_assembler(indices,symmetric=true)
+    #end
+    #PRange(prod(n),indices,assembler)
 end
 
 """
     uniform_partition(ranks,n::Integer[,ghost::Bool[,periodic::Bool]])
 
-Generate an instance of `PRange` by using an 1d dimensional
+Generate an  1d dimensional
 block partition with a (roughly) constant block size by inferring the number of parts to use from `ranks`.
 
 # Arguments
@@ -783,7 +790,7 @@ end
 """
     variable_partition(n_own,n_global[;start])
 
-Build an instance of [`PRange`](@ref) using a 1D variable-size block partition.
+Build a 1D variable-size block partition.
 
 # Arguments
 
@@ -831,8 +838,9 @@ function variable_partition(
         ghost = GhostIndices(n_global)
         LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
     end
-    assembler = empty_assembler(indices)
-    PRange(n_global,indices,assembler)
+    indices
+    #assembler = empty_assembler(indices)
+    #PRange(n_global,indices,assembler)
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}

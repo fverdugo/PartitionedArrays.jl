@@ -152,7 +152,7 @@ struct PVector{V,A,B,C,D,T} <: AbstractVector{T}
     """
     function PVector(
             values,
-            rows,
+            rows::PRange,
             assembler=vector_assembler(values,rows),
             buffers=assembly_buffers(values,assembler))
         T = eltype(eltype(values))

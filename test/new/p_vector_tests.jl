@@ -8,7 +8,7 @@ function p_vector_tests(distribute)
 
     np = 4
     rank = distribute(LinearIndices((np,)))
-    rows = uniform_partition(rank,(2,2),(6,6))
+    rows = prange(uniform_partition,rank,(2,2),(6,6))
 
     a1 = pvector(rows)
     a2 = pvector(inds->zeros(Int,length(inds)),rows)
@@ -45,7 +45,7 @@ function p_vector_tests(distribute)
         I,V
     end |> unpack
 
-    rows = uniform_partition(rank,n)
+    rows = prange(uniform_partition,rank,n)
     a = pvector!(I,V,rows) |> fetch
 
     @test any(i->i>n,a) == false
@@ -79,7 +79,7 @@ function p_vector_tests(distribute)
             LocalIndices(n,part,[1,3,7,9,10],Int32[1,1,3,4,4])
         end
     end
-    rows = PRange(n,indices)
+    rows = PRange(indices)
     v = pzeros(rows)
     map(parts,v.values,v.rows.indices) do part, values, indices
         local_to_owner = get_local_to_owner(indices)
@@ -130,7 +130,7 @@ function p_vector_tests(distribute)
             [3,2,8,10]
         end
     end
-    rows = uniform_partition(parts,n)
+    rows = prange(uniform_partition,parts,n)
     values = map(copy,gids)
     v = pvector!(gids,values,rows) |> fetch
     u = 2*v

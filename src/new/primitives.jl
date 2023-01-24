@@ -26,6 +26,8 @@ and can depend on `a`. Return `CartesianIndices(a)` by default.
 """
 cartesian_indices(a) = CartesianIndices(a)
 
+getany(a) = first(a)
+
 """
     unpack(a)
 

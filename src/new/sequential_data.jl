@@ -96,6 +96,7 @@ function Base.show(io::IO,k::MIME"text/plain",data::SequentialData)
         println(io,"$index = $(data.items[i])")
     end
 end
+getany(a::SequentialData) = getany(a.items)
 
 function Base.similar(a::SequentialData,::Type{T},dims::Dims) where T
   SequentialData(similar(a.items,T,dims))

@@ -11,7 +11,7 @@ function p_sparse_matrix_tests(distribute)
     np = 4
     rank = distribute(LinearIndices((np,)))
     n = 10
-    rows = uniform_partition(rank,n)
+    rows = prange(uniform_partition,rank,n)
     I,J,V = map(rank) do rank
         if rank == 1
             I = [1,2,6,4]
@@ -29,14 +29,14 @@ function p_sparse_matrix_tests(distribute)
         I,J,fill(Float64(rank),length(J))
     end |> unpack
 
-    rows = uniform_partition(rank,n)
+    rows = prange(uniform_partition,rank,n)
     cols = rows
     A = psparse!(I,J,V,rows,cols) |> fetch
 
 
     n = 10
     parts = rank
-    rows = uniform_partition(parts,n)
+    rows = prange(uniform_partition,parts,n)
     cols = rows
 
     values = map(rows.indices,cols.indices) do rows, cols

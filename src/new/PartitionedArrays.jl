@@ -85,6 +85,7 @@ export get_own_to_local
 export get_ghost_to_local
 export get_local_to_own
 export get_local_to_ghost
+export prange
 export replace_ghost
 export union_ghost
 export find_owner

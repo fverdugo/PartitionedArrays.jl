@@ -169,6 +169,7 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
     end
 end
 
+getany(a::MPIData) = a.item[]
 i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
 
 function Base.similar(a::MPIData,::Type{T},dims::Dims) where T

@@ -19,47 +19,47 @@ function p_range_tests(distribute)
    # Uniform linear partition without ghost
    np = 4
    n = 10
-   pr = uniform_partition(rank,n)
+   uniform_partition(rank,n)
 
    # Uniform linear partition with one layer of ghost
    ghost = true
-   pr = uniform_partition(rank,n,ghost)
+   uniform_partition(rank,n,ghost)
 
    # Uniform linear partition with one layer of ghost
    # and periodic ghost
    periodic = true
-   pr = uniform_partition(rank,n,ghost,periodic)
+   uniform_partition(rank,n,ghost,periodic)
 
    # uniform Cartesian partition without ghost
    np = (2,2)
    n = (10,10)
-   pr = uniform_partition(rank,np,n)
+   uniform_partition(rank,np,n)
 
    # uniform Cartesian partition with one layer of ghost
    # in the selected directions
    np = (2,2)
    n = (10,10)
    ghost = (true,true)
-   pr = uniform_partition(rank,np,n,ghost)
+   uniform_partition(rank,np,n,ghost)
 
    # uniform Cartesian partition with one layer of ghost
    # in the selected directions
    np = (2,2)
    n = (10,10)
    periodic = (true,true)
-   pr = uniform_partition(rank,np,n,ghost,periodic)
+   uniform_partition(rank,np,n,ghost,periodic)
 
    # Custom linear partition with no ghost
    n_own = map(rank) do rank
        mod(rank,3) + 2
    end
    n=sum(n_own)
-   pr = variable_partition(n_own,n)
+   variable_partition(n_own,n)
 
    # Custom linear partition with no ghost
    # scan to find the first id in each block is done by the caller
    start = scan(+,n_own,type=:exclusive,init=1)
-   pr = variable_partition(n_own,n;start)
+   variable_partition(n_own,n;start)
 
    # Custom linear partition with arbitrary ghost
    # Here the ghost need to be non-repeated and actual ghost values
@@ -68,31 +68,20 @@ function p_range_tests(distribute)
    gids = map(rank) do rank
        Int[]
    end
-   # First create a PRange without ghost
-   pr = variable_partition(n_own,n;start)
+   # First create a partition without ghost
+   partition_without_ghost = variable_partition(n_own,n;start)
    # Then replace the ghost
-   pr = replace_ghost(pr,gids)
-
-   # Same as before but save some communications
-   # by providing the owners
-   owners = map(rank) do rank
-       Int32[]
-   end
-   pr = variable_partition(n_own,n;start)
-   pr = replace_ghost(pr,gids,owners)
+   owners = find_owner(partition_without_ghost,gids)
+   partition_with_ghost = map(replace_ghost,partition_without_ghost,gids,owners)
 
    # Custom linear partition with ghost
    # Here the gids can be whatever
    # Only the ghost not already present will be added
    # This requires a lot of communication to find
    # the owner of each given gid
-   pr = variable_partition(n_own,n;start)
-   pr = union_ghost(pr,gids)
-
-   # Same as before but save some communications
-   # by providing the owners
-   pr = variable_partition(n_own,n;start)
-   pr = union_ghost(pr,gids,owners)
+   partition_without_ghost = variable_partition(n_own,n;start)
+   owners = find_owner(partition_with_ghost,gids)
+   partition_with_ghost = map(union_ghost,partition_without_ghost,gids,owners)
 
    # Custom general partition by providing
    # info about the local indices
@@ -101,20 +90,19 @@ function p_range_tests(distribute)
    n = (10,10)
    ghost = (true,true)
    n_global = prod(n)
-   old_pr = uniform_partition(rank,np,n,ghost)
-   indices = map(old_pr.indices) do old_local_indices
+   tentative_partition = uniform_partition(rank,np,n,ghost)
+   arbitrary_partition = map(tentative_partition) do old_local_indices
        local_to_global = get_local_to_global(old_local_indices) |> collect
        local_to_owner = get_local_to_owner(old_local_indices) |> collect
        owner  = get_owner(old_local_indices)
        LocalIndices(n_global,owner,local_to_global,local_to_owner)
    end
-   pr = PRange(n_global,indices)
 
    # Custom general partition by providing
    # info about the own and ghost indices
    # local indices are defined by concatenating
    # own and ghost
-   indices = map(old_pr.indices) do old_local_indices
+   custom_partition = map(tentative_partition) do old_local_indices
        owner = get_owner(old_local_indices)
        own_to_global = get_own_to_global(old_local_indices) |> collect
        ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
@@ -123,13 +111,12 @@ function p_range_tests(distribute)
        ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
        OwnAndGhostIndices(own,ghost)
    end
-   pr = PRange(n_global,indices)
 
    # Custom general partition by providing
    # info about the own and ghost indices
    # local indices are defined by concatenating
    # own and ghost plus an arbitrary permutation
-   indices = map(old_pr.indices) do old_local_indices
+   custom_partition = map(tentative_partition) do old_local_indices
        owner = get_owner(old_local_indices)
        own_to_global = get_own_to_global(old_local_indices) |> collect
        ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
@@ -138,9 +125,8 @@ function p_range_tests(distribute)
        ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
        n_local = length(get_local_to_global(old_local_indices))
        perm = collect(n_local:-1:1)
-       PermutedLocalIndices(OwnAndGhostIndices(own,ghost),perm)
+       permute_indices(OwnAndGhostIndices(own,ghost),perm)
    end
-   pr = PRange(n_global,indices)
 
    n = 10
    parts = rank
@@ -156,11 +142,8 @@ function p_range_tests(distribute)
        end
    end
 
-   pr = PRange(n,partition)
-
    ids = uniform_partition(parts,n)
-   @test length(ids) == n
-   @test length(ids.indices) == length(parts)
+   @test length(ids) == length(parts)
 
    gids = map(parts) do part
        if part == 1
@@ -174,9 +157,10 @@ function p_range_tests(distribute)
        end
    end
 
-   ids3 = union_ghost(ids,gids)
-   to_local!(gids,ids3)
-   to_global!(gids,ids3)
+   owners = find_owner(ids,gids)
+   ids3 = map(union_ghost,ids,gids,owners)
+   map(to_local!,gids,ids3)
+   map(to_global!,gids,ids3)
 
    a = map(parts) do part
        if part == 1
@@ -190,7 +174,7 @@ function p_range_tests(distribute)
        end
    end
    ids5 = variable_partition(a,sum(a))
-   map(parts,get_local_to_global(ids5)) do part, local_to_global
+   map(parts,ids5) do part, local_to_global
        if part == 1
            @test local_to_global == [1, 2, 3, 4]
        elseif part == 2
@@ -203,8 +187,8 @@ function p_range_tests(distribute)
    end
 
    ids4 = uniform_partition(parts,(2,2),(5,4))
-   @test length(ids4) == 4*5
-   map(parts,get_local_to_global(ids4)) do part, lid_to_gid
+   @test length(PRange(ids4)) == 4*5
+   map(parts,ids4) do part, lid_to_gid
        if part == 1
            @test lid_to_gid == [1, 2, 6, 7]
        elseif part == 2
@@ -218,7 +202,7 @@ function p_range_tests(distribute)
 
    ids4 = uniform_partition(parts,(2,2),(5,4),(false,false))
    ids4 = uniform_partition(parts,(2,2),(5,4),(true,true))
-   map(parts,get_local_to_global(ids4)) do part, lid_to_gid
+   map(parts,ids4) do part, lid_to_gid
        if part == 1
            @test lid_to_gid == [1, 2, 3, 6, 7, 8, 11, 12, 13]
        elseif part == 2
@@ -231,7 +215,7 @@ function p_range_tests(distribute)
    end
 
    ids4 = uniform_partition(parts,(2,2),(4,4),(true,true),(true,true))
-   map(parts,get_local_to_global(ids4)) do part,lid_to_gid
+   map(parts,ids4) do part,lid_to_gid
        if part == 1
            @test lid_to_gid == [16, 13, 14, 15, 4, 1, 2, 3, 8, 5, 6, 7, 12, 9, 10, 11]
        elseif part ==2
@@ -244,7 +228,7 @@ function p_range_tests(distribute)
    end
 
    ids4 = uniform_partition(parts,(2,2),(4,4),(true,true),(false,true))
-   map(parts,get_local_to_global(ids4)) do part,lid_to_gid
+   map(parts,ids4) do part,lid_to_gid
        if part == 1
            @test lid_to_gid == [13, 14, 15, 1, 2, 3, 5, 6, 7, 9, 10, 11]
        elseif part ==2
