@@ -10,7 +10,7 @@ function p_vector_tests(distribute)
     rank = distribute(LinearIndices((np,)))
     row_partition = uniform_partition(rank,(2,2),(6,6))
 
-    a1 = pvector(row_partition)
+    a1 = PVector(undef,row_partition)
     @test isa(axes(a1,1),PRange)
     a2 = pvector(inds->zeros(Int,length(inds)),row_partition)
     a3 = PVector{OwnAndGhostValues{Vector{Int}}}(undef,row_partition)

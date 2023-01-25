@@ -11,7 +11,7 @@ function p_sparse_matrix_tests(distribute)
     np = 4
     rank = distribute(LinearIndices((np,)))
     n = 10
-    rows = prange(uniform_partition,rank,n)
+    row_partition = uniform_partition(rank,n)
     I,J,V = map(rank) do rank
         if rank == 1
             I = [1,2,6,4]
@@ -29,17 +29,17 @@ function p_sparse_matrix_tests(distribute)
         I,J,fill(Float64(rank),length(J))
     end |> tuple_of_arrays
 
-    rows = prange(uniform_partition,rank,n)
-    cols = rows
-    A = psparse!(I,J,V,rows,cols) |> fetch
+    row_partition = uniform_partition(rank,n)
+    col_partition = row_partition
+    A = psparse!(I,J,V,row_partition,col_partition) |> fetch
 
 
     n = 10
     parts = rank
-    rows = prange(uniform_partition,parts,n)
-    cols = rows
+    row_partition = uniform_partition(parts,n)
+    col_partition = row_partition
 
-    values = map(rows.indices,cols.indices) do rows, cols
+    values = map(row_partition,col_partition) do rows, cols
         i = collect(1:length(rows))
         j = i
         v = fill(2.0,length(i))
@@ -47,17 +47,16 @@ function p_sparse_matrix_tests(distribute)
         a
     end
 
-    A = PSparseMatrix(values,rows,cols)
-    A = PSparseMatrix(values,rows,cols,A.assembler)
-    x = pfill(3.0,cols)
-    b = similar(x,rows)
+    A = PSparseMatrix(values,row_partition,col_partition)
+    x = pfill(3.0,col_partition)
+    b = similar(x,axes(A,1))
     mul!(b,A,x)
     map(get_own_values(b)) do values
         @test all( values .== 6 )
     end
 
     consistent!(b) |> wait
-    map(b.values) do values
+    map(partition(b)) do values
       @test all( values .== 6 )
     end
 
@@ -65,7 +64,7 @@ function p_sparse_matrix_tests(distribute)
     fill!(x,3.0)
     mul!(b,A,x)
     consistent!(b) |> wait
-    map(b.values) do values
+    map(partition(b)) do values
         @test all( values .== 3 )
     end
 
@@ -81,10 +80,11 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse!(I,J,V,rows,cols) |> fetch
-    x = pfill(1.5,axes(A,2))
+    A = psparse!(I,J,V,row_partition,col_partition) |> fetch
+    assemble!(A)
+    x = pfill(1.5,partition(axes(A,2)))
 
-    x = pones(A.cols)
+    x = pones(partition(axes(A,2)))
     y = A*x
     dy = y - y
 
@@ -92,7 +92,7 @@ function p_sparse_matrix_tests(distribute)
     r = A*x-y
     @test norm(r) < 1.0e-9
 
-    x = pfill(0.0,A.cols)
+    x = pfill(0.0,partition(axes(A,2)))
     IterativeSolvers.cg!(x,A,y)
     r = A*x-y
     @test norm(r) < 1.0e-9

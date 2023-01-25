@@ -140,7 +140,7 @@ parallel implementations.
     PVector{T,A,B} <: AbstractVector{T}
 """
 struct PVector{V,A,B,C,T} <: AbstractVector{T}
-    partition::A
+    vector_partition::A
     index_partition::B
     cache::C
     @doc """
@@ -162,7 +162,7 @@ struct PVector{V,A,B,C,T} <: AbstractVector{T}
     end
 end
 
-partition(a::PVector) = a.partition
+partition(a::PVector) = a.vector_partition
 Base.axes(a::PVector) = (PRange(a.index_partition),)
 
 """
@@ -172,7 +172,6 @@ Get a vector of vectors containing the local values
 in each part of `a`.
 """
 function get_local_values(a::PVector)
-    #map(get_local_values,a.values,a.rows.indices)
     partition(a)
 end
 
@@ -235,6 +234,17 @@ function Base.reverse(a::VectorAssemblyCache)
                     a.buffer_rcv,
                     a.buffer_snd)
 end
+function copy_cache(a::VectorAssemblyCache)
+    buffer_snd = JaggedArray(copy(a.buffer_snd.data),a.buffer_snd.ptrs)
+    buffer_rcv = JaggedArray(copy(a.buffer_rcv.data),a.buffer_rcv.ptrs)
+    VectorAssemblyCache(
+                    a.neighbors_snd,
+                    a.neighbors_rcv,
+                    a.local_indices_snd,
+                    a.local_indices_rcv,
+                    buffer_snd,
+                    buffer_rcv)
+end
 function p_vector_cache_impl(::Type,vector_partition,index_partition)
     neighbors = assembly_neighbors(index_partition)
     indices = assembly_local_indices(index_partition,neighbors...)
@@ -256,6 +266,7 @@ struct JaggedArrayAssemblyCache
     cache::VectorAssemblyCache
 end
 Base.reverse(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(reverse(a.cache))
+copy_cache(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(copy_cache(a.cache))
 function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partition)
     function data_index_snd(lids_snd,values)
         tptrs = values.ptrs
@@ -290,7 +301,7 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
         JaggedArray(data,ptrs)
     end
     neighbors = assembly_neighbors(index_partition)
-    local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition)
+    local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors...)
     p_snd = map(data_index_snd,local_indices_snd,vector_partition)
     p_rcv = map(data_index_snd,local_indices_rcv,vector_partition)
     buffers = map(assembly_buffers,vector_partition,p_snd,p_rcv) |> tuple_of_arrays
@@ -334,7 +345,7 @@ end
 function assemble_impl!(f,vector_partition,cache,::Type{<:JaggedArrayAssemblyCache})
     vcache = map(i->i.cache,cache)
     data = map(get_data,vector_partition)
-    assemble!(f,data,vcace)
+    assemble!(f,data,vcache)
 end
 
 """
@@ -504,10 +515,6 @@ Equivalent to
 function pvector(f,index_partition)
     vector_partition = map(f,index_partition)
     PVector(vector_partition,index_partition)
-end
-
-function pvector(index_partition)
-    pvector(default_local_values,index_partition)
 end
 
 function pvector!(f,I,V,index_partition;discover_rows=true)
