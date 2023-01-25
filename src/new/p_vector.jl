@@ -304,7 +304,8 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
     local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors...)
     p_snd = map(data_index_snd,local_indices_snd,vector_partition)
     p_rcv = map(data_index_snd,local_indices_rcv,vector_partition)
-    buffers = map(assembly_buffers,vector_partition,p_snd,p_rcv) |> tuple_of_arrays
+    data = map(get_data,vector_partition)
+    buffers = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
     cache = map(VectorAssemblyCache,neighbors...,p_snd,p_rcv,buffers...)
     map(JaggedArrayAssemblyCache,cache)
 end

@@ -99,7 +99,7 @@ end
 
 function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrix)
     T = eltype(partition(data))
-    m,n = length(data)
+    m,n = size(data)
     np = length(partition(data))
     map_main(partition(data)) do values
         println(io,"$(m)×$(n) PSparseMatrix{$T} partitioned into $np parts")

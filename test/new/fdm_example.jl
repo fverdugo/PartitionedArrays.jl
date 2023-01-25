@@ -33,11 +33,11 @@ function fdm_example(distribute)
     # Each point in the grid will lead to an equation, including the boundary ones.
     # We use an auxiliary identity block to impose conditions at the boundary.
     # Note that we are not using ghost layer in this partition.
-    rows = prange(uniform_partition,rank,parts_per_dir,nodes_per_dir)
+    row_partition = uniform_partition(rank,parts_per_dir,nodes_per_dir)
 
     # We don't need the ghost layer for the rhs
     # So, it can be allocated right now.
-    b = PVector(undef,rows)
+    b = PVector(undef,row_partition)
 
     # We don't need the ghost layer for the exact solution
     # So, it can be allocated right now.
@@ -78,17 +78,17 @@ function fdm_example(distribute)
         I,J,V
     end
     tic!(t)
-    IJV = map(coo_vectors!,get_local_to_global(rows),get_local_values(b),get_local_values(x̂))
+    IJV = map(coo_vectors!,row_partition,get_local_values(b),get_local_values(x̂))
     toc!(t,"IJV")
     I,J,V = tuple_of_arrays(IJV)
 
     # Build the PSparseMatrix from the coo-vectors
     # and the data distribution described by rows and cols.
     tic!(t)
-    tentative_cols = rows
-    A = psparse!(I,J,V,rows,tentative_cols,discover_rows=false) |> fetch
+    tentative_col_partition = row_partition
+    A = psparse!(I,J,V,row_partition,tentative_col_partition,discover_rows=false) |> fetch
     toc!(t,"A")
-    cols = A.cols
+    cols = axes(A,2)
 
     # The initial guess needs the ghost layer (that why we take cols)
     # in other to perform the product A*x in the cg solver.
@@ -106,7 +106,7 @@ function fdm_example(distribute)
         end
 
     end
-    x0 = pzeros(cols)
+    x0 = pzeros(partition(cols))
     map(initial_guess!,get_own_to_global(cols),get_own_values(x0))
 
     # When this call returns, x has the correct answer only in the owned values.

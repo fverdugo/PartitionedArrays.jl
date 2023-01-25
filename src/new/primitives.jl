@@ -583,7 +583,8 @@ function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
     rank = linear_indices(snd_ids)
     # Tell the neighbors whether I want to send to them
     data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors_snd, snd_ids
-        dict_rcv = Dict(( n=>Int(-1) for n in neighbors_snd))
+        T = eltype(neighbors_snd)
+        dict_rcv = Dict(( n=>T(-1) for n in neighbors_snd))
         for i in snd_ids
             dict_rcv[i] = rank
         end

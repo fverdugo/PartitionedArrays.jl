@@ -336,6 +336,11 @@ function empty_assembly_cache()
                  )
 end
 
+function assembly_graph(index_partition;kwargs...)
+    neighbors_snd,neighbors_rcv = assembly_neighbors(index_partition;kwargs...)
+    ExchangeGraph(neighbors_snd,neighbors_rcv)
+end
+
 function assembly_neighbors(indices;kwargs...)
     cache = map(assembly_cache,indices)
     mask =  map(cache) do cache
@@ -1733,118 +1738,118 @@ function matching_ghost_indices(a::PRange,b::PRange)
 end
 
 ##prange(f,args...) = PRange(f(args...))
-#
-#"""
-#    get_n_global(pr::PRange)
-#
-#Equivalent to `map(get_n_global,pr.indices)`.
-#"""
-#get_n_global(pr::PRange) = map(get_n_local,partition(pr))
-#
-#"""
-#    get_n_local(pr::PRange)
-#
-#Equivalent to `map(get_n_local,pr.indices)`.
-#"""
-#get_n_local(pr::PRange) = map(get_n_local,partition(pr))
-#
-#"""
-#    get_n_own(pr::PRange)
-#
-#Equivalent to `map(get_n_own,pr.indices)`.
-#"""
-#get_n_own(pr::PRange) = map(get_n_own,partition(pr))
-#
-#"""
-#    get_local_to_global(pr::PRange)
-#
-#Equivalent to `map(get_local_to_global,pr.indices)`.
-#"""
-#get_local_to_global(pr::PRange) = map(get_local_to_global,partition(pr))
-#
-#"""
-#    get_own_to_global(pr::PRange)
-#
-#Equivalent to `map(get_own_to_global,pr.indices)`.
-#"""
-#get_own_to_global(pr::PRange) = map(get_own_to_global,partition(pr))
-#
-#"""
-#    get_ghost_to_global(pr::PRange)
-#
-#Equivalent to `map(get_ghost_to_global,pr.indices)`.
-#"""
-#get_ghost_to_global(pr::PRange) = map(get_ghost_to_global,partition(pr))
-#
-#"""
-#    get_local_to_owner(pr::PRange)
-#
-#Equivalent to `map(get_local_to_owner,pr.indices)`.
-#"""
-#get_local_to_owner(pr::PRange) = map(get_local_to_owner,partition(pr))
-#
-#"""
-#    get_own_to_owner(pr::PRange)
-#
-#Equivalent to `map(get_own_to_owner,pr.indices)`.
-#"""
-#get_own_to_owner(pr::PRange) = map(get_own_to_owner,partition(pr))
-#
-#"""
-#    get_ghost_to_owner(pr::PRange)
-#
-#Equivalent to `map(get_ghost_to_owner,pr.indices)`.
-#"""
-#get_ghost_to_owner(pr::PRange) = map(get_ghost_to_owner,partition(pr))
-#
-#"""
-#    get_global_to_local(pr::PRange)
-#
-#Equivalent to `map(get_global_to_local,pr.indices)`.
-#"""
-#get_global_to_local(pr::PRange) = map(get_global_to_local,partition(pr))
-#
-#"""
-#    get_global_to_own(pr::PRange)
-#
-#Equivalent to `map(get_global_to_own,pr.indices)`.
-#"""
-#get_global_to_own(pr::PRange) = map(get_global_to_own,partition(pr))
-#
-#"""
-#    get_global_to_ghost(pr::PRange)
-#
-#Equivalent to `map(get_global_to_ghost,pr.indices)`.
-#"""
-#get_global_to_ghost(pr::PRange) = map(get_global_to_ghost,partition(pr))
-#
-#"""
-#    get_own_to_local(pr::PRange)
-#
-#Equivalent to `map(get_own_to_local,pr.indices)`.
-#"""
-#get_own_to_local(pr::PRange) = map(get_own_to_local,partition(pr))
-#
-#"""
-#    get_ghost_to_local(pr::PRange)
-#
-#Equivalent to `map(get_ghost_to_local,pr.indices)`.
-#"""
-#get_ghost_to_local(pr::PRange) = map(get_ghost_to_local,partition(pr))
-#
-#"""
-#    get_local_to_own(pr::PRange)
-#
-#Equivalent to `map(get_local_to_own,pr.indices)`.
-#"""
-#get_local_to_own(pr::PRange) = map(get_local_to_own,partition(pr))
-#
-#"""
-#    get_local_to_ghost(pr::PRange)
-#
-#Equivalent to `map(get_local_to_ghost,pr.indices)`.
-#"""
-#get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.indices)
+
+"""
+    get_n_global(pr::PRange)
+
+Equivalent to `map(get_n_global,pr.indices)`.
+"""
+get_n_global(pr::PRange) = map(get_n_local,partition(pr))
+
+"""
+    get_n_local(pr::PRange)
+
+Equivalent to `map(get_n_local,pr.indices)`.
+"""
+get_n_local(pr::PRange) = map(get_n_local,partition(pr))
+
+"""
+    get_n_own(pr::PRange)
+
+Equivalent to `map(get_n_own,pr.indices)`.
+"""
+get_n_own(pr::PRange) = map(get_n_own,partition(pr))
+
+"""
+    get_local_to_global(pr::PRange)
+
+Equivalent to `map(get_local_to_global,pr.indices)`.
+"""
+get_local_to_global(pr::PRange) = map(get_local_to_global,partition(pr))
+
+"""
+    get_own_to_global(pr::PRange)
+
+Equivalent to `map(get_own_to_global,pr.indices)`.
+"""
+get_own_to_global(pr::PRange) = map(get_own_to_global,partition(pr))
+
+"""
+    get_ghost_to_global(pr::PRange)
+
+Equivalent to `map(get_ghost_to_global,pr.indices)`.
+"""
+get_ghost_to_global(pr::PRange) = map(get_ghost_to_global,partition(pr))
+
+"""
+    get_local_to_owner(pr::PRange)
+
+Equivalent to `map(get_local_to_owner,pr.indices)`.
+"""
+get_local_to_owner(pr::PRange) = map(get_local_to_owner,partition(pr))
+
+"""
+    get_own_to_owner(pr::PRange)
+
+Equivalent to `map(get_own_to_owner,pr.indices)`.
+"""
+get_own_to_owner(pr::PRange) = map(get_own_to_owner,partition(pr))
+
+"""
+    get_ghost_to_owner(pr::PRange)
+
+Equivalent to `map(get_ghost_to_owner,pr.indices)`.
+"""
+get_ghost_to_owner(pr::PRange) = map(get_ghost_to_owner,partition(pr))
+
+"""
+    get_global_to_local(pr::PRange)
+
+Equivalent to `map(get_global_to_local,pr.indices)`.
+"""
+get_global_to_local(pr::PRange) = map(get_global_to_local,partition(pr))
+
+"""
+    get_global_to_own(pr::PRange)
+
+Equivalent to `map(get_global_to_own,pr.indices)`.
+"""
+get_global_to_own(pr::PRange) = map(get_global_to_own,partition(pr))
+
+"""
+    get_global_to_ghost(pr::PRange)
+
+Equivalent to `map(get_global_to_ghost,pr.indices)`.
+"""
+get_global_to_ghost(pr::PRange) = map(get_global_to_ghost,partition(pr))
+
+"""
+    get_own_to_local(pr::PRange)
+
+Equivalent to `map(get_own_to_local,pr.indices)`.
+"""
+get_own_to_local(pr::PRange) = map(get_own_to_local,partition(pr))
+
+"""
+    get_ghost_to_local(pr::PRange)
+
+Equivalent to `map(get_ghost_to_local,pr.indices)`.
+"""
+get_ghost_to_local(pr::PRange) = map(get_ghost_to_local,partition(pr))
+
+"""
+    get_local_to_own(pr::PRange)
+
+Equivalent to `map(get_local_to_own,pr.indices)`.
+"""
+get_local_to_own(pr::PRange) = map(get_local_to_own,partition(pr))
+
+"""
+    get_local_to_ghost(pr::PRange)
+
+Equivalent to `map(get_local_to_ghost,pr.indices)`.
+"""
+get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,partition(pr))
 #
 #find_owner(pr::PRange,global_ids) = find_owner(pr.indices,global_ids)
 #

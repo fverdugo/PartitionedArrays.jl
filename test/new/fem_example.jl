@@ -299,25 +299,42 @@ function fem_example(distribute)
     rank = distribute(LinearIndices((n_ranks,)))
     t = PTimer(rank,verbose=true)
     ghost_per_dir = (true,true)
-    cells = prange(uniform_partition,rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
-    grid = map(setup_grid,cells.indices)
+    cell_partition = uniform_partition(rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
+    grid = map(setup_grid,cell_partition)
     n_own_dofs, space = map(setup_space,grid) |> tuple_of_arrays
     n_global_dofs = sum(n_own_dofs)
-    tentative_dofs = prange(variable_partition,n_own_dofs,n_global_dofs)
-    local_cell_to_global_dofs = map(setup_cell_dofs,grid,space,tentative_dofs.indices)
-    cell_to_global_dofs = PVector(local_cell_to_global_dofs,cells)
+    tentative_dof_partition = variable_partition(n_own_dofs,n_global_dofs)
+    local_cell_to_global_dofs = map(setup_cell_dofs,grid,space,tentative_dof_partition)
+    cell_to_global_dofs = PVector(local_cell_to_global_dofs,cell_partition)
     consistent!(cell_to_global_dofs) |> wait
-    map(finish_cell_dofs,grid,space,tentative_dofs.indices)
+    map(finish_cell_dofs,grid,space,tentative_dof_partition)
     I,J,V = map(setup_IJV,space,grid) |> tuple_of_arrays
-    t = psparse!(I,J,V,tentative_dofs,tentative_dofs)
+    t = psparse!(I,J,V,tentative_dof_partition,tentative_dof_partition)
     I,V = map(setup_b,space,grid) |> tuple_of_arrays
     A = fetch(t)
-    b = pvector!(I,V,A.rows,discover_rows=false) |> fetch
+    display(A)
+    row_partition = partition(axes(A,1))
+    b = pvector!(I,V,row_partition,discover_rows=false) |> fetch
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
     x̂ = similar(x)
-    map(setup_exact_solution,get_local_values(x̂),space,grid,A.cols.indices)
+    col_partition = partition(axes(A,2))
+    map(setup_exact_solution,get_local_values(x̂),space,grid,col_partition)
     @test norm(x-x̂) < 1.0e-5
-    dof_indices = map(setup_dofs,space,grid,tentative_dofs.indices)
-    dofs = PRange(n_global_dofs,dof_indices)
+    dof_partition = map(setup_dofs,space,grid,tentative_dof_partition)
+    # Some optimizations when building A
+    try
+        PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :error
+        cell_partition = uniform_partition(rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
+        I_owner = find_owner(tentative_dof_partition,I)
+        row_partition = map(union_ghost,tentative_dof_partition,I,I_owner)
+        neighbors = assembly_graph(cell_partition)
+        assembly_graph(row_partition;neighbors)
+        t = psparse!(I,J,V,row_partition,tentative_dof_partition,discover_rows=false)
+        A = fetch(t)
+        PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :allow
+    catch e
+        PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :allow
+        rethrow(e)
+    end
 end
 
