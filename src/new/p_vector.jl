@@ -26,7 +26,7 @@ function ghost_values(values,indices)
 end
 
 """
-    struct OwnAndGhostValues{A,C,T}
+    struct OwnAndGhostVectors{A,C,T}
 
 Vector type that stores the local values of a [`PVector`](@ref) instance
 using a vector of own values, a vector of ghost values, and a permutation.
@@ -42,20 +42,20 @@ Use this type to avoid duplicating memory when passing data to these other packa
 
 # Supertype hierarchy
 
-    OwnAndGhostValues{A,C,T} <: AbstractVector{T}
+    OwnAndGhostVectors{A,C,T} <: AbstractVector{T}
 """
-struct OwnAndGhostValues{A,C,T} <: AbstractVector{T}
+struct OwnAndGhostVectors{A,C,T} <: AbstractVector{T}
     own_values::A
     ghost_values::A
     perm::C
     @doc """
-        OwnAndGhostValues{A,C}(own_values,ghost_values,perm) where {A,C}
-        OwnAndGhostValues{A}(own_values,ghost_values,perm) where {A}
-        OwnAndGhostValues(own_values::A,ghost_values::A,perm) where A
+        OwnAndGhostVectors{A,C}(own_values,ghost_values,perm) where {A,C}
+        OwnAndGhostVectors{A}(own_values,ghost_values,perm) where {A}
+        OwnAndGhostVectors(own_values::A,ghost_values::A,perm) where A
 
-    Build an instance of [`OwnAndGhostValues`](@ref) from the underlying fields.
+    Build an instance of [`OwnAndGhostVectors`](@ref) from the underlying fields.
     """
-    function OwnAndGhostValues{A,C}(own_values,ghost_values,perm) where {A,C}
+    function OwnAndGhostVectors{A,C}(own_values,ghost_values,perm) where {A,C}
         T = eltype(A)
         new{A,C,T}(
           convert(A,own_values),
@@ -63,16 +63,16 @@ struct OwnAndGhostValues{A,C,T} <: AbstractVector{T}
           convert(C,perm))
     end
 end
-function OwnAndGhostValues{A}(own_values,ghost_values,perm) where A
+function OwnAndGhostVectors{A}(own_values,ghost_values,perm) where A
     C = typeof(perm)
-    OwnAndGhostValues{A,C}(own_values,ghost_values,perm)
+    OwnAndGhostVectors{A,C}(own_values,ghost_values,perm)
 end
-function OwnAndGhostValues(own_values::A,ghost_values::A,perm) where A
-    OwnAndGhostValues{A}(own_values,ghost_values,perm)
+function OwnAndGhostVectors(own_values::A,ghost_values::A,perm) where A
+    OwnAndGhostVectors{A}(own_values,ghost_values,perm)
 end
-Base.IndexStyle(::Type{<:OwnAndGhostValues}) = IndexLinear()
-Base.size(a::OwnAndGhostValues) = (length(a.own_values)+length(a.ghost_values),)
-function Base.getindex(a::OwnAndGhostValues,local_id::Int)
+Base.IndexStyle(::Type{<:OwnAndGhostVectors}) = IndexLinear()
+Base.size(a::OwnAndGhostVectors) = (length(a.own_values)+length(a.ghost_values),)
+function Base.getindex(a::OwnAndGhostVectors,local_id::Int)
     n_own = length(a.own_values)
     j = a.perm[local_id]
     if j > n_own
@@ -81,7 +81,7 @@ function Base.getindex(a::OwnAndGhostValues,local_id::Int)
         a.own_values[j]
     end
 end
-function Base.setindex!(a::OwnAndGhostValues,v,local_id::Int)
+function Base.setindex!(a::OwnAndGhostVectors,v,local_id::Int)
     n_own = length(a.own_values)
     j = a.perm[local_id]
     if j > n_own
@@ -92,30 +92,30 @@ function Base.setindex!(a::OwnAndGhostValues,v,local_id::Int)
     v
 end
 
-function own_values(values::OwnAndGhostValues,indices)
+function own_values(values::OwnAndGhostVectors,indices)
     values.own_values
 end
 
-function ghost_values(values::OwnAndGhostValues,indices)
+function ghost_values(values::OwnAndGhostVectors,indices)
     values.ghost_values
 end
 
-function allocate_local_values(values::OwnAndGhostValues,::Type{T},indices) where T
+function allocate_local_values(values::OwnAndGhostVectors,::Type{T},indices) where T
     n_own = own_length(indices)
     n_ghost = ghost_length(indices)
     own_values = similar(values.own_values,T,n_own)
     ghost_values = similar(values.ghost_values,T,n_ghost)
     perm = local_permutation(indices)
-    OwnAndGhostValues(own_values,ghost_values,perm)
+    OwnAndGhostVectors(own_values,ghost_values,perm)
 end
 
-function allocate_local_values(::Type{<:OwnAndGhostValues{A}},indices) where {A}
+function allocate_local_values(::Type{<:OwnAndGhostVectors{A}},indices) where {A}
     n_own = own_length(indices)
     n_ghost = ghost_length(indices)
     own_values = similar(A,n_own)
     ghost_values = similar(A,n_ghost)
     perm = local_permutation(indices)
-    OwnAndGhostValues{A}(own_values,ghost_values,perm)
+    OwnAndGhostVectors{A}(own_values,ghost_values,perm)
 end
 
 """

@@ -15,6 +15,7 @@ export JaggedArray
 include("jagged_array.jl")
 
 export nziterator
+export nzindex
 include("sparse_utils.jl")
 
 export linear_indices
@@ -98,7 +99,7 @@ export local_values
 export own_values
 export ghost_values
 export allocate_local_values
-export OwnAndGhostValues
+export OwnAndGhostVectors
 export PVector
 export pvector
 export pvector!

@@ -13,7 +13,7 @@ function p_vector_tests(distribute)
     a1 = PVector(undef,row_partition)
     @test isa(axes(a1,1),PRange)
     a2 = pvector(inds->zeros(Int,length(inds)),row_partition)
-    a3 = PVector{OwnAndGhostValues{Vector{Int}}}(undef,row_partition)
+    a3 = PVector{OwnAndGhostVectors{Vector{Int}}}(undef,row_partition)
     for a in [a1,a2,a3]
         b = similar(a)
         b = similar(a,Int)
