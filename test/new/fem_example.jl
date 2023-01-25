@@ -37,9 +37,9 @@ function setup_grid(cell_indices)
     linear_to_cartesian_element_node = CartesianIndices(ntuple(i->2,Val(D)))
     cartesian_to_linear_element_node = LinearIndices(linear_to_cartesian_element_node)
     cartesian_offset = CartesianIndex(ntuple(i->1,Val(D)))
-    rank = get_owner(cell_indices)
-    local_to_global_cell = get_local_to_global(cell_indices)
-    local_cell_to_owner = get_local_to_owner(cell_indices)
+    rank = part_id(cell_indices)
+    local_to_global_cell = local_to_global(cell_indices)
+    local_cell_to_owner = local_to_owner(cell_indices)
     first_global_cell = first(local_to_global_cell)
     last_global_cell = last(local_to_global_cell)
     first_cartesian_global_cell = linear_to_cartesian_global_cell[first_global_cell]
@@ -82,8 +82,8 @@ function setup_space(grid)
     n_local_dofs = length(local_dof_to_node)
     local_node_to_dof[local_dof_to_node] = 1:n_local_dofs
     local_dof_to_owner = zeros(Int32,n_local_dofs)
-    local_cell_to_owner = get_local_to_owner(grid.cell_indices)
-    rank = get_owner(grid.cell_indices)
+    local_cell_to_owner = local_to_owner(grid.cell_indices)
+    rank = part_id(grid.cell_indices)
     for cartesian_local_cell in grid.linear_to_cartesian_local_cell
         local_cell = grid.cartesian_to_linear_local_cell[cartesian_local_cell]
         owner = local_cell_to_owner[local_cell]
@@ -96,7 +96,7 @@ function setup_space(grid)
             end
         end
     end
-    local_to_global_cell = get_local_to_global(grid.cell_indices)
+    local_to_global_cell = local_to_global(grid.cell_indices)
     permutation = zeros(Int32,n_local_dofs)
     n_element_nodes = length(grid.linear_to_cartesian_element_node)
     n_local_cells = length(local_to_global_cell)
@@ -110,12 +110,12 @@ function setup_space(grid)
 end
 
 function setup_cell_dofs(grid,space,tentative_dof_indices)
-    local_to_global_cell = get_local_to_global(grid.cell_indices)
-    local_cell_to_owner = get_local_to_owner(grid.cell_indices)
-    own_to_global_dof = get_own_to_global(tentative_dof_indices)
+    local_to_global_cell = local_to_global(grid.cell_indices)
+    local_cell_to_owner = local_to_owner(grid.cell_indices)
+    own_to_global_dof = own_to_global(tentative_dof_indices)
     dof_offset = first(own_to_global_dof) - 1
     n_local_dofs = length(space.local_dof_to_owner)
-    rank = get_owner(grid.cell_indices)
+    rank = part_id(grid.cell_indices)
     own_dof_to_local_dof = findall(i->i==rank,space.local_dof_to_owner)
     n_own_dofs = length(own_dof_to_local_dof)
     space.permutation[own_dof_to_local_dof] = 1:n_own_dofs
@@ -173,8 +173,8 @@ function setup_IJV(space,grid)
     I = Int[]
     J = Int[]
     V = Float64[]
-    local_cell_to_owner = get_local_to_owner(grid.cell_indices)
-    rank = get_owner(grid.cell_indices)
+    local_cell_to_owner = local_to_owner(grid.cell_indices)
+    rank = part_id(grid.cell_indices)
     n_local_cells = length(local_cell_to_owner)
     for local_cell in 1:n_local_cells
         if local_cell_to_owner[local_cell] != rank
@@ -204,8 +204,8 @@ function setup_b(space,grid)
     Ae = params.Ae
     I = Int[]
     V = Float64[]
-    local_cell_to_owner = get_local_to_owner(grid.cell_indices)
-    rank = get_owner(grid.cell_indices)
+    local_cell_to_owner = local_to_owner(grid.cell_indices)
+    rank = part_id(grid.cell_indices)
     ue = zeros(size(Ae,2))
     ge = similar(ue)
     for cartesian_local_cell in grid.linear_to_cartesian_local_cell
@@ -239,9 +239,9 @@ end
 function setup_exact_solution(values,space,grid,col_indices)
     params = grid.params
     h = maximum(params.length_per_dir./params.cells_per_dir)
-    global_to_local_col = get_global_to_local(col_indices)
-    local_cell_to_owner = get_local_to_owner(grid.cell_indices)
-    rank = get_owner(grid.cell_indices)
+    global_to_local_col = global_to_local(col_indices)
+    local_cell_to_owner = local_to_owner(grid.cell_indices)
+    rank = part_id(grid.cell_indices)
     for cartesian_local_cell in grid.linear_to_cartesian_local_cell
         local_cell = grid.cartesian_to_linear_local_cell[cartesian_local_cell]
         if local_cell_to_owner[local_cell] != rank

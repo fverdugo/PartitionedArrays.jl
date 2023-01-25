@@ -107,7 +107,7 @@ function fdm_example(distribute)
 
     end
     x0 = pzeros(partition(cols))
-    map(initial_guess!,get_own_to_global(cols),own_values(x0))
+    map(initial_guess!,own_to_global(cols),own_values(x0))
 
     # When this call returns, x has the correct answer only in the owned values.
     # The values at ghost ids can be recovered with consistent!(x) |> wait

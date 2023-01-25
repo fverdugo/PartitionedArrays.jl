@@ -82,9 +82,9 @@ function p_vector_tests(distribute)
     end
     v = pzeros(row_partition)
     map(parts,partition(v),row_partition) do part, values, indices
-        local_to_owner = get_local_to_owner(indices)
-        for lid in 1:length(local_to_owner)
-            owner = local_to_owner[lid]
+        local_index_to_owner = local_to_owner(indices)
+        for lid in 1:length(local_index_to_owner)
+            owner = local_index_to_owner[lid]
             if owner == part
                 values[lid] = 10*part
             end
@@ -93,9 +93,9 @@ function p_vector_tests(distribute)
     consistent!(v) |> wait
 
     map(partition(v),row_partition) do values, indices
-        local_to_owner = get_local_to_owner(indices)
-        for lid in 1:length(local_to_owner)
-            owner = local_to_owner[lid]
+        local_index_to_owner = local_to_owner(indices)
+        for lid in 1:length(local_index_to_owner)
+            owner = local_index_to_owner[lid]
             @test values[lid] == 10*owner
         end
     end

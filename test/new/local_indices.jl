@@ -162,73 +162,73 @@ struct BlockPartitionLocalIndices{N}
     ghost::GhostIndices
 end
 
-function get_own_to_global(a::BlockPartitionLocalIndices)
+function own_to_global(a::BlockPartitionLocalIndices)
     BlockPartitionOwnToGlobal(a.n,a.ranges)
 end
 
-function get_own_to_owner(a::BlockPartitionLocalIndices)
+function own_to_owner(a::BlockPartitionLocalIndices)
     lis = LinearIndices(a.n)
     owner = Int32(lis[a.p])
     n_own = prod(map(length,a.ranges))
     OwnToOwner(owner,n_own)
 end
 
-function get_global_to_own(a::BlockPartitionLocalIndices)
+function global_to_own(a::BlockPartitionLocalIndices)
     BlockPartitionGlobalToOwn(a.n,a.ranges)
 end
 
-function get_ghost_to_global(a::BlockPartitionLocalIndices)
+function ghost_to_global(a::BlockPartitionLocalIndices)
     a.ghost.ghost_to_global
 end
 
-function get_ghost_to_owner(a::BlockPartitionLocalIndices)
+function ghost_to_owner(a::BlockPartitionLocalIndices)
     a.ghost.ghost_to_owner
 end
 
-function get_global_to_ghost(a::BlockPartitionLocalIndices)
+function global_to_ghost(a::BlockPartitionLocalIndices)
     a.ghost.global_to_ghost
 end
 
-function get_own_to_local(a::BlockPartitionLocalIndices)
+function own_to_local(a::BlockPartitionLocalIndices)
     n_own = prod(map(length,a.ranges))
     Int32.(1:n_own)
 end
 
-function get_ghost_to_local(a::BlockPartitionLocalIndices)
+function ghost_to_local(a::BlockPartitionLocalIndices)
     n_own = prod(map(length,a.ranges))
     n_ghost = length(a.ghost.ghost_to_global)
     Int32.((1:n_ghost).+n_own)
 end
 
-function get_local_to_own(a::BlockPartitionLocalIndices)
-    own_to_local = get_own_to_local(a)
-    ghost_to_local = get_ghost_to_local(a)
+function local_to_own(a::BlockPartitionLocalIndices)
+    own_to_local = own_to_local(a)
+    ghost_to_local = ghost_to_local(a)
     n_own = length(own_to_local)
     n_ghost = length(ghost_to_local)
     n_local = n_own + n_ghost
     LocalToOwn(n_own,1:n_local)
 end
 
-function get_local_to_ghost(a::BlockPartitionLocalIndices)
-    own_to_local = get_own_to_local(a)
-    ghost_to_local = get_ghost_to_local(a)
+function local_to_ghost(a::BlockPartitionLocalIndices)
+    own_to_local = own_to_local(a)
+    ghost_to_local = ghost_to_local(a)
     n_own = length(own_to_local)
     n_ghost = length(ghost_to_local)
     n_local = n_own + n_ghost
     LocalToGhost(n_own,1:n_local)
 end
 
-function get_global_to_local(a::BlockPartitionLocalIndices)
-    global_to_own = get_global_to_own(a)
-    global_to_ghost = get_global_to_ghost(a)
-    own_to_local = get_own_to_local(a,OWN)
-    ghost_to_local = get_ghost_to_local(a)
+function global_to_local(a::BlockPartitionLocalIndices)
+    global_to_own = global_to_own(a)
+    global_to_ghost = global_to_ghost(a)
+    own_to_local = own_to_local(a,OWN)
+    ghost_to_local = ghost_to_local(a)
     GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
 end
 
-function get_local_to_global(a::BlockPartitionLocalIndices)
-    own_to_global = get_own_to_global(a)
-    ghost_to_global = get_ghost_to_global(a)
+function local_to_global(a::BlockPartitionLocalIndices)
+    own_to_global = own_to_global(a)
+    ghost_to_global = ghost_to_global(a)
     n_own = length(own_to_global)
     n_ghost = length(ghost_to_global)
     n_local = n_own + n_ghost
@@ -236,9 +236,9 @@ function get_local_to_global(a::BlockPartitionLocalIndices)
     LocalToGlobal(own_to_global,ghost_to_global,perm)
 end
 
-function get_local_to_owner(a::BlockPartitionLocalIndices)
-    own_to_owner = get_own_to_owner(a)
-    ghost_to_owner = get_ghost_to_owner(a)
+function local_to_owner(a::BlockPartitionLocalIndices)
+    own_to_owner = own_to_owner(a)
+    ghost_to_owner = ghost_to_owner(a)
     n_own = length(own_to_owner)
     n_ghost = length(ghost_to_owner)
     n_local = n_own + n_ghost
@@ -255,7 +255,7 @@ struct Permuted{A}
 end
 
 function Permuted(ids,perm)
-    n_own = length(get_own_to_owner(ids))
+    n_own = length(own_to_owner(ids))
     n_local = length(perm)
     n_ghost = n_local - n_own
     own_to_local = zeros(Int32,n_own)
@@ -273,69 +273,69 @@ function Permuted(ids,perm)
     Permuted(ids,perm,own_to_local,ghost_to_local)
 end
 
-function get_own_to_global(a::Permuted)
-    get_own_to_global(a.ids)
+function own_to_global(a::Permuted)
+    own_to_global(a.ids)
 end
 
-function get_own_to_owner(a::Permuted)
-    get_own_to_owner(a.ids)
+function own_to_owner(a::Permuted)
+    own_to_owner(a.ids)
 end
 
-function get_global_to_own(a::Permuted)
-    get_global_to_own(a.ids)
+function global_to_own(a::Permuted)
+    global_to_own(a.ids)
 end
 
-function get_ghost_to_global(a::Permuted)
-    get_ghost_to_global(a.ids)
+function ghost_to_global(a::Permuted)
+    ghost_to_global(a.ids)
 end
 
-function get_ghost_to_owner(a::Permuted)
-    get_ghost_to_owner(a.ids)
+function ghost_to_owner(a::Permuted)
+    ghost_to_owner(a.ids)
 end
 
-function get_global_to_ghost(a::Permuted)
-    get_global_to_ghost(a.ids)
+function global_to_ghost(a::Permuted)
+    global_to_ghost(a.ids)
 end
 
-function get_own_to_local(a::Permuted)
+function own_to_local(a::Permuted)
     a.own_to_local
 end
 
-function get_ghost_to_local(a::Permuted)
+function ghost_to_local(a::Permuted)
     a.ghost_to_local
 end
 
-function get_local_to_own(a::Permuted)
-    own_to_local = get_own_to_local(a)
-    ghost_to_local = get_ghost_to_local(a)
+function local_to_own(a::Permuted)
+    own_to_local = own_to_local(a)
+    ghost_to_local = ghost_to_local(a)
     n_own = length(own_to_local)
     LocalToOwn(n_own,a.perm)
 end
 
-function get_local_to_ghost(a::Permuted)
-    own_to_local = get_own_to_local(a)
-    ghost_to_local = get_ghost_to_local(a)
+function local_to_ghost(a::Permuted)
+    own_to_local = own_to_local(a)
+    ghost_to_local = ghost_to_local(a)
     n_own = length(own_to_local)
     LocalToGhost(n_own,a.perm)
 end
 
-function get_global_to_local(a::Permuted)
-    global_to_own = get_global_to_own(a)
-    global_to_ghost = get_global_to_ghost(a)
-    own_to_local = get_own_to_local(a)
-    ghost_to_local = get_ghost_to_local(a)
+function global_to_local(a::Permuted)
+    global_to_own = global_to_own(a)
+    global_to_ghost = global_to_ghost(a)
+    own_to_local = own_to_local(a)
+    ghost_to_local = ghost_to_local(a)
     GlobalToLocal(global_to_own,global_to_ghost,own_to_local,ghost_to_local)
 end
 
-function get_local_to_global(a::Permuted)
-    own_to_global = get_own_to_global(a)
-    ghost_to_global = get_ghost_to_global(a)
+function local_to_global(a::Permuted)
+    own_to_global = own_to_global(a)
+    ghost_to_global = ghost_to_global(a)
     LocalToGlobal(own_to_global,ghost_to_global,a.perm)
 end
 
-function get_local_to_owner(a::Permuted)
-    own_to_owner = get_own_to_owner(a)
-    ghost_to_owner = get_ghost_to_owner(a)
+function local_to_owner(a::Permuted)
+    own_to_owner = own_to_owner(a)
+    ghost_to_owner = ghost_to_owner(a)
     LocalToOwner(own_to_owner,ghost_to_owner,a.perm)
 end
 
@@ -417,23 +417,23 @@ end
 
 myblock = block_with_ghost(2,(2,2),(4,4))
 
-oid_to_gid = get_own_to_global(myblock)
-oid_to_owner = get_own_to_owner(myblock)
-gid_to_oid = get_global_to_own(myblock)
+oid_to_gid = own_to_global(myblock)
+oid_to_owner = own_to_owner(myblock)
+gid_to_oid = global_to_own(myblock)
 
-hid_to_gid = get_ghost_to_global(myblock)
-hid_to_owner = get_ghost_to_owner(myblock)
-gid_to_hid = get_global_to_ghost(myblock)
+hid_to_gid = ghost_to_global(myblock)
+hid_to_owner = ghost_to_owner(myblock)
+gid_to_hid = global_to_ghost(myblock)
 
-oid_to_lid = get_own_to_local(myblock)
-hid_to_lid = get_ghost_to_local(myblock)
+oid_to_lid = own_to_local(myblock)
+hid_to_lid = ghost_to_local(myblock)
 
-lid_to_oid = get_local_to_own(myblock)
-lid_to_hid = get_local_to_ghost(myblock)
-gid_to_lid = get_global_to_local(myblock)
+lid_to_oid = local_to_own(myblock)
+lid_to_hid = local_to_ghost(myblock)
+gid_to_lid = global_to_local(myblock)
 
-lid_to_gid = get_local_to_global(myblock)
-lid_to_owner = get_local_to_owner(myblock)
+lid_to_gid = local_to_global(myblock)
+lid_to_owner = local_to_owner(myblock)
 
 #         OWNER GLOBAL OWN GHOST LOCAL
 # GLOBAL      ?          x     x     x

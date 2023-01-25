@@ -20,26 +20,26 @@ function local_values(values,indices_rows,indices_cols)
 end
 
 function own_values(values,indices_rows,indices_cols)
-    subindices = (get_own_to_local(indices_rows),get_own_to_local(indices_cols))
-    subindices_inv = (get_local_to_own(indices_rows),get_local_to_own(indices_cols))
+    subindices = (own_to_local(indices_rows),own_to_local(indices_cols))
+    subindices_inv = (local_to_own(indices_rows),local_to_own(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
 function ghost_values(values,indices_rows,indices_cols)
-    subindices = (get_ghost_to_local(indices_rows),get_ghost_to_local(indices_cols))
-    subindices_inv = (get_local_to_ghost(indices_rows),get_local_to_ghost(indices_cols))
+    subindices = (ghost_to_local(indices_rows),ghost_to_local(indices_cols))
+    subindices_inv = (local_to_ghost(indices_rows),local_to_ghost(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
 function own_ghost_values(values,indices_rows,indices_cols)
-    subindices = (get_own_to_local(indices_rows),get_ghost_to_local(indices_cols))
-    subindices_inv = (get_local_to_own(indices_rows),get_local_to_ghost(indices_cols))
+    subindices = (own_to_local(indices_rows),ghost_to_local(indices_cols))
+    subindices_inv = (local_to_own(indices_rows),local_to_ghost(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
 function ghost_own_values(values,indices_rows,indices_cols)
-    subindices = (get_ghost_to_local(indices_rows),get_own_to_local(indices_cols))
-    subindices_inv = (get_local_to_ghost(indices_rows),get_local_to_own(indices_cols))
+    subindices = (ghost_to_local(indices_rows),own_to_local(indices_cols))
+    subindices_inv = (local_to_ghost(indices_rows),local_to_own(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
@@ -114,13 +114,13 @@ copy_cache(a::SparseMatrixAssemblyCache) = SparseMatrixAssemblyCache(copy_cache(
 
 function p_sparse_matrix_cache(matrix_partition,row_partition,col_partition)
     function setup_snd(part,parts_snd,row_indices,col_indices,values)
-        local_to_owner = get_local_to_owner(row_indices)
-        local_to_global_row = get_local_to_global(row_indices)
-        local_to_global_col = get_local_to_global(col_indices)
+        local_row_to_owner = local_to_owner(row_indices)
+        local_to_global_row = local_to_global(row_indices)
+        local_to_global_col = local_to_global(col_indices)
         owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
         ptrs = zeros(Int32,length(parts_snd)+1)
         for (li,lj,v) in nziterator(values)
-            owner = local_to_owner[li]
+            owner = local_row_to_owner[li]
             if owner != part
                 ptrs[owner_to_i[owner]+1] +=1
             end
@@ -130,7 +130,7 @@ function p_sparse_matrix_cache(matrix_partition,row_partition,col_partition)
         gi_snd_data = zeros(Int,ptrs[end]-1)
         gj_snd_data = zeros(Int,ptrs[end]-1)
         for (k,(li,lj,v)) in enumerate(nziterator(values))
-            owner = local_to_owner[li]
+            owner = local_row_to_owner[li]
             if owner != part
                 p = ptrs[owner_to_i[owner]]
                 k_snd_data[p] = k
@@ -146,8 +146,8 @@ function p_sparse_matrix_cache(matrix_partition,row_partition,col_partition)
         k_snd, gi_snd, gj_snd
     end
     function setup_rcv(part,row_indices,col_indices,gi_rcv,gj_rcv,values)
-        global_to_local_row = get_global_to_local(row_indices)
-        global_to_local_col = get_global_to_local(col_indices)
+        global_to_local_row = global_to_local(row_indices)
+        global_to_local_col = global_to_local(col_indices)
         ptrs = gi_rcv.ptrs
         k_rcv_data = zeros(Int32,ptrs[end]-1)
         for p in 1:length(gi_rcv.data)
@@ -200,15 +200,15 @@ end
 
 function assemble_coo!(I,J,V,row_partition)
     function setup_snd(part,parts_snd,row_lids,coo_values)
-        global_to_local = get_global_to_local(row_lids)
-        local_to_owner = get_local_to_owner(row_lids)
+        global_to_local_row = global_to_local(row_lids)
+        local_row_to_owner = local_to_owner(row_lids)
         owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
         ptrs = zeros(Int32,length(parts_snd)+1)
         k_gi, k_gj, k_v = coo_values
         for k in 1:length(k_gi)
             gi = k_gi[k]
-            li = global_to_local[gi]
-            owner = local_to_owner[li]
+            li = global_to_local_row[gi]
+            owner = local_row_to_owner[li]
             if owner != part
                 ptrs[owner_to_i[owner]+1] +=1
             end
@@ -219,8 +219,8 @@ function assemble_coo!(I,J,V,row_partition)
         v_snd_data = zeros(eltype(k_v),ptrs[end]-1)
         for k in 1:length(k_gi)
             gi = k_gi[k]
-            li = global_to_local[gi]
-            owner = local_to_owner[li]
+            li = global_to_local_row[gi]
+            owner = local_row_to_owner[li]
             if owner != part
                 gj = k_gj[k]
                 v = k_v[k]
@@ -394,11 +394,11 @@ end
 function trivial_partition(row_partition)
     destination = 1
     n_own = map(row_partition) do indices
-        owner = get_owner(indices)
+        owner = part_id(indices)
         owner == destination ? Int(global_length(indices)) : 0
     end
     partition_in_main = variable_partition(n_own,length(PRange(row_partition)))
-    I = map(get_own_to_global,row_partition)
+    I = map(own_to_global,row_partition)
     I_owner = find_owner(partition_in_main,I)
     map(union_ghost,partition_in_main,I,I_owner)
 end
@@ -408,10 +408,9 @@ function to_trivial_partition(b::PVector,row_partition_in_main)
     T = eltype(b)
     b_in_main = similar(b,T,PRange(row_partition_in_main))
     map(own_values(b),partition(b_in_main),partition(axes(b,1))) do bown,b_in_main,indices
-        part = get_owner(indices)
+        part = part_id(indices)
         if part == destination
-            own_to_global = get_own_to_global(indices)
-            b_in_main[own_to_global] .= bown
+            b_in_main[own_to_global(indices)] .= bown
         else
             b_in_main .= bown
         end
@@ -424,10 +423,9 @@ function from_trivial_partition!(c::PVector,c_in_main::PVector)
     destination = 1
     consistent!(c_in_main) |> wait
     map(own_values(c),partition(c_in_main),partition(axes(c,1))) do cown, c_in_main, indices
-        part = get_owner(indices)
+        part = part_id(indices)
         if part == destination
-            own_to_global = get_own_to_global(indices)
-            cown .= view(c_in_main,own_to_global)
+            cown .= view(c_in_main,own_to_global(indices))
         else
             cown .= c_in_main
         end
@@ -443,12 +441,12 @@ function to_trivial_partition(
     Ta = eltype(a)
     I,J,V = map(partition(a),partition(axes(a,1)),partition(axes(a,2))) do a,row_indices,col_indices
         n = 0
-        local_to_owner = get_local_to_owner(row_indices)
-        owner = get_owner(row_indices)
-        local_to_global_row = get_local_to_global(row_indices)
-        local_to_global_col = get_local_to_global(col_indices)
+        local_row_to_owner = local_to_owner(row_indices)
+        owner = part_id(row_indices)
+        local_to_global_row = local_to_global(row_indices)
+        local_to_global_col = local_to_global(col_indices)
         for (i,j,v) in nziterator(a)
-            if local_to_owner[i] == owner
+            if local_row_to_owner[i] == owner
                 n += 1
             end
         end
@@ -457,7 +455,7 @@ function to_trivial_partition(
         V = zeros(Ta,n)
         n = 0
         for (i,j,v) in nziterator(a)
-            if local_to_owner[i] == owner
+            if local_row_to_owner[i] == owner
                 n += 1
                 I[n] = local_to_global_row[i]
                 J[n] = local_to_global_col[j]
@@ -468,7 +466,7 @@ function to_trivial_partition(
     end |> tuple_of_arrays
     assemble_coo!(I,J,V,row_partition_in_main) |> wait
     I,J,V = map(partition(axes(a,1)),I,J,V) do row_indices,I,J,V
-        owner = get_owner(row_indices)
+        owner = part_id(row_indices)
         if owner == destination
             I,J,V
         else

@@ -92,10 +92,10 @@ function p_range_tests(distribute)
    n_global = prod(n)
    tentative_partition = uniform_partition(rank,np,n,ghost)
    arbitrary_partition = map(tentative_partition) do old_local_indices
-       local_to_global = get_local_to_global(old_local_indices) |> collect
-       local_to_owner = get_local_to_owner(old_local_indices) |> collect
-       owner  = get_owner(old_local_indices)
-       LocalIndices(n_global,owner,local_to_global,local_to_owner)
+       local_to_global_indices = local_to_global(old_local_indices) |> collect
+       local_index_to_owner = local_to_owner(old_local_indices) |> collect
+       owner  = part_id(old_local_indices)
+       LocalIndices(n_global,owner,local_to_global_indices,local_index_to_owner)
    end
 
    # Custom general partition by providing
@@ -103,12 +103,12 @@ function p_range_tests(distribute)
    # local indices are defined by concatenating
    # own and ghost
    custom_partition = map(tentative_partition) do old_local_indices
-       owner = get_owner(old_local_indices)
-       own_to_global = get_own_to_global(old_local_indices) |> collect
-       ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
-       ghost_to_owner = get_ghost_to_owner(old_local_indices) |> collect
-       own = OwnIndices(n_global,owner,own_to_global)
-       ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
+       owner = part_id(old_local_indices)
+       own_to_global_indices = own_to_global(old_local_indices) |> collect
+       ghost_to_global_indices = ghost_to_global(old_local_indices) |> collect
+       ghost_index_to_owner = ghost_to_owner(old_local_indices) |> collect
+       own = OwnIndices(n_global,owner,own_to_global_indices)
+       ghost = GhostIndices(n_global,ghost_to_global_indices,ghost_index_to_owner)
        OwnAndGhostIndices(own,ghost)
    end
 
@@ -117,13 +117,13 @@ function p_range_tests(distribute)
    # local indices are defined by concatenating
    # own and ghost plus an arbitrary permutation
    custom_partition = map(tentative_partition) do old_local_indices
-       owner = get_owner(old_local_indices)
-       own_to_global = get_own_to_global(old_local_indices) |> collect
-       ghost_to_global = get_ghost_to_global(old_local_indices) |> collect
-       ghost_to_owner = get_ghost_to_owner(old_local_indices) |> collect
-       own = OwnIndices(n_global,owner,own_to_global)
-       ghost = GhostIndices(n_global,ghost_to_global,ghost_to_owner)
-       n_local = length(get_local_to_global(old_local_indices))
+       owner = part_id(old_local_indices)
+       own_to_global_indices = own_to_global(old_local_indices) |> collect
+       ghost_to_global_indices = ghost_to_global(old_local_indices) |> collect
+       ghost_index_to_owner = ghost_to_owner(old_local_indices) |> collect
+       own = OwnIndices(n_global,owner,own_to_global_indices)
+       ghost = GhostIndices(n_global,ghost_to_global_indices,ghost_index_to_owner)
+       n_local = length(local_to_global(old_local_indices))
        perm = collect(n_local:-1:1)
        permute_indices(OwnAndGhostIndices(own,ghost),perm)
    end

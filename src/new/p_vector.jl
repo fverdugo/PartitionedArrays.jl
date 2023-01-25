@@ -18,13 +18,11 @@ function local_values(values,indices)
 end
 
 function own_values(values,indices)
-    own_to_local = get_own_to_local(indices)
-    view(values,own_to_local)
+    view(values,own_to_local(indices))
 end
 
 function ghost_values(values,indices)
-    ghost_to_local = get_ghost_to_local(indices)
-    view(values,ghost_to_local)
+    view(values,ghost_to_local(indices))
 end
 
 """
@@ -411,7 +409,7 @@ part that owns the associated global global id.
     julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
     1:1:6
     
-    julia> a = pvector(inds->fill(get_owner(inds),length(inds)),rows);
+    julia> a = pvector(inds->fill(part_id(inds),length(inds)),rows);
     
     julia> local_values(a)
     2-element Vector{Vector{Int32}}:
