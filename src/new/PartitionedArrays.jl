@@ -87,11 +87,7 @@ export prange
 export replace_ghost
 export union_ghost
 export find_owner
-export Assembler
-export vector_assembler
 export assemble!
-export assembly_buffer_snd
-export assembly_buffer_rcv
 export to_local!
 export to_global!
 export partition
@@ -106,7 +102,6 @@ export OwnAndGhostValues
 export PVector
 export pvector
 export pvector!
-export psparsevec!
 export pfill
 export pzeros
 export pones

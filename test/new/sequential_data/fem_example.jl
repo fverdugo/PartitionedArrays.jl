@@ -1,4 +1,4 @@
-module SequentialDataPVectorTests
+module SequentialDataFEMExample
 
 using PartitionedArrays
 
