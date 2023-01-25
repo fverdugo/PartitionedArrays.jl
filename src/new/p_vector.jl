@@ -6,11 +6,11 @@ function get_own_values end
 function get_ghost_values end
 
 function allocate_local_values(a,::Type{T},indices) where T
-    similar(a,T,get_n_local(indices))
+    similar(a,T,local_length(indices))
 end
 
 function allocate_local_values(::Type{V},indices) where V
-    similar(V,get_n_local(indices))
+    similar(V,local_length(indices))
 end
 
 function get_local_values(values,indices)
@@ -103,8 +103,8 @@ function get_ghost_values(values::OwnAndGhostValues,indices)
 end
 
 function allocate_local_values(values::OwnAndGhostValues,::Type{T},indices) where T
-    n_own = get_n_own(indices)
-    n_ghost = get_n_ghost(indices)
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
     own_values = similar(values.own_values,T,n_own)
     ghost_values = similar(values.ghost_values,T,n_ghost)
     perm = get_permutation(indices)
@@ -112,8 +112,8 @@ function allocate_local_values(values::OwnAndGhostValues,::Type{T},indices) wher
 end
 
 function allocate_local_values(::Type{<:OwnAndGhostValues{A}},indices) where {A}
-    n_own = get_n_own(indices)
-    n_ghost = get_n_ghost(indices)
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
     own_values = similar(A,n_own)
     ghost_values = similar(A,n_ghost)
     perm = get_permutation(indices)
@@ -534,11 +534,11 @@ function pvector!(I,V,index_partition;kwargs...)
 end
 
 function default_local_values(indices)
-    Vector{Float64}(undef,get_n_local(indices))
+    Vector{Float64}(undef,local_length(indices))
 end
 
 function default_local_values(I,V,indices)
-    values = Vector{Float64}(undef,get_n_local(indices))
+    values = Vector{Float64}(undef,local_length(indices))
     fill!(values,zero(eltype(values)))
     for k in 1:length(I)
         li = I[k]
@@ -553,7 +553,7 @@ end
 Create a [`Pvector`](@ref) object with the data partition in `rows`
 with all entries equal to `v`.
 """
-pfill(v,index_partition) = pvector(indices->fill(v,get_n_local(indices)),index_partition)
+pfill(v,index_partition) = pvector(indices->fill(v,local_length(indices)),index_partition)
 
 """
     pzeros(rows::PRange)
@@ -564,7 +564,7 @@ Equivalent to
     pfill(zero(T),rows)
 """
 pzeros(index_partition) = pzeros(Float64,index_partition)
-pzeros(::Type{T},index_partition) where T = pvector(indices->zeros(T,get_n_local(indices)),index_partition)
+pzeros(::Type{T},index_partition) where T = pvector(indices->zeros(T,local_length(indices)),index_partition)
 
 """
     pones(rows::PRange)
@@ -575,7 +575,7 @@ Equivalent to
     pfill(one(T),rows)
 """
 pones(index_partition) = pones(Float64,index_partition)
-pones(::Type{T},index_partition) where T = pvector(indices->ones(T,get_n_local(indices)),index_partition)
+pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(indices)),index_partition)
 
 """
     prand([rng,][s,]rows::PRange)
@@ -583,9 +583,9 @@ pones(::Type{T},index_partition) where T = pvector(indices->ones(T,get_n_local(i
 Create a [`Pvector`](@ref) object with uniform random values and the data partition in `rows`.
 The optional arguments have the same meaning and default values as in [`rand`](@ref).
 """
-prand(index_partition) = pvector(indices->rand(get_n_local(indices)),index_partition)
-prand(s,index_partition) = pvector(indices->rand(s,get_n_local(indices)),index_partition)
-prand(rng,s,index_partition) = pvector(indices->rand(rng,s,get_n_local(indices)),index_partition)
+prand(index_partition) = pvector(indices->rand(local_length(indices)),index_partition)
+prand(s,index_partition) = pvector(indices->rand(s,local_length(indices)),index_partition)
+prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)),index_partition)
 
 """
     prandn([rng,][s,]rows::PRange)
@@ -593,9 +593,9 @@ prand(rng,s,index_partition) = pvector(indices->rand(rng,s,get_n_local(indices))
 Create a [`Pvector`](@ref) object with normally distributed random values and the data partition in `rows`.
 The optional arguments have the same meaning and default values as in [`randn`](@ref).
 """
-prandn(index_partition) = pvector(indices->randn(get_n_local(indices)),index_partition)
-prandn(s,index_partition) = pvector(indices->randn(s,get_n_local(indices)),index_partition)
-prandn(rng,s,index_partition) = pvector(indices->randn(rng,s,get_n_local(indices)),index_partition)
+prandn(index_partition) = pvector(indices->randn(local_length(indices)),index_partition)
+prandn(s,index_partition) = pvector(indices->randn(s,local_length(indices)),index_partition)
+prandn(rng,s,index_partition) = pvector(indices->randn(rng,s,local_length(indices)),index_partition)
 
 function Base.:(==)(a::PVector,b::PVector)
     @boundscheck @assert matching_own_indices(axes(a,1),axes(b,1))

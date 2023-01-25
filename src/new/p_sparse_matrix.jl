@@ -4,14 +4,14 @@ function get_own_ghost_values end
 function get_ghost_own_values end
 
 function allocate_local_values(a,::Type{T},indices_rows,indices_cols) where T
-    m = get_n_local(indices_rows)
-    n = get_n_local(indices_cols)
+    m = local_length(indices_rows)
+    n = local_length(indices_cols)
     similar(a,T,m,n)
 end
 
 function allocate_local_values(::Type{V},indices_rows,indices_cols) where V
-    m = get_n_local(indices_rows)
-    n = get_n_local(indices_cols)
+    m = local_length(indices_rows)
+    n = local_length(indices_cols)
     similar(V,m,n)
 end
 
@@ -380,14 +380,14 @@ function psparse(f,row_partition,col_partition)
 end
 
 function default_local_values(row_indices,col_indices)
-    m = get_n_local(row_indices)
-    n = get_n_local(col_indices)
+    m = local_length(row_indices)
+    n = local_length(col_indices)
     sparse(Int32[],Int32[],Float64[],m,n)
 end
 
 function default_local_values(I,J,V,row_indices,col_indices)
-    m = get_n_local(row_indices)
-    n = get_n_local(col_indices)
+    m = local_length(row_indices)
+    n = local_length(col_indices)
     sparse(I,J,V,m,n)
 end
 
@@ -395,7 +395,7 @@ function trivial_partition(row_partition)
     destination = 1
     n_own = map(row_partition) do indices
         owner = get_owner(indices)
-        owner == destination ? Int(get_n_global(indices)) : 0
+        owner == destination ? Int(global_length(indices)) : 0
     end
     partition_in_main = variable_partition(n_own,length(PRange(row_partition)))
     I = map(get_own_to_global,row_partition)
@@ -476,8 +476,8 @@ function to_trivial_partition(
         end
     end |> tuple_of_arrays
     values = map(I,J,V,row_partition_in_main,col_partition_in_main) do I,J,V,row_indices,col_indices
-        m = get_n_local(row_indices)
-        n = get_n_local(col_indices)
+        m = local_length(row_indices)
+        n = local_length(col_indices)
         compresscoo(M,I,J,V,m,n)
     end
     PSparseMatrix(values,row_partition_in_main,col_partition_in_main)

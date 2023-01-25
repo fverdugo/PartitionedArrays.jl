@@ -6,10 +6,10 @@ a part of an instance of [`PRange`](@ref).
 
 The following functions form the `AbstractLocalIndices` interface:
 
-- [`get_n_local`](@ref)
-- [`get_n_own`](@ref)
-- [`get_n_ghost`](@ref)
-- [`get_n_global`](@ref)
+- [`local_length`](@ref)
+- [`own_length`](@ref)
+- [`ghost_length`](@ref)
+- [`global_length`](@ref)
 - [`get_owner`](@ref)
 - [`get_local_to_global`](@ref)
 - [`get_own_to_global`](@ref)
@@ -33,37 +33,37 @@ The following functions form the `AbstractLocalIndices` interface:
 
 """
 abstract type AbstractLocalIndices <: AbstractVector{Int} end
-Base.size(a::AbstractLocalIndices) = (get_n_local(a),)
+Base.size(a::AbstractLocalIndices) = (local_length(a),)
 Base.IndexStyle(::Type{<:AbstractLocalIndices}) = IndexLinear()
 @inline Base.getindex(a::AbstractLocalIndices,i::Int) = get_local_to_global(a)[i]
 
 """
-    get_n_local(indices)
+    local_length(indices)
 
 Get number of local ids in `indices`.
 """
-get_n_local(a) = get_n_own(a) + get_n_ghost(a)
+local_length(a) = own_length(a) + ghost_length(a)
 
 """
-    get_n_own(indices)
+    own_length(indices)
 
 Get number of own ids in `indices`.
 """
-get_n_own(a) = length(get_own_to_owner(a))
+own_length(a) = length(get_own_to_owner(a))
 
 """
-    get_n_ghost(indices)
+    ghost_length(indices)
 
 Get number of ghost ids in `indices`.
 """
-get_n_ghost(a) = length(get_ghost_to_global(a))
+ghost_length(a) = length(get_ghost_to_global(a))
 
 """
-    get_n_global(indices)
+    global_length(indices)
 
 Get number of global ids associated with `indices`.
 """
-get_n_global(a) = length(get_global_to_own(a))
+global_length(a) = length(get_global_to_own(a))
 
 """
     get_owner(indices)
@@ -163,9 +163,9 @@ Return an array with the inverse index map of `get_ghost_to_local(indices)`.
 function get_local_to_ghost end
 
 function get_permutation(indices)
-    n_local = get_n_local(indices)
-    n_own = get_n_own(indices)
-    n_ghost = get_n_ghost(indices)
+    n_local = local_length(indices)
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
     own_to_local = get_own_to_local(indices)
     ghost_to_local = get_ghost_to_local(indices)
     perm = zeros(Int32,n_local)
@@ -250,7 +250,7 @@ function union_ghost(indices,gids,owners)
     ghost_to_owner = get_ghost_to_owner(indices)
     new_gids = vcat(ghost_to_global,extra_gids)
     new_owners = vcat(ghost_to_owner,extra_owners)
-    n_global = get_n_global(indices)
+    n_global = global_length(indices)
     ghost = GhostIndices(n_global,new_gids,new_owners)
     replace_ghost(indices,ghost)
 end
@@ -756,7 +756,7 @@ function GhostIndices(n_global)
 end
 
 function replace_ghost(indices,gids,owners)
-    n_global = get_n_global(indices)
+    n_global = global_length(indices)
     ghost = GhostIndices(n_global,gids,owners)
     replace_ghost(indices,ghost)
 end
@@ -964,7 +964,7 @@ end
 
 get_owner(a::LocalIndices) = a.owner
 
-get_n_local(a::LocalIndices) = length(a.local_to_global)
+local_length(a::LocalIndices) = length(a.local_to_global)
 
 function get_own_to_global(a::LocalIndices)
     view(a.local_to_global,a.own_to_local)
@@ -1054,7 +1054,7 @@ struct OwnAndGhostIndices <: AbstractLocalIndices
 end
 assembly_cache(a::OwnAndGhostIndices) = a.assembly_cache
 
-get_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(get_n_local(a))
+get_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(local_length(a))
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
     OwnAndGhostIndices(a.own,ghost)
@@ -1458,7 +1458,7 @@ end
 
 const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,LocalIndicesWithVariableBlockSize}
 
-get_permutation(a::LocalIndicesInBlockPartition) = Int32(1):Int32(get_n_local(a))
+get_permutation(a::LocalIndicesInBlockPartition) = Int32(1):Int32(local_length(a))
 
 function get_owner(a::LocalIndicesInBlockPartition)
     owner = LinearIndices(a.np)[a.p]
@@ -1711,11 +1711,11 @@ struct PRange{A} <: AbstractUnitRange{Int}
 end
 partition(a::PRange) = a.partition
 Base.first(a::PRange) = 1
-Base.last(a::PRange) = getany(map(get_n_global,partition(a)))
+Base.last(a::PRange) = getany(map(global_length,partition(a)))
 function Base.show(io::IO,k::MIME"text/plain",data::PRange)
     np = length(partition(data))
     map_main(partition(data)) do indices
-        println(io,"1:$(get_n_global(indices)) partitioned into $(np) parts")
+        println(io,"1:$(global_length(indices)) partitioned into $(np) parts")
     end
 end
 
@@ -1740,25 +1740,25 @@ end
 ##prange(f,args...) = PRange(f(args...))
 
 """
-    get_n_global(pr::PRange)
+    global_length(pr::PRange)
 
-Equivalent to `map(get_n_global,pr.indices)`.
+Equivalent to `map(global_length,pr.indices)`.
 """
-get_n_global(pr::PRange) = map(get_n_local,partition(pr))
-
-"""
-    get_n_local(pr::PRange)
-
-Equivalent to `map(get_n_local,pr.indices)`.
-"""
-get_n_local(pr::PRange) = map(get_n_local,partition(pr))
+global_length(pr::PRange) = map(local_length,partition(pr))
 
 """
-    get_n_own(pr::PRange)
+    local_length(pr::PRange)
 
-Equivalent to `map(get_n_own,pr.indices)`.
+Equivalent to `map(local_length,pr.indices)`.
 """
-get_n_own(pr::PRange) = map(get_n_own,partition(pr))
+local_length(pr::PRange) = map(local_length,partition(pr))
+
+"""
+    own_length(pr::PRange)
+
+Equivalent to `map(own_length,pr.indices)`.
+"""
+own_length(pr::PRange) = map(own_length,partition(pr))
 
 """
     get_local_to_global(pr::PRange)

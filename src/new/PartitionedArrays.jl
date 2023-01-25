@@ -67,10 +67,10 @@ export permute_indices
 export PermutedLocalIndices
 export GhostIndices
 export OwnIndices
-export get_n_local
-export get_n_global
-export get_n_ghost
-export get_n_own
+export local_length
+export global_length
+export ghost_length
+export own_length
 export get_owner
 export get_local_to_global
 export get_own_to_global

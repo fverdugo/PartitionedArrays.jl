@@ -267,7 +267,7 @@ function setup_dofs(space,grid,tentative_dof_indices)
     n_ghost_dofs = length(ghost_dof_to_local_dof)
     n_local_dofs = length(space.permutation)
     n_own_dofs = n_local_dofs - n_ghost_dofs
-    n_global_dofs = get_n_global(tentative_dof_indices)
+    n_global_dofs = global_length(tentative_dof_indices)
     space.permutation[ghost_dof_to_local_dof] = .- (1:n_ghost_dofs)
     ghost_dof_to_owner = space.local_dof_to_owner[ghost_dof_to_local_dof]
     ghost_to_global_dof = zeros(Int,n_ghost_dofs)
@@ -323,7 +323,7 @@ function fem_example(distribute)
     dof_partition = map(setup_dofs,space,grid,tentative_dof_partition)
     # Some optimizations when building A
     try
-        PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :error
+        PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :error
         cell_partition = uniform_partition(rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
         I_owner = find_owner(tentative_dof_partition,I)
         row_partition = map(union_ghost,tentative_dof_partition,I,I_owner)
@@ -331,9 +331,9 @@ function fem_example(distribute)
         assembly_graph(row_partition;neighbors)
         t = psparse!(I,J,V,row_partition,tentative_dof_partition,discover_rows=false)
         A = fetch(t)
-        PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :allow
+        PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :allow
     catch e
-        PartitionedArrays.DISCOVER_RCV_NEIGHBORS_ACTION[] = :allow
+        PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :allow
         rethrow(e)
     end
 end

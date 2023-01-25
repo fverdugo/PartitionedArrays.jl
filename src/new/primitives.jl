@@ -601,7 +601,7 @@ end
 
 # If neighbors not provided, we need to gather in main
 function ExchangeGraph_impl(snd_ids,neighbors::Nothing)
-    discover_rcv_neighbors_action()
+    discover_neighbors_action()
     snd_ids_main = gather(snd_ids)
     rcv_ids_main = map(snd_ids_main) do snd_ids_main
         snd = JaggedArray(snd_ids_main)
@@ -636,10 +636,10 @@ function ExchangeGraph_impl(snd_ids,neighbors::Nothing)
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
-const DISCOVER_RCV_NEIGHBORS_ACTION = Ref(:allow)
+const DISCOVER_NEIGHBORS_ACTION = Ref(:allow)
 
-function discover_rcv_neighbors_action()
-    DISCOVER_RCV_NEIGHBORS_ACTION[] === :allow && return nothing
+function discover_neighbors_action()
+    DISCOVER_NEIGHBORS_ACTION[] === :allow && return nothing
     msg =
     """
     [PartitionedArrays.jl] Using a non-scalable implementation
@@ -648,9 +648,9 @@ function discover_rcv_neighbors_action()
     You can avoid this using the key-word arguments in the ExchangeGraph constructor.
     See the documetation of ExchangeGraph for further help.
     """
-    if DISCOVER_RCV_NEIGHBORS_ACTION[] === :error
+    if DISCOVER_NEIGHBORS_ACTION[] === :error
         error(msg)
-    elseif DISCOVER_RCV_NEIGHBORS_ACTION[] === :warn
+    elseif DISCOVER_NEIGHBORS_ACTION[] === :warn
         @warn msg
     end
     nothing
