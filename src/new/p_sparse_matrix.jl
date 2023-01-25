@@ -353,8 +353,10 @@ function assemble_coo!(I,J,V,rows)
     end
 end
 
-function psparse!(f,I,J,V,rows,cols;kwargs...)
-    rows = union_ghost(rows,I)
+function psparse!(f,I,J,V,rows,cols;discover_rows=true,kwargs...)
+    if discover_rows
+        rows = union_ghost(rows,I)
+    end
     t = assemble_coo!(I,J,V,rows)
     @async begin
         wait(t)

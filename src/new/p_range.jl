@@ -586,7 +586,28 @@ function empty_assembler(indices)
     Assembler(neighbors,local_indices)
 end
 
+# Return neighbors_snd, neighbors_rcv instead
 function assembly_neighbors(indices;kwargs...)
+    cache = map(assembly_cache,indices)
+    mask =  map(cache) do cache
+        isassigned(cache.neighbors_snd) && isassigned(cache.neighbors_rcv)
+    end
+    if ! getany(mask)
+        neighbors = compute_assembly_neighbors(indices;kwargs...)
+        map(cache,neighbors.snd,neighbors.rcv) do cache, neigs_snd, neigs_rcv
+            cache.neighbors_snd[] = neigs_snd
+            cache.neighbors_rcv[] = neigs_rcv
+        end
+        return neighbors
+    end
+    neigs_snd, neigs_rcv = map(cache) do cache
+        cache.neighbors_snd[], cache.neighbors_rcv[]
+    end |> tuple_of_arrays
+    ExchangeGraph(neigs_snd,neigs_rcv)
+end
+
+# Return neighbors_snd, neighbors_rcv instead
+function compute_assembly_neighbors(indices;kwargs...)
     parts_snd = map(indices) do indices
         rank = get_owner(indices)
         local_to_owner = get_local_to_owner(indices)
@@ -601,7 +622,28 @@ function assembly_neighbors(indices;kwargs...)
     ExchangeGraph(parts_snd;kwargs...)
 end
 
+# Return local_indices_snd, local_indices_rcv instead
 function assembly_local_indices(indices,neighbors)
+    cache = map(assembly_cache,indices)
+    mask =  map(cache) do cache
+        isassigned(cache.local_indices_snd) && isassigned(cache.local_indices_rcv)
+    end
+    if ! getany(mask)
+        neighbors = assembly_neighbors(indices)
+        local_indices = compute_assembly_local_indices(indices,neighbors)
+        map(cache,local_indices.snd,local_indices.rcv) do cache, local_indices_snd, local_indices_rcv
+            cache.local_indices_snd[] = local_indices_snd
+            cache.local_indices_rcv[] = local_indices_rcv
+        end
+        return local_indices
+    end
+    local_indices_snd, local_indices_rcv = map(cache) do cache
+        cache.local_indices_snd[], cache.local_indices_rcv[]
+    end |> tuple_of_arrays
+    AssemblyLocalIndices(local_indices_snd,local_indices_rcv)
+end
+
+function compute_assembly_local_indices(indices,neighbors)
     parts_snd = neighbors.snd
     parts_rcv = neighbors.rcv
     aux1 = map(indices,parts_snd) do indices,parts_snd
@@ -685,13 +727,15 @@ function uniform_partition(rank,np,n,args...)
     indices = map(rank) do rank
         block_with_constant_size(rank,np,n,args...)
     end
+    if length(args) == 0
+        map(indices) do indices
+            cache = assembly_cache(indices)
+            copy!(cache,empty_assembly_cache())
+        end
+    else
+        assembly_neighbors(indices;symmetric=true)
+    end
     indices
-    #if length(args) == 0
-    #    assembler = empty_assembler(indices)
-    #else
-    #    assembler = vector_assembler(indices,symmetric=true)
-    #end
-    #PRange(prod(n),indices,assembler)
 end
 
 """
@@ -836,11 +880,48 @@ function variable_partition(
         n = (n_global,)
         ranges = ((1:n_own).+(start-1),)
         ghost = GhostIndices(n_global)
-        LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
+        indices = LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
+        # This should be changed when including ghost
+        cache = assembly_cache(indices)
+        copy!(cache,empty_assembly_cache())
+        indices
     end
     indices
-    #assembler = empty_assembler(indices)
-    #PRange(n_global,indices,assembler)
+end
+
+struct AssemblyCache
+    neighbors_snd::Base.RefValue{Vector{Int32}}
+    neighbors_rcv::Base.RefValue{Vector{Int32}}
+    local_indices_snd::Base.RefValue{JaggedArray{Int32,Int32}}
+    local_indices_rcv::Base.RefValue{JaggedArray{Int32,Int32}}
+end
+
+function Base.copy!(a::AssemblyCache,b::AssemblyCache)
+    a.neighbors_snd[] = b.neighbors_snd[]
+    a.neighbors_rcv[] = b.neighbors_rcv[]
+    a.local_indices_snd[] = b.local_indices_snd[]
+    a.local_indices_rcv[] = b.local_indices_rcv[]
+    a
+end
+
+function AssemblyCache()
+    AssemblyCache(
+                  Ref{Vector{Int32}}(),
+                  Ref{Vector{Int32}}(),
+                  Ref{JaggedArray{Int32,Int32}}(),
+                  Ref{JaggedArray{Int32,Int32}}()
+                 )
+end
+
+assembly_cache(a) = AssemblyCache()
+
+function empty_assembly_cache()
+    AssemblyCache(
+                  Ref(Int32[]),
+                  Ref(Int32[]),
+                  Ref(JaggedArray(Int32[],Int32[1])),
+                  Ref(JaggedArray(Int32[],Int32[1])),
+                 )
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
@@ -1118,8 +1199,10 @@ struct LocalIndices <: AbstractLocalIndices
     own_to_local::Vector{Int32}
     ghost_to_local::Vector{Int32}
     global_to_local::VectorFromDict{Int,Int32}
+    assembly_cache::AssemblyCache
 end
 
+assembly_cache(a::LocalIndices) = a.assembly_cache
 get_permutation(a::LocalIndices) = a.perm
 
 """
@@ -1154,7 +1237,8 @@ function LocalIndices(
         perm,
         Int32.(own_to_local),
         Int32.(ghost_to_local),
-        global_to_local)
+        global_to_local,
+        AssemblyCache())
 end
 
 function replace_ghost(a::LocalIndices,ghost::GhostIndices)
@@ -1241,15 +1325,17 @@ Local indices are defined by concatenating own and ghost ones.
 struct OwnAndGhostIndices <: AbstractLocalIndices
     own::OwnIndices
     ghost::GhostIndices
+    assembly_cache::AssemblyCache
     @doc """
         OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
 
     Build an instance of [`OwnAndGhostIndices`](@ref) from the underlying properties `own` and `ghost`.
     """
     function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
-        new(own,ghost)
+        new(own,ghost,AssemblyCache())
     end
 end
+assembly_cache(a::OwnAndGhostIndices) = a.assembly_cache
 
 get_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(get_n_local(a))
 
@@ -1364,7 +1450,9 @@ struct PermutedLocalIndices{A} <: AbstractLocalIndices
     perm::Vector{Int32}
     own_to_local::Vector{Int32}
     ghost_to_local::Vector{Int32}
+    assembly_cache::AssemblyCache
 end
+assembly_cache(a::PermutedLocalIndices) = a.assembly_cache
 
 """
     PermutedLocalIndices(indices,perm)
@@ -1390,7 +1478,7 @@ function PermutedLocalIndices(indices,perm)
         end
     end
     _perm = convert(Vector{Int32},perm)
-    PermutedLocalIndices(indices,_perm,own_to_local,ghost_to_local)
+    PermutedLocalIndices(indices,_perm,own_to_local,ghost_to_local,AssemblyCache())
 end
 
 function replace_ghost(a::PermutedLocalIndices,::GhostIndices)
@@ -1579,7 +1667,16 @@ struct LocalIndicesWithConstantBlockSize{N} <: AbstractLocalIndices
     np::NTuple{N,Int}
     n::NTuple{N,Int}
     ghost::GhostIndices
+    assembly_cache::AssemblyCache
+    function LocalIndicesWithConstantBlockSize(
+            p::CartesianIndex{N},
+            np::NTuple{N,Int},
+            n::NTuple{N,Int},
+            ghost::GhostIndices) where N
+        new{N}(p, np, n, ghost, AssemblyCache())
+    end
 end
+assembly_cache(a::LocalIndicesWithConstantBlockSize) = a.assembly_cache
 
 function Base.getproperty(a::LocalIndicesWithConstantBlockSize, sym::Symbol)
     if sym === :ranges
@@ -1615,7 +1712,17 @@ struct LocalIndicesWithVariableBlockSize{N} <: AbstractLocalIndices
     n::NTuple{N,Int}
     ranges::NTuple{N,UnitRange{Int}}
     ghost::GhostIndices
+    assembly_cache::AssemblyCache
+    function LocalIndicesWithVariableBlockSize(
+        p::CartesianIndex{N},
+        np::NTuple{N,Int},
+        n::NTuple{N,Int},
+        ranges::NTuple{N,UnitRange{Int}},
+        ghost::GhostIndices) where N
+        new{N}(p,np,n,ranges,ghost,AssemblyCache())
+    end
 end
+assembly_cache(a::LocalIndicesWithVariableBlockSize) = a.assembly_cache
 
 function replace_ghost(a::LocalIndicesWithVariableBlockSize,ghost::GhostIndices)
     LocalIndicesWithVariableBlockSize(a.p,a.np,a.n,a.ranges,ghost)

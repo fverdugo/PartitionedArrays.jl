@@ -60,7 +60,7 @@ function fdm_example(distribute)
             local_x̂[local_row] = u(node_coordinates)
             boundary = any(map(is_boundary_node,Tuple(cartesian_row),nodes_per_dir))
             if boundary
-                push!(I,local_row)
+                push!(I,global_row)
                 push!(J,global_row)
                 push!(V,one(eltype(V)))
                 local_b[local_row] = u(node_coordinates)
@@ -68,7 +68,7 @@ function fdm_example(distribute)
                 for (v,dcj) in stencil
                     cartesian_col = cartesian_row + dcj
                     global_col = cartesian_to_linear[cartesian_col]
-                    push!(I,local_row)
+                    push!(I,global_row)
                     push!(J,global_col)
                     push!(V,-v)
                 end
@@ -82,18 +82,13 @@ function fdm_example(distribute)
     toc!(t,"IJV")
     I,J,V = tuple_of_arrays(IJV)
 
-    # Build a PRange taking the owned ids in rows plus ghost ids from the touched cols
-    cols = union_ghost(rows,J)
-    toc!(t,"cols")
-
-    # Now we can convert J to local numbering, I is already in local numbering.
-    to_local!(J,cols)
-
-    # Build the PSparseMatrix from the coo-vectors (in local numbering)
+    # Build the PSparseMatrix from the coo-vectors
     # and the data distribution described by rows and cols.
     tic!(t)
-    A = psparse(I,J,V,rows,cols)
+    tentative_cols = rows
+    A = psparse!(I,J,V,rows,tentative_cols,discover_rows=false) |> fetch
     toc!(t,"A")
+    cols = A.cols
 
     # The initial guess needs the ghost layer (that why we take cols)
     # in other to perform the product A*x in the cg solver.
