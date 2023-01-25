@@ -643,10 +643,10 @@ function discover_rcv_neighbors_action()
     msg =
     """
     [PartitionedArrays.jl] Using a non-scalable implementation
-    to discover the incoming neighbours of a `ExchangeGraph`.
+    to discover the incoming neighbours of a ExchangeGraph instance.
     This might cause trouble when running the code at medium/large scales.
-    You can avoid this using the Exchanger constructor with a superset of
-    the actual receivers/senders
+    You can avoid this using the key-word arguments in the ExchangeGraph constructor.
+    See the documetation of ExchangeGraph for further help.
     """
     if DISCOVER_RCV_NEIGHBORS_ACTION[] === :error
         error(msg)
