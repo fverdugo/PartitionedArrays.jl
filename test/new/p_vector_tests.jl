@@ -8,29 +8,30 @@ function p_vector_tests(distribute)
 
     np = 4
     rank = distribute(LinearIndices((np,)))
-    rows = prange(uniform_partition,rank,(2,2),(6,6))
+    row_partition = uniform_partition(rank,(2,2),(6,6))
 
-    a1 = pvector(rows)
-    a2 = pvector(inds->zeros(Int,length(inds)),rows)
-    a3 = PVector{OwnAndGhostValues{Vector{Int}}}(undef,rows)
+    a1 = pvector(row_partition)
+    @test isa(axes(a1,1),PRange)
+    a2 = pvector(inds->zeros(Int,length(inds)),row_partition)
+    a3 = PVector{OwnAndGhostValues{Vector{Int}}}(undef,row_partition)
     for a in [a1,a2,a3]
         b = similar(a)
         b = similar(a,Int)
-        b = similar(a,Int,rows)
-        b = similar(typeof(a),rows)
+        b = similar(a,Int,axes(a,1))
+        b = similar(typeof(a),axes(a,1))
         copy!(b,a)
         b = copy(a)
         fill!(b,5.)
+        rows = axes(a,1)
         @test length(a) == length(rows)
-        @test a.rows === rows
-        @test b.rows === rows
+        @test partition(axes(b,1)) === partition(rows)
     end
 
-    a = pfill(4,rows)
-    a = pzeros(rows)
-    a = pones(rows)
-    a = prand(rows)
-    a = prandn(rows)
+    a = pfill(4,row_partition)
+    a = pzeros(row_partition)
+    a = pones(row_partition)
+    a = prand(row_partition)
+    a = prandn(row_partition)
     assemble!(a) |> wait
     consistent!(a) |> wait
 
@@ -45,8 +46,8 @@ function p_vector_tests(distribute)
         I,V
     end |> tuple_of_arrays
 
-    rows = prange(uniform_partition,rank,n)
-    a = pvector!(I,V,rows) |> fetch
+    row_partition = uniform_partition(rank,n)
+    a = pvector!(I,V,row_partition) |> fetch
 
     @test any(i->i>n,a) == false
     @test all(i->i<n,a)
@@ -68,7 +69,7 @@ function p_vector_tests(distribute)
 
     n = 10
     parts = rank
-    indices = map(parts) do part
+    row_partition = map(parts) do part
         if part == 1
             LocalIndices(n,part,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
         elseif part == 2
@@ -79,9 +80,8 @@ function p_vector_tests(distribute)
             LocalIndices(n,part,[1,3,7,9,10],Int32[1,1,3,4,4])
         end
     end
-    rows = PRange(indices)
-    v = pzeros(rows)
-    map(parts,v.values,v.rows.indices) do part, values, indices
+    v = pzeros(row_partition)
+    map(parts,partition(v),row_partition) do part, values, indices
         local_to_owner = get_local_to_owner(indices)
         for lid in 1:length(local_to_owner)
             owner = local_to_owner[lid]
@@ -92,7 +92,7 @@ function p_vector_tests(distribute)
     end
     consistent!(v) |> wait
 
-    map(v.values,v.rows.indices) do values, indices
+    map(partition(v),row_partition) do values, indices
         local_to_owner = get_local_to_owner(indices)
         for lid in 1:length(local_to_owner)
             owner = local_to_owner[lid]
@@ -130,15 +130,15 @@ function p_vector_tests(distribute)
             [3,2,8,10]
         end
     end
-    rows = prange(uniform_partition,parts,n)
+    row_partition = uniform_partition(parts,n)
     values = map(copy,gids)
-    v = pvector!(gids,values,rows) |> fetch
+    v = pvector!(gids,values,row_partition) |> fetch
     u = 2*v
-    map(u.values,v.values) do u,v
+    map(partition(u),partition(v)) do u,v
         @test u == 2*v
     end
     u = v + u
-    map(u.values,v.values) do u,v
+    map(get_local_values(u),get_local_values(v)) do u,v
         @test u == 3*v
     end
     @test any(i->i>4,v) == true
@@ -167,6 +167,9 @@ function p_vector_tests(distribute)
     @test sum(w) == 0
 
     w = v .- u
+    map(get_local_values(w),get_local_values(u),get_local_values(v)) do w,u,v
+        @test w == v - u
+    end
     @test isa(w,PVector)
     w =  1 .+ v
     @test isa(w,PVector)
@@ -180,7 +183,7 @@ function p_vector_tests(distribute)
     w .= v .- u
     w .= v .- 1 .- u
     w .= u
-    map(w.values,u.values) do w,u
+    map(get_local_values(w),get_local_values(u)) do w,u
         @test w == u
     end
 

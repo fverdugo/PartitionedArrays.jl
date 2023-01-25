@@ -96,6 +96,7 @@ export assembly_buffer_snd
 export assembly_buffer_rcv
 export to_local!
 export to_global!
+export partition
 include("p_range.jl")
 
 export get_local_values

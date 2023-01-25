@@ -255,6 +255,22 @@ function union_ghost(indices,gids,owners)
     replace_ghost(indices,ghost)
 end
 
+function to_local!(I,indices)
+    global_to_local = get_global_to_local(indices)
+    for k in 1:length(I)
+        I[k] = global_to_local[I[k]]
+    end
+    I
+end
+
+function to_global!(I,indices)
+    local_to_global = get_local_to_global(indices)
+    for k in 1:length(I)
+        I[k] = local_to_global[I[k]]
+    end
+    I
+end
+
 """
     find_owner(indices,global_ids)
 
@@ -285,328 +301,60 @@ function find_owner(indices,global_ids)
     find_owner(indices,global_ids,eltype(indices))
 end
 
-"""
-    struct PRange{A,B}
-
-`PRange` (partitioned range) is a type representing a range of indices `1:n_global`
-distributed into several parts. The indices in the range `1:n_global` are called the
-*global* indices. Each global index is *owned* by one part and only one part.
-The set of indices owned by a part are called the *own* indices of this part.
-Each part contains a second set of indices called the *ghost* indices. 
-The set of ghost indices in a given part is an arbitrary subset
-of the global indices that are owned by other parts. The union of the own and ghost
-indices is referred to as the *local* indices of this part.
-The sets of own, ghost, and local indices are stored using vector-like containers,
-which equips them with a certain order. Thus, the `i`-th own index
-in a part is the one being stored at index `i` in the array that contains
-the own indices in this part.
-The same rationale applies for ghost and local indices.
-
-# Properties
-- `indices::A`: Array-like object with `length(indices)` equal to the number of parts in the partitioned range.
-
-
-The item `indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`.
-`typeof(indices[i])` is a type that
-implements the methods of the [`AbstractLocalIndices`](@ref) interface. Use this
-interface to access the underlying information about own, ghost, and local indices.
-
-# Supertype hierarchy
-
-    PRange{A} <: AbstractUnitRange{Int}
-
-"""
-struct PRange{A,B} <: AbstractUnitRange{Int}
-    indices::A
-    assembler::B
-    @doc """
-        PRange(n_global,indices)
-
-    Build an instance of [`Prange`](@ref) from the underlying properties
-    `n_global` and `indices`.
-
-    # Examples
-   
-        julia> using PartitionedArrays
-        
-        julia> rank = LinearIndices((2,));
-        
-        julia> indices = map(rank) do rank
-                   if rank == 1
-                       LocalIndices(8,1,[1,2,3,4,5],Int32[1,1,1,1,2])
-                   else
-                       LocalIndices(8,2,[4,5,6,7,8],Int32[1,2,2,2,2])
-                   end
-               end;
-        
-        julia> pr = PRange(8,indices)
-        1:1:8
-        
-        julia> get_local_to_global(pr)
-        2-element Vector{Vector{Int64}}:
-         [1, 2, 3, 4, 5]
-         [4, 5, 6, 7, 8]
-    """
-    function PRange(indices,assembler=vector_assembler(indices))
-        A = typeof(indices)
-        B = typeof(assembler)
-        new{A,B}(indices,assembler)
-    end
-end
-Base.first(a::PRange) = 1
-Base.last(a::PRange) = getany(map(get_n_global,a.indices))
-function Base.show(io::IO,k::MIME"text/plain",data::PRange)
-    #println(io,typeof(data),":")
-    println(io,"PRange 1:$(length(data)) partitioned in $(length(data.indices)) parts")
+struct AssemblyCache
+    neighbors_snd::Base.RefValue{Vector{Int32}}
+    neighbors_rcv::Base.RefValue{Vector{Int32}}
+    local_indices_snd::Base.RefValue{JaggedArray{Int32,Int32}}
+    local_indices_rcv::Base.RefValue{JaggedArray{Int32,Int32}}
 end
 
-prange(f,args...) = PRange(f(args...))
-
-"""
-    get_n_global(pr::PRange)
-
-Return `pr.n_global`
-"""
-get_n_global(pr::PRange) = length(a)
-
-"""
-    get_n_local(pr::PRange)
-
-Equivalent to `map(get_n_local,pr.indices)`.
-"""
-get_n_local(pr::PRange) = map(get_n_local,pr.indices)
-
-"""
-    get_n_own(pr::PRange)
-
-Equivalent to `map(get_n_own,pr.indices)`.
-"""
-get_n_own(pr::PRange) = map(get_n_own,pr.indices)
-
-"""
-    get_local_to_global(pr::PRange)
-
-Equivalent to `map(get_local_to_global,pr.indices)`.
-"""
-get_local_to_global(pr::PRange) = map(get_local_to_global,pr.indices)
-
-"""
-    get_own_to_global(pr::PRange)
-
-Equivalent to `map(get_own_to_global,pr.indices)`.
-"""
-get_own_to_global(pr::PRange) = map(get_own_to_global,pr.indices)
-
-"""
-    get_ghost_to_global(pr::PRange)
-
-Equivalent to `map(get_ghost_to_global,pr.indices)`.
-"""
-get_ghost_to_global(pr::PRange) = map(get_ghost_to_global,pr.indices)
-
-"""
-    get_local_to_owner(pr::PRange)
-
-Equivalent to `map(get_local_to_owner,pr.indices)`.
-"""
-get_local_to_owner(pr::PRange) = map(get_local_to_owner,pr.indices)
-
-"""
-    get_own_to_owner(pr::PRange)
-
-Equivalent to `map(get_own_to_owner,pr.indices)`.
-"""
-get_own_to_owner(pr::PRange) = map(get_own_to_owner,pr.indices)
-
-"""
-    get_ghost_to_owner(pr::PRange)
-
-Equivalent to `map(get_ghost_to_owner,pr.indices)`.
-"""
-get_ghost_to_owner(pr::PRange) = map(get_ghost_to_owner,pr.indices)
-
-"""
-    get_global_to_local(pr::PRange)
-
-Equivalent to `map(get_global_to_local,pr.indices)`.
-"""
-get_global_to_local(pr::PRange) = map(get_global_to_local,pr.indices)
-
-"""
-    get_global_to_own(pr::PRange)
-
-Equivalent to `map(get_global_to_own,pr.indices)`.
-"""
-get_global_to_own(pr::PRange) = map(get_global_to_own,pr.indices)
-
-"""
-    get_global_to_ghost(pr::PRange)
-
-Equivalent to `map(get_global_to_ghost,pr.indices)`.
-"""
-get_global_to_ghost(pr::PRange) = map(get_global_to_ghost,pr.indices)
-
-"""
-    get_own_to_local(pr::PRange)
-
-Equivalent to `map(get_own_to_local,pr.indices)`.
-"""
-get_own_to_local(pr::PRange) = map(get_own_to_local,pr.indices)
-
-"""
-    get_ghost_to_local(pr::PRange)
-
-Equivalent to `map(get_ghost_to_local,pr.indices)`.
-"""
-get_ghost_to_local(pr::PRange) = map(get_ghost_to_local,pr.indices)
-
-"""
-    get_local_to_own(pr::PRange)
-
-Equivalent to `map(get_local_to_own,pr.indices)`.
-"""
-get_local_to_own(pr::PRange) = map(get_local_to_own,pr.indices)
-
-"""
-    get_local_to_ghost(pr::PRange)
-
-Equivalent to `map(get_local_to_ghost,pr.indices)`.
-"""
-get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.indices)
-
-find_owner(pr::PRange,global_ids) = find_owner(pr.indices,global_ids)
-
-assembly_neighbors(pr::PRange) = pr.assembler.neighbors
-
-"""
-    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
-
-Return an object of the same type as `pr` obtained by replacing the ghost
-ids in `pr` by the global ids in `gids`.
-
-Equivalent to
-
-    indices = map(replace_ghost,pr.indices,gids,owners)
-    PRange(indices)
-"""
-function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
-    indices = map(replace_ghost,pr.indices,gids,owners)
-    assembler = vector_assembler(indices;kwargs...)
-    PRange(indices,assembler)
+function Base.copy!(a::AssemblyCache,b::AssemblyCache)
+    a.neighbors_snd[] = b.neighbors_snd[]
+    a.neighbors_rcv[] = b.neighbors_rcv[]
+    a.local_indices_snd[] = b.local_indices_snd[]
+    a.local_indices_rcv[] = b.local_indices_rcv[]
+    a
 end
 
-"""
-    union_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
-
-Return an object of the same type as `pr` that contains the union of the ghost
-ids in `pr` and the global ids in `gids`. 
-
-Equivalent to
-
-    indices = map(union_ghost,pr.indices,gids,owners)
-    PRange(indices)
-"""
-function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
-    indices = map(union_ghost,pr.indices,gids,owners)
-    assembler = vector_assembler(indices;kwargs...)
-    PRange(indices,assembler)
+function AssemblyCache()
+    AssemblyCache(
+                  Ref{Vector{Int32}}(),
+                  Ref{Vector{Int32}}(),
+                  Ref{JaggedArray{Int32,Int32}}(),
+                  Ref{JaggedArray{Int32,Int32}}()
+                 )
 end
 
-function to_local!(I,rows::PRange)
-    map(to_local!,I,rows.indices)
+assembly_cache(a) = AssemblyCache()
+
+function empty_assembly_cache()
+    AssemblyCache(
+                  Ref(Int32[]),
+                  Ref(Int32[]),
+                  Ref(JaggedArray(Int32[],Int32[1])),
+                  Ref(JaggedArray(Int32[],Int32[1])),
+                 )
 end
 
-function to_global!(I,rows::PRange)
-    map(to_global!,I,rows.indices)
-end
-
-function matching_local_indices(a::PRange,b::PRange)
-    a.indices === b.indices && return true
-    c = map(matching_local_indices,a.indices,b.indices)
-    reduce(&,c,init=true)
-end
-
-function matching_own_indices(a::PRange,b::PRange)
-    a.indices === b.indices && return true
-    c = map(matching_own_indices,a.indices,b.indices)
-    reduce(&,c,init=true)
-end
-
-function matching_ghost_indices(a::PRange,b::PRange)
-    a.indices === b.indices && return true
-    c = map(matching_ghost_indices,a.indices,b.indices)
-    reduce(&,c,init=true)
-end
-
-function to_local!(I,indices)
-    global_to_local = get_global_to_local(indices)
-    for k in 1:length(I)
-        I[k] = global_to_local[I[k]]
-    end
-    I
-end
-
-function to_global!(I,indices)
-    local_to_global = get_local_to_global(indices)
-    for k in 1:length(I)
-        I[k] = local_to_global[I[k]]
-    end
-    I
-end
-
-struct Assembler{A,B}
-    neighbors::A
-    local_indices::B
-end
-function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
-    println(io,nameof(typeof(data))," partitioned in $(length(data.neighbors.snd)) parts")
-end
-Base.reverse(a::Assembler) = Assembler(reverse(a.neighbors),reverse(a.local_indices))
-
-struct AssemblyLocalIndices{A,B}
-    snd::A
-    rcv::B
-end
-function Base.show(io::IO,k::MIME"text/plain",data::AssemblyLocalIndices)
-    println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
-end
-Base.reverse(a::AssemblyLocalIndices) = AssemblyLocalIndices(a.rcv,a.snd)
-
-function vector_assembler(indices;kwargs...)
-    neighbors = assembly_neighbors(indices;kwargs...)
-    local_indices = assembly_local_indices(indices,neighbors)
-    Assembler(neighbors,local_indices)
-end
-
-function empty_assembler(indices)
-    neigs_snd = map(i->Int32[],indices)
-    neighbors = ExchangeGraph(neigs_snd,neigs_snd)
-    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
-    local_indices = AssemblyLocalIndices(local_indices_snd,local_indices_snd)
-    Assembler(neighbors,local_indices)
-end
-
-# Return neighbors_snd, neighbors_rcv instead
 function assembly_neighbors(indices;kwargs...)
     cache = map(assembly_cache,indices)
     mask =  map(cache) do cache
         isassigned(cache.neighbors_snd) && isassigned(cache.neighbors_rcv)
     end
     if ! getany(mask)
-        neighbors = compute_assembly_neighbors(indices;kwargs...)
-        map(cache,neighbors.snd,neighbors.rcv) do cache, neigs_snd, neigs_rcv
+        neighbors_snd, neighbors_rcv = compute_assembly_neighbors(indices;kwargs...)
+        map(cache,neighbors_snd,neighbors_rcv) do cache, neigs_snd, neigs_rcv
             cache.neighbors_snd[] = neigs_snd
             cache.neighbors_rcv[] = neigs_rcv
         end
-        return neighbors
+        return neighbors_snd, neighbors_rcv
     end
     neigs_snd, neigs_rcv = map(cache) do cache
         cache.neighbors_snd[], cache.neighbors_rcv[]
     end |> tuple_of_arrays
-    ExchangeGraph(neigs_snd,neigs_rcv)
+    neigs_snd, neigs_rcv
 end
 
-# Return neighbors_snd, neighbors_rcv instead
 function compute_assembly_neighbors(indices;kwargs...)
     parts_snd = map(indices) do indices
         rank = get_owner(indices)
@@ -619,34 +367,33 @@ function compute_assembly_neighbors(indices;kwargs...)
         end
         sort(collect(set))
     end
-    ExchangeGraph(parts_snd;kwargs...)
+    graph = ExchangeGraph(parts_snd;kwargs...)
+    graph.snd, graph.rcv
 end
 
-# Return local_indices_snd, local_indices_rcv instead
-function assembly_local_indices(indices,neighbors)
+function assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
     cache = map(assembly_cache,indices)
     mask =  map(cache) do cache
         isassigned(cache.local_indices_snd) && isassigned(cache.local_indices_rcv)
     end
     if ! getany(mask)
-        neighbors = assembly_neighbors(indices)
-        local_indices = compute_assembly_local_indices(indices,neighbors)
-        map(cache,local_indices.snd,local_indices.rcv) do cache, local_indices_snd, local_indices_rcv
+        local_indices_snd, local_indices_rcv = compute_assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
+        map(cache,local_indices_snd,local_indices_rcv) do cache, local_indices_snd, local_indices_rcv
             cache.local_indices_snd[] = local_indices_snd
             cache.local_indices_rcv[] = local_indices_rcv
         end
-        return local_indices
+        return local_indices_snd, local_indices_rcv
     end
     local_indices_snd, local_indices_rcv = map(cache) do cache
         cache.local_indices_snd[], cache.local_indices_rcv[]
     end |> tuple_of_arrays
-    AssemblyLocalIndices(local_indices_snd,local_indices_rcv)
+    local_indices_snd, local_indices_rcv
 end
 
-function compute_assembly_local_indices(indices,neighbors)
-    parts_snd = neighbors.snd
-    parts_rcv = neighbors.rcv
-    aux1 = map(indices,parts_snd) do indices,parts_snd
+function compute_assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
+    parts_snd = neighbors_snd
+    parts_rcv = neighbors_rcv
+    local_indices_snd, global_indices_snd = map(indices,parts_snd) do indices,parts_snd
         rank = get_owner(indices)
         local_to_owner = get_local_to_owner(indices)
         owner_to_i = Dict(( owner=>i for (i,owner) in enumerate(parts_snd) ))
@@ -671,10 +418,10 @@ function compute_assembly_local_indices(indices,neighbors)
         rewind_ptrs!(ptrs)
         local_indices_snd = JaggedArray(data_lids,ptrs)
         global_indices_snd = JaggedArray(data_gids,ptrs)
-        parts_snd, local_indices_snd, global_indices_snd
-    end
-    parts_snd, local_indices_snd, global_indices_snd = tuple_of_arrays(aux1)
-    global_indices_rcv = exchange_fetch(global_indices_snd,neighbors)
+        local_indices_snd, global_indices_snd
+    end |>  tuple_of_arrays
+    graph = ExchangeGraph(parts_snd,parts_rcv)
+    global_indices_rcv = exchange_fetch(global_indices_snd,graph)
     local_indices_rcv = map(global_indices_rcv,indices) do global_indices_rcv,indices
         ptrs = global_indices_rcv.ptrs
         data_lids = zeros(Int32,ptrs[end]-1)
@@ -684,7 +431,7 @@ function compute_assembly_local_indices(indices,neighbors)
         end
         local_indices_rcv = JaggedArray(data_lids,ptrs)
     end
-    AssemblyLocalIndices(local_indices_snd,local_indices_rcv)
+    local_indices_snd,local_indices_rcv
 end
 
 """
@@ -887,41 +634,6 @@ function variable_partition(
         indices
     end
     indices
-end
-
-struct AssemblyCache
-    neighbors_snd::Base.RefValue{Vector{Int32}}
-    neighbors_rcv::Base.RefValue{Vector{Int32}}
-    local_indices_snd::Base.RefValue{JaggedArray{Int32,Int32}}
-    local_indices_rcv::Base.RefValue{JaggedArray{Int32,Int32}}
-end
-
-function Base.copy!(a::AssemblyCache,b::AssemblyCache)
-    a.neighbors_snd[] = b.neighbors_snd[]
-    a.neighbors_rcv[] = b.neighbors_rcv[]
-    a.local_indices_snd[] = b.local_indices_snd[]
-    a.local_indices_rcv[] = b.local_indices_rcv[]
-    a
-end
-
-function AssemblyCache()
-    AssemblyCache(
-                  Ref{Vector{Int32}}(),
-                  Ref{Vector{Int32}}(),
-                  Ref{JaggedArray{Int32,Int32}}(),
-                  Ref{JaggedArray{Int32,Int32}}()
-                 )
-end
-
-assembly_cache(a) = AssemblyCache()
-
-function empty_assembly_cache()
-    AssemblyCache(
-                  Ref(Int32[]),
-                  Ref(Int32[]),
-                  Ref(JaggedArray(Int32[],Int32[1])),
-                  Ref(JaggedArray(Int32[],Int32[1])),
-                 )
 end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
@@ -1924,4 +1636,297 @@ function boundary_owner(p,np,n,ghost=false,periodic=false)
     end
     (start,p,stop)
 end
+
+
+"""
+    struct PRange{A,B}
+
+`PRange` (partitioned range) is a type representing a range of indices `1:n_global`
+distributed into several parts. The indices in the range `1:n_global` are called the
+*global* indices. Each global index is *owned* by one part and only one part.
+The set of indices owned by a part are called the *own* indices of this part.
+Each part contains a second set of indices called the *ghost* indices. 
+The set of ghost indices in a given part is an arbitrary subset
+of the global indices that are owned by other parts. The union of the own and ghost
+indices is referred to as the *local* indices of this part.
+The sets of own, ghost, and local indices are stored using vector-like containers,
+which equips them with a certain order. Thus, the `i`-th own index
+in a part is the one being stored at index `i` in the array that contains
+the own indices in this part.
+The same rationale applies for ghost and local indices.
+
+# Properties
+- `indices::A`: Array-like object with `length(indices)` equal to the number of parts in the partitioned range.
+
+
+The item `indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`.
+`typeof(indices[i])` is a type that
+implements the methods of the [`AbstractLocalIndices`](@ref) interface. Use this
+interface to access the underlying information about own, ghost, and local indices.
+
+# Supertype hierarchy
+
+    PRange{A} <: AbstractUnitRange{Int}
+
+"""
+struct PRange{A} <: AbstractUnitRange{Int}
+    partition::A
+    @doc """
+        PRange(n_global,indices)
+
+    Build an instance of [`Prange`](@ref) from the underlying properties
+    `n_global` and `indices`.
+
+    # Examples
+   
+        julia> using PartitionedArrays
+        
+        julia> rank = LinearIndices((2,));
+        
+        julia> indices = map(rank) do rank
+                   if rank == 1
+                       LocalIndices(8,1,[1,2,3,4,5],Int32[1,1,1,1,2])
+                   else
+                       LocalIndices(8,2,[4,5,6,7,8],Int32[1,2,2,2,2])
+                   end
+               end;
+        
+        julia> pr = PRange(8,indices)
+        1:1:8
+        
+        julia> get_local_to_global(pr)
+        2-element Vector{Vector{Int64}}:
+         [1, 2, 3, 4, 5]
+         [4, 5, 6, 7, 8]
+    """
+    function PRange(indices)
+        A = typeof(indices)
+        new{A}(indices)
+    end
+end
+partition(a::PRange) = a.partition
+Base.first(a::PRange) = 1
+Base.last(a::PRange) = getany(map(get_n_global,partition(a)))
+function Base.show(io::IO,k::MIME"text/plain",data::PRange)
+    np = length(partition(data))
+    map_main(partition(data)) do indices
+        println(io,"1:$(get_n_global(indices)) partitioned into $(np) parts")
+    end
+end
+
+function matching_local_indices(a::PRange,b::PRange)
+    partition(a) === partition(b) && return true
+    c = map(matching_local_indices,partition(a),partition(b))
+    reduce(&,c,init=true)
+end
+
+function matching_own_indices(a::PRange,b::PRange)
+    partition(a) === partition(b) && return true
+    c = map(matching_own_indices,partition(a),partition(b))
+    reduce(&,c,init=true)
+end
+
+function matching_ghost_indices(a::PRange,b::PRange)
+    partition(a) === partition(b) && return true
+    c = map(matching_ghost_indices,partition(a),partition(b))
+    reduce(&,c,init=true)
+end
+
+##prange(f,args...) = PRange(f(args...))
+#
+#"""
+#    get_n_global(pr::PRange)
+#
+#Equivalent to `map(get_n_global,pr.indices)`.
+#"""
+#get_n_global(pr::PRange) = map(get_n_local,partition(pr))
+#
+#"""
+#    get_n_local(pr::PRange)
+#
+#Equivalent to `map(get_n_local,pr.indices)`.
+#"""
+#get_n_local(pr::PRange) = map(get_n_local,partition(pr))
+#
+#"""
+#    get_n_own(pr::PRange)
+#
+#Equivalent to `map(get_n_own,pr.indices)`.
+#"""
+#get_n_own(pr::PRange) = map(get_n_own,partition(pr))
+#
+#"""
+#    get_local_to_global(pr::PRange)
+#
+#Equivalent to `map(get_local_to_global,pr.indices)`.
+#"""
+#get_local_to_global(pr::PRange) = map(get_local_to_global,partition(pr))
+#
+#"""
+#    get_own_to_global(pr::PRange)
+#
+#Equivalent to `map(get_own_to_global,pr.indices)`.
+#"""
+#get_own_to_global(pr::PRange) = map(get_own_to_global,partition(pr))
+#
+#"""
+#    get_ghost_to_global(pr::PRange)
+#
+#Equivalent to `map(get_ghost_to_global,pr.indices)`.
+#"""
+#get_ghost_to_global(pr::PRange) = map(get_ghost_to_global,partition(pr))
+#
+#"""
+#    get_local_to_owner(pr::PRange)
+#
+#Equivalent to `map(get_local_to_owner,pr.indices)`.
+#"""
+#get_local_to_owner(pr::PRange) = map(get_local_to_owner,partition(pr))
+#
+#"""
+#    get_own_to_owner(pr::PRange)
+#
+#Equivalent to `map(get_own_to_owner,pr.indices)`.
+#"""
+#get_own_to_owner(pr::PRange) = map(get_own_to_owner,partition(pr))
+#
+#"""
+#    get_ghost_to_owner(pr::PRange)
+#
+#Equivalent to `map(get_ghost_to_owner,pr.indices)`.
+#"""
+#get_ghost_to_owner(pr::PRange) = map(get_ghost_to_owner,partition(pr))
+#
+#"""
+#    get_global_to_local(pr::PRange)
+#
+#Equivalent to `map(get_global_to_local,pr.indices)`.
+#"""
+#get_global_to_local(pr::PRange) = map(get_global_to_local,partition(pr))
+#
+#"""
+#    get_global_to_own(pr::PRange)
+#
+#Equivalent to `map(get_global_to_own,pr.indices)`.
+#"""
+#get_global_to_own(pr::PRange) = map(get_global_to_own,partition(pr))
+#
+#"""
+#    get_global_to_ghost(pr::PRange)
+#
+#Equivalent to `map(get_global_to_ghost,pr.indices)`.
+#"""
+#get_global_to_ghost(pr::PRange) = map(get_global_to_ghost,partition(pr))
+#
+#"""
+#    get_own_to_local(pr::PRange)
+#
+#Equivalent to `map(get_own_to_local,pr.indices)`.
+#"""
+#get_own_to_local(pr::PRange) = map(get_own_to_local,partition(pr))
+#
+#"""
+#    get_ghost_to_local(pr::PRange)
+#
+#Equivalent to `map(get_ghost_to_local,pr.indices)`.
+#"""
+#get_ghost_to_local(pr::PRange) = map(get_ghost_to_local,partition(pr))
+#
+#"""
+#    get_local_to_own(pr::PRange)
+#
+#Equivalent to `map(get_local_to_own,pr.indices)`.
+#"""
+#get_local_to_own(pr::PRange) = map(get_local_to_own,partition(pr))
+#
+#"""
+#    get_local_to_ghost(pr::PRange)
+#
+#Equivalent to `map(get_local_to_ghost,pr.indices)`.
+#"""
+#get_local_to_ghost(pr::PRange) = map(get_local_to_ghost,pr.indices)
+#
+#find_owner(pr::PRange,global_ids) = find_owner(pr.indices,global_ids)
+#
+#assembly_neighbors(pr::PRange) = pr.assembler.neighbors
+#
+#"""
+#    replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
+#
+#Return an object of the same type as `pr` obtained by replacing the ghost
+#ids in `pr` by the global ids in `gids`.
+#
+#Equivalent to
+#
+#    indices = map(replace_ghost,pr.indices,gids,owners)
+#    PRange(indices)
+#"""
+#function replace_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+#    indices = map(replace_ghost,pr.indices,gids,owners)
+#    assembler = vector_assembler(indices;kwargs...)
+#    PRange(indices,assembler)
+#end
+#
+#"""
+#    union_ghost(pr::PRange,gids,owners=find_owner(pr,gids))
+#
+#Return an object of the same type as `pr` that contains the union of the ghost
+#ids in `pr` and the global ids in `gids`. 
+#
+#Equivalent to
+#
+#    indices = map(union_ghost,pr.indices,gids,owners)
+#    PRange(indices)
+#"""
+#function union_ghost(pr::PRange,gids,owners=find_owner(pr,gids);kwargs...)
+#    indices = map(union_ghost,pr.indices,gids,owners)
+#    assembler = vector_assembler(indices;kwargs...)
+#    PRange(indices,assembler)
+#end
+#
+#function to_local!(I,rows::PRange)
+#    map(to_local!,I,rows.indices)
+#end
+#
+#function to_global!(I,rows::PRange)
+#    map(to_global!,I,rows.indices)
+#end
+
+
+
+#struct Assembler{A,B}
+#    neighbors::A
+#    local_indices::B
+#end
+#function Base.show(io::IO,k::MIME"text/plain",data::Assembler)
+#    println(io,nameof(typeof(data))," partitioned in $(length(data.neighbors.snd)) parts")
+#end
+#Base.reverse(a::Assembler) = Assembler(reverse(a.neighbors),reverse(a.local_indices))
+#
+#struct AssemblyLocalIndices{A,B}
+#    snd::A
+#    rcv::B
+#end
+#function Base.show(io::IO,k::MIME"text/plain",data::AssemblyLocalIndices)
+#    println(io,nameof(typeof(data))," partitioned in $(length(data.snd)) parts")
+#end
+#Base.reverse(a::AssemblyLocalIndices) = AssemblyLocalIndices(a.rcv,a.snd)
+#
+#function vector_assembler(indices;kwargs...)
+#    neighbors = assembly_neighbors(indices;kwargs...)
+#    local_indices = assembly_local_indices(indices,neighbors)
+#    Assembler(neighbors,local_indices)
+#end
+#
+#function empty_assembler(indices)
+#    neigs_snd = map(i->Int32[],indices)
+#    neighbors = ExchangeGraph(neigs_snd,neigs_snd)
+#    local_indices_snd = map(i->JaggedArray{Int32,Int32}([Int32[]]),indices)
+#    local_indices = AssemblyLocalIndices(local_indices_snd,local_indices_snd)
+#    Assembler(neighbors,local_indices)
+#end
+
+
+
+
 

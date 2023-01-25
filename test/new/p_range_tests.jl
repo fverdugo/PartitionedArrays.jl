@@ -130,7 +130,7 @@ function p_range_tests(distribute)
 
    n = 10
    parts = rank
-   partition = map(parts) do part
+   ids = map(parts) do part
        if part == 1
            LocalIndices(n,part,[1,2,3,5,7,8],Int32[1,1,1,2,3,3])
        elseif part == 2
@@ -239,5 +239,7 @@ function p_range_tests(distribute)
            @test lid_to_gid == [6, 7, 8, 10, 11, 12, 14, 15, 16, 2, 3, 4]
        end
    end
+
+   display(PRange(ids4))
 
 end
