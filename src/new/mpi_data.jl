@@ -1,4 +1,12 @@
 
+function ptrs_to_counts(ptrs)
+    counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
+    @inbounds for i in 1:length(counts)
+        counts[i] = ptrs[i+1]-ptrs[i]
+    end
+    counts
+end
+
 """
     mpi_data(a,comm::MPI.Comm;duplicate_comm=true)
 
