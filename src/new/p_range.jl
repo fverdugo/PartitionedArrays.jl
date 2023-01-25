@@ -162,7 +162,7 @@ Return an array with the inverse index map of `ghost_to_local(indices)`.
 """
 function local_to_ghost end
 
-function get_permutation(indices)
+function local_permutation(indices)
     n_local = local_length(indices)
     n_own = own_length(indices)
     n_ghost = ghost_length(indices)
@@ -916,7 +916,7 @@ struct LocalIndices <: AbstractLocalIndices
 end
 
 assembly_cache(a::LocalIndices) = a.assembly_cache
-get_permutation(a::LocalIndices) = a.perm
+local_permutation(a::LocalIndices) = a.perm
 
 """
     LocalIndices(n_global,owner,local_to_global,local_to_owner)
@@ -1050,7 +1050,7 @@ struct OwnAndGhostIndices <: AbstractLocalIndices
 end
 assembly_cache(a::OwnAndGhostIndices) = a.assembly_cache
 
-get_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(local_length(a))
+local_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(local_length(a))
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
     OwnAndGhostIndices(a.own,ghost)
@@ -1430,7 +1430,7 @@ end
 
 const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,LocalIndicesWithVariableBlockSize}
 
-get_permutation(a::LocalIndicesInBlockPartition) = Int32(1):Int32(local_length(a))
+local_permutation(a::LocalIndicesInBlockPartition) = Int32(1):Int32(local_length(a))
 
 function part_id(a::LocalIndicesInBlockPartition)
     owner = LinearIndices(a.np)[a.p]

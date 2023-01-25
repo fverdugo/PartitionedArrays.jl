@@ -105,7 +105,7 @@ function allocate_local_values(values::OwnAndGhostValues,::Type{T},indices) wher
     n_ghost = ghost_length(indices)
     own_values = similar(values.own_values,T,n_own)
     ghost_values = similar(values.ghost_values,T,n_ghost)
-    perm = get_permutation(indices)
+    perm = local_permutation(indices)
     OwnAndGhostValues(own_values,ghost_values,perm)
 end
 
@@ -114,7 +114,7 @@ function allocate_local_values(::Type{<:OwnAndGhostValues{A}},indices) where {A}
     n_ghost = ghost_length(indices)
     own_values = similar(A,n_own)
     ghost_values = similar(A,n_ghost)
-    perm = get_permutation(indices)
+    perm = local_permutation(indices)
     OwnAndGhostValues{A}(own_values,ghost_values,perm)
 end
 
