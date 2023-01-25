@@ -188,6 +188,43 @@ function LinearAlgebra.mul!(
     C
 end
 
+function LinearAlgebra.fillstored!(A::SubSparseMatrix{T,<:SparseArrays.AbstractSparseMatrixCSC},v) where T
+    rows, cols = A.indices
+    invrows, invcols = A.inv_indices
+    Ap = A.parent
+    nzv = nonzeros(Ap)
+    rv = rowvals(Ap)
+    for (j,J) in enumerate(cols)
+        for p in nzrange(Ap,J)
+            I = rv[p]
+            i = invrows[I]
+            if i>0
+                nzv[p]=v
+            end
+        end
+    end
+    A
+end
+
+function LinearAlgebra.fillstored!(A::SubSparseMatrix{T,<:SparseMatrixCSR},v) where T
+    rows, cols = A.indices
+    invrows, invcols = A.inv_indices
+    Ap = A.parent
+    nzv = nonzeros(Ap)
+    cv = colvals(Ap)
+    o = getoffset(Ap)
+    for (i,I) in enumerate(rows)
+        for p in nzrange(Ap,I)
+            J = cv[p]+o
+            j = invcols[J]
+            if j>0
+                nzv[p] = v
+            end
+        end
+    end
+    A
+end
+
 function nzindex(A::SparseArrays.AbstractSparseMatrixCSC, i0::Integer, i1::Integer)
     if !(1 <= i0 <= size(A, 1) && 1 <= i1 <= size(A, 2)); throw(BoundsError()); end
     ptrs = SparseArrays.getcolptr(A)

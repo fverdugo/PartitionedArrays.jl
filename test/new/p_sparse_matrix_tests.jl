@@ -81,7 +81,7 @@ function p_sparse_matrix_tests(distribute)
     end |> tuple_of_arrays
 
     A = psparse!(I,J,V,row_partition,col_partition) |> fetch
-    assemble!(A)
+    assemble!(A) |> wait
     x = pfill(1.5,partition(axes(A,2)))
 
     x = pones(partition(axes(A,2)))

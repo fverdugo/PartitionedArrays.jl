@@ -189,10 +189,10 @@ function assemble!(o,a::PSparseMatrix)
     @async begin
         wait(t)
         map(get_ghost_values(a)) do a
-            fillstored!(a,zero(eltype(a)))
+            LinearAlgebra.fillstored!(a,zero(eltype(a)))
         end
         map(get_ghost_own_values(a)) do a
-            fillstored!(a,zero(eltype(a)))
+            LinearAlgebra.fillstored!(a,zero(eltype(a)))
         end
         a
     end
