@@ -318,7 +318,7 @@ function fem_example(distribute)
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
     x̂ = similar(x)
     col_partition = partition(axes(A,2))
-    map(setup_exact_solution,get_local_values(x̂),space,grid,col_partition)
+    map(setup_exact_solution,local_values(x̂),space,grid,col_partition)
     @test norm(x-x̂) < 1.0e-5
     dof_partition = map(setup_dofs,space,grid,tentative_dof_partition)
     # Some optimizations when building A

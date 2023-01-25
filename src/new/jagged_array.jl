@@ -84,18 +84,18 @@ function rewind_ptrs!(ptrs)
 end
 
 """
-    get_ptrs(a)
+    getptrs(a)
 
 Return `a.ptrs`
 """
-get_ptrs(a) = a.ptrs
+getptrs(a) = a.ptrs
 
 """
-    get_data(a)
+    getdata(a)
 
 Return `a.data`
 """
-get_data(a) = a.data
+getdata(a) = a.data
 
 """
     struct GenericJaggedArray{V,A,B}

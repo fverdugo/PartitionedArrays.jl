@@ -78,7 +78,7 @@ function fdm_example(distribute)
         I,J,V
     end
     tic!(t)
-    IJV = map(coo_vectors!,row_partition,get_local_values(b),get_local_values(x̂))
+    IJV = map(coo_vectors!,row_partition,local_values(b),local_values(x̂))
     toc!(t,"IJV")
     I,J,V = tuple_of_arrays(IJV)
 
@@ -107,7 +107,7 @@ function fdm_example(distribute)
 
     end
     x0 = pzeros(partition(cols))
-    map(initial_guess!,get_own_to_global(cols),get_own_values(x0))
+    map(initial_guess!,get_own_to_global(cols),own_values(x0))
 
     # When this call returns, x has the correct answer only in the owned values.
     # The values at ghost ids can be recovered with consistent!(x) |> wait

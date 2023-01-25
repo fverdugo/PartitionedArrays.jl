@@ -51,7 +51,7 @@ function p_sparse_matrix_tests(distribute)
     x = pfill(3.0,col_partition)
     b = similar(x,axes(A,1))
     mul!(b,A,x)
-    map(get_own_values(b)) do values
+    map(own_values(b)) do values
         @test all( values .== 6 )
     end
 

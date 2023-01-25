@@ -1,9 +1,9 @@
 
-function get_local_values end
+function local_values end
 
-function get_own_values end
+function own_values end
 
-function get_ghost_values end
+function ghost_values end
 
 function allocate_local_values(a,::Type{T},indices) where T
     similar(a,T,local_length(indices))
@@ -13,16 +13,16 @@ function allocate_local_values(::Type{V},indices) where V
     similar(V,local_length(indices))
 end
 
-function get_local_values(values,indices)
+function local_values(values,indices)
     values
 end
 
-function get_own_values(values,indices)
+function own_values(values,indices)
     own_to_local = get_own_to_local(indices)
     view(values,own_to_local)
 end
 
-function get_ghost_values(values,indices)
+function ghost_values(values,indices)
     ghost_to_local = get_ghost_to_local(indices)
     view(values,ghost_to_local)
 end
@@ -94,11 +94,11 @@ function Base.setindex!(a::OwnAndGhostValues,v,local_id::Int)
     v
 end
 
-function get_own_values(values::OwnAndGhostValues,indices)
+function own_values(values::OwnAndGhostValues,indices)
     values.own_values
 end
 
-function get_ghost_values(values::OwnAndGhostValues,indices)
+function ghost_values(values::OwnAndGhostValues,indices)
     values.ghost_values
 end
 
@@ -166,33 +166,33 @@ partition(a::PVector) = a.vector_partition
 Base.axes(a::PVector) = (PRange(a.index_partition),)
 
 """
-    get_local_values(a::PVector)
+    local_values(a::PVector)
 
 Get a vector of vectors containing the local values
 in each part of `a`.
 """
-function get_local_values(a::PVector)
+function local_values(a::PVector)
     partition(a)
 end
 
 """
-    get_own_values(a::PVector)
+    own_values(a::PVector)
 
 Get a vector of vectors containing the own values
 in each part of `a`.
 """
-function get_own_values(a::PVector)
-    map(get_own_values,partition(a),partition(axes(a,1)))
+function own_values(a::PVector)
+    map(own_values,partition(a),partition(axes(a,1)))
 end
 
 """
-    get_ghost_values(a::PVector)
+    ghost_values(a::PVector)
 
 Get a vector of vectors containing the ghost values
 in each part of `a`.
 """
-function get_ghost_values(a::PVector)
-    map(get_ghost_values,partition(a),partition(axes(a,1)))
+function ghost_values(a::PVector)
+    map(ghost_values,partition(a),partition(axes(a,1)))
 end
 
 Base.size(a::PVector) = (length(axes(a,1)),)
@@ -304,7 +304,7 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
     local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors...)
     p_snd = map(data_index_snd,local_indices_snd,vector_partition)
     p_rcv = map(data_index_snd,local_indices_rcv,vector_partition)
-    data = map(get_data,vector_partition)
+    data = map(getdata,vector_partition)
     buffers = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
     cache = map(VectorAssemblyCache,neighbors...,p_snd,p_rcv,buffers...)
     map(JaggedArrayAssemblyCache,cache)
@@ -345,7 +345,7 @@ end
 
 function assemble_impl!(f,vector_partition,cache,::Type{<:JaggedArrayAssemblyCache})
     vcache = map(i->i.cache,cache)
-    data = map(get_data,vector_partition)
+    data = map(getdata,vector_partition)
     assemble!(f,data,vcache)
 end
 
@@ -368,14 +368,14 @@ the source ghost values are set to zero.
     
     julia> a = pones(rows);
     
-    julia> get_local_values(a)
+    julia> local_values(a)
     2-element Vector{Vector{Float64}}:
      [1.0, 1.0, 1.0, 1.0]
      [1.0, 1.0, 1.0, 1.0]
     
     julia> assemble!(a) |> wait
     
-    julia> get_local_values(a)
+    julia> local_values(a)
     2-element Vector{Vector{Float64}}:
      [1.0, 1.0, 2.0, 0.0]
      [0.0, 2.0, 1.0, 1.0]
@@ -388,7 +388,7 @@ function assemble!(o,a::PVector)
     t = assemble!(o,partition(a),a.cache)
     @async begin
         wait(t)
-        map(get_ghost_values(a)) do a
+        map(ghost_values(a)) do a
             fill!(a,zero(eltype(a)))
         end
         a
@@ -413,14 +413,14 @@ part that owns the associated global global id.
     
     julia> a = pvector(inds->fill(get_owner(inds),length(inds)),rows);
     
-    julia> get_local_values(a)
+    julia> local_values(a)
     2-element Vector{Vector{Int32}}:
      [1, 1, 1, 1]
      [2, 2, 2, 2]
     
     julia> consistent!(a) |> wait
     
-    julia> get_local_values(a)
+    julia> local_values(a)
     2-element Vector{Vector{Int32}}:
      [1, 1, 1, 2]
      [1, 2, 2, 2]
@@ -471,7 +471,7 @@ function Base.copyto!(a::PVector,b::PVector)
     if partition(axes(a,1)) === partition(axes(b,1))
         map(copy!,partition(a),partition(b))
     elseif matching_own_indices(axes(a,1),axes(b,1))
-        map(copy!,get_own_values(a),get_own_values(b))
+        map(copy!,own_values(a),own_values(b))
     else
         error("Trying to copy a PVector into another one with a different data layout. This case is not implemented yet. It would require communications.")
     end
@@ -508,7 +508,7 @@ Equivalent to
 
     julia> a = pvector(i->rand(1:3,length(i)),rows);
     
-    julia> get_local_values(a)
+    julia> local_values(a)
     2-element Vector{Vector{Int64}}:
      [2, 1, 1, 3]
      [3, 3, 2, 3]
@@ -600,18 +600,18 @@ prandn(rng,s,index_partition) = pvector(indices->randn(rng,s,local_length(indice
 function Base.:(==)(a::PVector,b::PVector)
     @boundscheck @assert matching_own_indices(axes(a,1),axes(b,1))
     length(a) == length(b) &&
-    reduce(&,map(==,get_own_values(a),get_own_values(b)),init=true)
+    reduce(&,map(==,own_values(a),own_values(b)),init=true)
 end
 
 function Base.any(f::Function,x::PVector)
-    partials = map(get_own_values(x)) do o
+    partials = map(own_values(x)) do o
         any(f,o)
     end
     reduce(|,partials,init=false)
 end
 
 function Base.all(f::Function,x::PVector)
-    partials = map(get_own_values(x)) do o
+    partials = map(own_values(x)) do o
         all(f,o)
     end
     reduce(&,partials,init=true)
@@ -619,7 +619,7 @@ end
 
 Base.maximum(x::PVector) = maximum(identity,x)
 function Base.maximum(f::Function,x::PVector)
-    partials = map(get_own_values(x)) do o
+    partials = map(own_values(x)) do o
         maximum(f,o,init=typemin(eltype(x)))
     end
     reduce(max,partials,init=typemin(eltype(x)))
@@ -627,7 +627,7 @@ end
 
 Base.minimum(x::PVector) = minimum(identity,x)
 function Base.minimum(f::Function,x::PVector)
-    partials = map(get_own_values(x)) do o
+    partials = map(own_values(x)) do o
         minimum(f,o,init=typemax(eltype(x)))
     end
     reduce(min,partials,init=typemax(eltype(x)))
@@ -668,7 +668,7 @@ neutral_element(::typeof(min),::Type{T}) where T = typemax(T)
 neutral_element(::typeof(max),::Type{T}) where T = typemin(T)
 
 function Base.reduce(op,a::PVector;neutral=neutral_element(op,eltype(a)),kwargs...)
-    b = map(get_own_values(a)) do a
+    b = map(own_values(a)) do a
         reduce(op,a,init=neutral)
     end
     reduce(op,b;kwargs...)
@@ -679,7 +679,7 @@ function Base.sum(a::PVector)
 end
 
 function LinearAlgebra.dot(a::PVector,b::PVector)
-    c = map(dot,get_own_values(a),get_own_values(b))
+    c = map(dot,own_values(a),own_values(b))
     sum(c)
 end
 
@@ -691,7 +691,7 @@ function LinearAlgebra.rmul!(a::PVector,v::Number)
 end
 
 function LinearAlgebra.norm(a::PVector,p::Real=2)
-    contibs = map(get_own_values(a)) do oid_to_value
+    contibs = map(own_values(a)) do oid_to_value
         norm(oid_to_value,p)^p
     end
     reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
@@ -702,55 +702,55 @@ struct PBroadcasted{A,B,C}
     ghost_values::B
     index_partition::C
 end
-get_own_values(a::PBroadcasted) = a.own_values
-get_ghost_values(a::PBroadcasted) = a.ghost_values
+own_values(a::PBroadcasted) = a.own_values
+ghost_values(a::PBroadcasted) = a.ghost_values
 
 function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
     a1 = first(args)
     @boundscheck @assert all(ai->matching_own_indices(PRange(ai.index_partition),PRange(a1.index_partition)),args)
-    own_values_in = map(get_own_values,args)
-    own_values = map((largs...)->Base.broadcasted(f,largs...),own_values_in...)
-    if all(ai->ai.index_partition===a1.index_partition,args) && !any(ai->get_ghost_values(ai)===nothing,args)
-        ghost_values_in = map(get_ghost_values,args)
-        ghost_values = map((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
+    own_values_in = map(own_values,args)
+    own_values_out = map((largs...)->Base.broadcasted(f,largs...),own_values_in...)
+    if all(ai->ai.index_partition===a1.index_partition,args) && !any(ai->ghost_values(ai)===nothing,args)
+        ghost_values_in = map(ghost_values,args)
+        ghost_values_out = map((largs...)->Base.broadcasted(f,largs...),ghost_values_in...)
     else
-        ghost_values = nothing
+        ghost_values_out = nothing
     end
-    PBroadcasted(own_values,ghost_values,a1.index_partition)
+    PBroadcasted(own_values_out,ghost_values_out,a1.index_partition)
 end
 
 function Base.broadcasted( f, a::Number, b::Union{PVector,PBroadcasted})
-    own_values = map(b->Base.broadcasted(f,a,b),get_own_values(b))
-    if get_ghost_values(b) !== nothing
-        ghost_values = map(b->Base.broadcasted(f,a,b),get_ghost_values(b))
+    own_values_out = map(b->Base.broadcasted(f,a,b),own_values(b))
+    if ghost_values(b) !== nothing
+        ghost_values_out = map(b->Base.broadcasted(f,a,b),ghost_values(b))
     else
-        ghost_values = nothing
+        ghost_values_out = nothing
     end
-    PBroadcasted(own_values,ghost_values,b.index_partition)
+    PBroadcasted(own_values_out,ghost_values_out,b.index_partition)
 end
 
 function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
-    own_values = map(a->Base.broadcasted(f,a,b),get_own_values(a))
-    if get_ghost_values(a) !== nothing
-        ghost_values = map(a->Base.broadcasted(f,a,b),get_ghost_values(a))
+    own_values_out = map(a->Base.broadcasted(f,a,b),own_values(a))
+    if ghost_values(a) !== nothing
+        ghost_values_out = map(a->Base.broadcasted(f,a,b),ghost_values(a))
     else
-        ghost_values = nothing
+        ghost_values_out = nothing
     end
-    PBroadcasted(own_values,ghost_values,a.index_partition)
+    PBroadcasted(own_values_out,ghost_values_out,a.index_partition)
 end
 
 function Base.materialize(b::PBroadcasted)
-    own_values = map(Base.materialize,b.own_values)
-    T = eltype(eltype(own_values))
+    own_values_out = map(Base.materialize,b.own_values)
+    T = eltype(eltype(own_values_out))
     a = PVector{Vector{T}}(undef,b.index_partition)
     Base.materialize!(a,b)
     a
 end
 
 function Base.materialize!(a::PVector,b::PBroadcasted)
-    map(Base.materialize!,get_own_values(a),get_own_values(b))
+    map(Base.materialize!,own_values(a),own_values(b))
     if b.ghost_values !== nothing && a.index_partition === b.index_partition
-        map(Base.materialize!,get_ghost_values(a),get_ghost_values(b))
+        map(Base.materialize!,ghost_values(a),ghost_values(b))
     end
     a
 end
@@ -761,7 +761,7 @@ for M in Distances.metrics
             if Distances.parameters(d) !== nothing
                 error("Only distances without parameters are implemented at this moment")
             end
-            partials = map(get_own_values(a),get_own_values(b)) do a,b
+            partials = map(own_values(a),own_values(b)) do a,b
                 @boundscheck if length(a) != length(b)
                     throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
                 end

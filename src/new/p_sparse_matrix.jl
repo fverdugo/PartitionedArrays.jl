@@ -1,7 +1,7 @@
 
-function get_own_ghost_values end
+function own_ghost_values end
 
-function get_ghost_own_values end
+function ghost_own_values end
 
 function allocate_local_values(a,::Type{T},indices_rows,indices_cols) where T
     m = local_length(indices_rows)
@@ -15,29 +15,29 @@ function allocate_local_values(::Type{V},indices_rows,indices_cols) where V
     similar(V,m,n)
 end
 
-function get_local_values(values,indices_rows,indices_cols)
+function local_values(values,indices_rows,indices_cols)
     values
 end
 
-function get_own_values(values,indices_rows,indices_cols)
+function own_values(values,indices_rows,indices_cols)
     subindices = (get_own_to_local(indices_rows),get_own_to_local(indices_cols))
     subindices_inv = (get_local_to_own(indices_rows),get_local_to_own(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
-function get_ghost_values(values,indices_rows,indices_cols)
+function ghost_values(values,indices_rows,indices_cols)
     subindices = (get_ghost_to_local(indices_rows),get_ghost_to_local(indices_cols))
     subindices_inv = (get_local_to_ghost(indices_rows),get_local_to_ghost(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
-function get_own_ghost_values(values,indices_rows,indices_cols)
+function own_ghost_values(values,indices_rows,indices_cols)
     subindices = (get_own_to_local(indices_rows),get_ghost_to_local(indices_cols))
     subindices_inv = (get_local_to_own(indices_rows),get_local_to_ghost(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
-function get_ghost_own_values(values,indices_rows,indices_cols)
+function ghost_own_values(values,indices_rows,indices_cols)
     subindices = (get_ghost_to_local(indices_rows),get_own_to_local(indices_cols))
     subindices_inv = (get_local_to_ghost(indices_rows),get_local_to_own(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
@@ -68,24 +68,24 @@ end
 partition(a::PSparseMatrix) = a.matrix_partition
 Base.axes(a::PSparseMatrix) = (PRange(a.row_partition),PRange(a.col_partition))
 
-function get_local_values(a::PSparseMatrix)
+function local_values(a::PSparseMatrix)
     partition(a)
 end
 
-function get_own_values(a::PSparseMatrix)
-    map(get_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+function own_values(a::PSparseMatrix)
+    map(own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
-function get_ghost_values(a::PSparseMatrix)
-    map(get_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+function ghost_values(a::PSparseMatrix)
+    map(ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
-function get_own_ghost_values(a::PSparseMatrix)
-    map(get_own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+function own_ghost_values(a::PSparseMatrix)
+    map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
-function get_ghost_own_values(a::PSparseMatrix)
-    map(get_ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+function ghost_own_values(a::PSparseMatrix)
+    map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
 Base.size(a::PSparseMatrix) = map(length,axes(a))
@@ -188,10 +188,10 @@ function assemble!(o,a::PSparseMatrix)
     t = assemble!(o,partition(a),a.cache)
     @async begin
         wait(t)
-        map(get_ghost_values(a)) do a
+        map(ghost_values(a)) do a
             LinearAlgebra.fillstored!(a,zero(eltype(a)))
         end
-        map(get_ghost_own_values(a)) do a
+        map(ghost_own_values(a)) do a
             LinearAlgebra.fillstored!(a,zero(eltype(a)))
         end
         a
@@ -338,7 +338,7 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     # Start the exchange
     t = consistent!(b)
     # Meanwhile, process the owned blocks
-    map(get_own_values(c),get_own_values(a),get_own_values(b)) do co,aoo,bo
+    map(own_values(c),own_values(a),own_values(b)) do co,aoo,bo
         if β != 1
             β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
         end
@@ -347,7 +347,7 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     # Wait for the exchange to finish
     wait(t)
     # process the ghost block
-    map(get_own_values(c),get_own_ghost_values(a),get_ghost_values(b)) do co,aoh,bh
+    map(own_values(c),own_ghost_values(a),ghost_values(b)) do co,aoh,bh
         mul!(co,aoh,bh,α,1)
     end
     c
@@ -407,7 +407,7 @@ function to_trivial_partition(b::PVector,row_partition_in_main)
     destination = 1
     T = eltype(b)
     b_in_main = similar(b,T,PRange(row_partition_in_main))
-    map(get_own_values(b),partition(b_in_main),partition(axes(b,1))) do bown,b_in_main,indices
+    map(own_values(b),partition(b_in_main),partition(axes(b,1))) do bown,b_in_main,indices
         part = get_owner(indices)
         if part == destination
             own_to_global = get_own_to_global(indices)
@@ -423,7 +423,7 @@ end
 function from_trivial_partition!(c::PVector,c_in_main::PVector)
     destination = 1
     consistent!(c_in_main) |> wait
-    map(get_own_values(c),partition(c_in_main),partition(axes(c,1))) do cown, c_in_main, indices
+    map(own_values(c),partition(c_in_main),partition(axes(c,1))) do cown, c_in_main, indices
         part = get_owner(indices)
         if part == destination
             own_to_global = get_own_to_global(indices)

@@ -100,9 +100,9 @@ export partition
 export assembly_graph
 include("p_range.jl")
 
-export get_local_values
-export get_own_values
-export get_ghost_values
+export local_values
+export own_values
+export ghost_values
 export allocate_local_values
 export OwnAndGhostValues
 export PVector
@@ -121,8 +121,8 @@ include("p_vector.jl")
 export PSparseMatrix
 export psparse
 export psparse!
-export get_own_ghost_values
-export get_ghost_own_values
+export own_ghost_values
+export ghost_own_values
 include("p_sparse_matrix.jl")
 
 export PTimer

@@ -100,12 +100,12 @@ function p_vector_tests(distribute)
         end
     end
 
-    map(get_local_values(v)) do values
+    map(local_values(v)) do values
         fill!(values,10.0)
     end
 
     assemble!(v) |> wait
-    map(parts,get_local_values(v)) do part,values
+    map(parts,local_values(v)) do part,values
         if part == 1
             @test values == [20.0, 20.0, 20.0, 0.0, 0.0, 0.0]
         elseif part == 2
@@ -138,7 +138,7 @@ function p_vector_tests(distribute)
         @test u == 2*v
     end
     u = v + u
-    map(get_local_values(u),get_local_values(v)) do u,v
+    map(local_values(u),local_values(v)) do u,v
         @test u == 3*v
     end
     @test any(i->i>4,v) == true
@@ -167,7 +167,7 @@ function p_vector_tests(distribute)
     @test sum(w) == 0
 
     w = v .- u
-    map(get_local_values(w),get_local_values(u),get_local_values(v)) do w,u,v
+    map(local_values(w),local_values(u),local_values(v)) do w,u,v
         @test w == v - u
     end
     @test isa(w,PVector)
@@ -183,7 +183,7 @@ function p_vector_tests(distribute)
     w .= v .- u
     w .= v .- 1 .- u
     w .= u
-    map(get_local_values(w),get_local_values(u)) do w,u
+    map(local_values(w),local_values(u)) do w,u
         @test w == u
     end
 
@@ -197,7 +197,7 @@ function p_vector_tests(distribute)
     w .= v .- u
     w .= v .- 1 .- u
     w .= u
-    map(get_own_values(w),get_own_values(u)) do w,u
+    map(own_values(w),own_values(u)) do w,u
         @test w == u
     end
 
