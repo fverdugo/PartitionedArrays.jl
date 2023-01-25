@@ -7,8 +7,6 @@ import MPI
 import IterativeSolvers
 import Distances
 
-export prefix_sum!
-export right_shift!
 export length_to_ptrs!
 export rewind_ptrs!
 export jagged_array

@@ -181,7 +181,7 @@ function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
     l = map(length,snd)
     l_dest = gather(l;destination)
     function f(l,snd)
-        ptrs = prefix_sum!(pushfirst!(l,one(eltype(l))))
+        ptrs = length_to_ptrs!(pushfirst!(l,one(eltype(l))))
         ndata = ptrs[end]-1
         data = Vector{eltype(snd)}(undef,ndata)
         JaggedArray{eltype(snd),Int32}(data,ptrs)
@@ -479,7 +479,7 @@ function scan!(op,b,a;init,type)
             c[i+1] = op(c[i+1],c[i])
         end
         if type === :exclusive && n > 0
-            right_shift!(c)
+            rewind_ptrs!(c)
             c[1] = init
         end
     end

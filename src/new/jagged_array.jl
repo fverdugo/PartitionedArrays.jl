@@ -1,33 +1,5 @@
 
 """
-    prefix_sum!(a)
-
-Compute the inclusive prefix sum of the elements in `a`.
-The result is provided by overwriting `a`. Return `a`.
-"""
-function prefix_sum!(a)
-  n = length(a)
-  @inbounds for i in 1:(n-1)
-    a[i+1] += a[i]
-  end
-  a
-end
-
-"""
-    right_shift!(a)
-
-Sets `a[i+1]=a[i]` for `i in (length(a)-1):-1:1`.
-The first entry is untouched. Return `a`.
-"""
-function right_shift!(a)
-  n = length(a)
-  @inbounds for i in (n-1):-1:1
-    a[i+1] = a[i]
-  end
-  a
-end
-
-"""
     length_to_ptrs!(ptrs)
 
 Compute the field `ptrs` of a [`JaggedArray`](@ref).
@@ -35,51 +7,27 @@ Compute the field `ptrs` of a [`JaggedArray`](@ref).
 At input, `ptrs[i+1]` is the length of the i-th sub-vector.
 At output, `ptrs[i]:(ptrs[i+1]-1)` contains the range where the i-th sub-vector is
 stored in the `data` field of the jagged array.
-
-This function is equivalent to
-    ptrs[1] = one(eltype(ptrs))
-    prefix_sum!(ptrs)
 """
 function length_to_ptrs!(ptrs)
     ptrs[1] = one(eltype(ptrs))
-    prefix_sum!(ptrs)
-end
-
-"""
-    counts_to_ptrs(counts)
-"""
-function counts_to_ptrs(counts)
-    n = length(counts)
-    ptrs = Vector{Int32}(undef,n+1)
-    @inbounds for i in 1:n
-        ptrs[i+1] = counts[i]
+    n = length(ptrs)
+    @inbounds for i in 1:(n-1)
+        ptrs[i+1] += ptrs[i]
     end
-    length_to_ptrs!(ptrs)
     ptrs
 end
 
 """
-    ptrs_to_counts(ptrs)
-"""
-function ptrs_to_counts(ptrs)
-    counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
-    @inbounds for i in 1:length(counts)
-        counts[i] = ptrs[i+1]-ptrs[i]
-    end
-    counts
-end
+    rewind_ptrs(a)!
 
-"""
-    rewind_ptrs(ptrs)!
-
-Equivalent to
-
-    right_shift!(ptrs)
-    ptrs[1] = one(eltype(ptrs))
-
+Sets `a[i+1]=a[i]` for `i in (length(a)-1):-1:1`
+and then `a[1] = one(eltype(a))`.
 """
 function rewind_ptrs!(ptrs)
-    right_shift!(ptrs)
+    n = length(ptrs)
+    @inbounds for i in (n-1):-1:1
+        ptrs[i+1] = ptrs[i]
+    end
     ptrs[1] = one(eltype(ptrs))
 end
 
@@ -191,8 +139,7 @@ function JaggedArray{T,Ti}(a::AbstractArray{<:AbstractArray}) where {T,Ti}
     ai = a[i]
     ptrs[i+1] = length(ai)
   end
-  ptrs[1] = 1
-  prefix_sum!(ptrs)
+  length_to_ptrs!(ptrs)
   ndata = ptrs[end]-u
   data = Vector{T}(undef,ndata)
   p = 1
