@@ -193,6 +193,7 @@ function p_vector_tests(distribute)
     @test isa(w,PVector)
     w =  v .+ 1 .- u
     @test isa(w,PVector)
+    display(w)
 
     w .= v .- u
     w .= v .- 1 .- u

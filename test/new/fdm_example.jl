@@ -8,7 +8,7 @@ function fdm_example(distribute)
 
     # Select number of ranks in each direction and distribute
     # them according the given backend
-    parts_per_dir = (2,2,2)
+    parts_per_dir = (2,1,2)
     n_ranks = prod(parts_per_dir)
     rank = distribute(LinearIndices((n_ranks,)))
     t = PTimer(rank,verbose=true)

@@ -114,6 +114,7 @@ function p_sparse_matrix_tests(distribute)
     ldiv!(x,factors,y)
     r = A*x-y
     @test norm(r) < 1.0e-9
+    display(A)
 
 end
 

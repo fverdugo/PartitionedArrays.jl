@@ -419,7 +419,7 @@ function to_trivial_partition(b::PVector,row_partition_in_main)
             b_in_main .= bown
         end
     end
-    assemble!(b_in_main)
+    assemble!(b_in_main) |> wait
     b_in_main
 end
 
