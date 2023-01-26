@@ -8,7 +8,7 @@ function ptrs_to_counts(ptrs)
 end
 
 """
-    mpi_distribute(a,comm::MPI.Comm;duplicate_comm=true)
+    mpi_distribute(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
 
 Create an `MPIData{T,N}` instance (`T=eltype(a)`, `N=ndims(a)`) by distributing
 the items in the collection `a` over the ranks of the given MPI
@@ -43,7 +43,7 @@ Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
     1-element MPIData{Int64, 1}:
     [1] = 10
 """
-function mpi_distribute(a,comm::MPI.Comm;duplicate_comm=true)
+function mpi_distribute(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
     msg = "Number of MPI ranks needs to be the same as items in the given array"
     @assert length(a) == MPI.Comm_size(comm) msg
     if duplicate_comm

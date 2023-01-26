@@ -1,5 +1,55 @@
 # Examples
 
+!!! note
+    The following examples are run with the `SequentialData` array type for demo purposes.
+    Substituting `SequentialData` by `mpi_distribute` and initializing MPI will convert them
+    to distributed drivers. To learn how to run the examples with MPI, see the Usage section.
+
+## Hello, world!
+
+```julia
+using PartitionedArrays
+np = 4
+ranks = LinearIndices((np,)) |> SequentialData
+map(ranks) do rank
+   println("Hello, world! I am proc $rank of $np.")
+end
+```
+
+## Collective communication
+
+The first rank generates an array of random integers in `1:30` and scatters it over all ranks. Each rank
+counts the number of even items in its part. Finally, the partial sums are reduced in the first rank.
+
+```julia
+using PartitionedArrays
+np = 4
+n = 10
+ranks = LinearIndices((np,)) |> SequentialData
+a_snd = map(ranks) do rank
+    if rank == 1
+          a = rand(1:30,n)
+          load = div(n,np)
+          [ view(a,(1:load).+(i-1)*load) for i in 1:np ]
+    else
+          [ view([1],1:0) ]
+    end
+end
+a_rcv = scatter(a_snd)
+b_snd = map(ai->count(isodd,ai),a_rcv)
+b_rcv = reduction(+,b_snd,init=0)
+```
+
+## Point-to-point communication
+
+
+
+
+
+
+
+
+
 Distributed linear algebra frameworks are the backbone for efficient parallel
 codes in data analytics, scientific computing and machine learning. The central
 idea is that vectors and matrices can be partitioned into potentially
