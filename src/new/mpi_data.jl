@@ -50,7 +50,7 @@ function mpi_data(a,comm::MPI.Comm;duplicate_comm=true)
         comm = MPI.Comm_dup(comm)
     end
     i = MPI.Comm_rank(comm)+1
-    MPIData(Ref(a[i]),comm,size(a))
+    MPIData(a[i],comm,size(a))
 end
 
 """
@@ -103,22 +103,41 @@ generate an instance of `MPIData` use function [`mpi_data`](@ref).
     MPIData{T,N} <: AbstractArray{T,N}
 """
 struct MPIData{T,N} <: AbstractArray{T,N}
-    item::Base.RefValue{T}
+    item_ref::Base.RefValue{T}
     comm::MPI.Comm
     size::NTuple{N,Int}
-    function MPIData{T,N}(item::Base.RefValue{T},comm::MPI.Comm,size::Dims{N}) where {T,N}
+    function MPIData{T,N}(item,comm::MPI.Comm,size::Dims{N}) where {T,N}
         @assert MPI.Comm_size(comm) == prod(size)
-        new{T,N}(item,comm,size)
+        new{T,N}(Ref{T}(item),comm,size)
     end
-    function MPIData{T,N}(item::Base.RefValue,comm::MPI.Comm,size::Dims{N}) where {T,N}
+    function MPIData{T,N}(::UndefInitializer,comm::MPI.Comm,size::Dims{N}) where {T,N}
         @assert MPI.Comm_size(comm) == prod(size)
-        new{T,N}(Ref{T}(item[]),comm,size)
+        new{T,N}(Ref{T}(),comm,size)
     end
-    function MPIData(item::Base.RefValue,comm::MPI.Comm,size::Dims)
-        T = eltype(item)
-        N = length(size)
-        @assert MPI.Comm_size(comm) == prod(size)
-        new{T,N}(item,comm,size)
+end
+function MPIData(item,comm::MPI.Comm,size::Dims)
+    T = typeof(item)
+    N = length(size)
+    MPIData{T,N}(item,comm,size)
+end
+function MPIData(::UndefInitializer,comm::MPI.Comm,size::Dims)
+    error("MPIData(undef,comm,size) not allowed. Use MPIData{T,N}(undef,comm,size) instead.")
+end
+function Base.getproperty(x::MPIData,sym::Symbol)
+    if sym === :item
+        x.item_ref[]
+    else
+        getfield(x,sym)
+    end
+end
+function Base.propertynames(x::MPIData, private::Bool=false)
+  (fieldnames(typeof(x))...,:item)
+end
+function Base.setproperty!(x::MPIData, sym::Symbol, v, order::Symbol=:order)
+    if sym === :item
+       x.item_ref[] = v
+    else
+        setfield!(x,sym,v)
     end
 end
 
@@ -127,7 +146,7 @@ Base.IndexStyle(::Type{<:MPIData}) = IndexLinear()
 function Base.getindex(a::MPIData,i::Int)
     scalar_indexing_action(a)
     if i == MPI.Comm_rank(a.comm)+1
-        a.item[]
+        a.item
     else
         error("Indexing of MPIData at arbitrary indices not implemented yet.")
     end
@@ -135,7 +154,7 @@ end
 function Base.setindex!(a::MPIData,v,i::Int)
     scalar_indexing_action(a)
     if i == MPI.Comm_rank(a.comm)+1
-        a.item[]=v
+        a.item = v
     else
         error("Indexing of MPIData at arbitrary indices not implemented yet.")
     end
@@ -171,35 +190,36 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
         end
         index *= "]"
         if MPI.Comm_rank(data.comm) == linds[i]-1
-            println(io,"$index = $(data.item[])")
+            println(io,"$index = $(data.item)")
         end
         MPI.Barrier(data.comm)
     end
 end
 
-getany(a::MPIData) = a.item[]
+getany(a::MPIData) = a.item
 i_am_main(a::MPIData) = get_part_id(a.comm) == MAIN
 
 function Base.similar(a::MPIData,::Type{T},dims::Dims) where T
-    MPIData(Ref{T}(),a.comm,dims)
+    N = length(dims)
+    MPIData{T,N}(undef,a.comm,dims)
 end
 
 function Base.copyto!(b::MPIData,a::MPIData)
-    b.item[] = a.item[]
+    b.item = a.item
     b
 end
 
 function Base.map(f,args::MPIData...)
     a = first(args)
     @assert all(i->size(a)==size(i),args)
-    item = Ref(f(map(i->i.item[],args)...))
+    item = f(map(i->i.item,args)...)
     MPIData(item,a.comm,a.size)
 end
 
 function Base.map!(f,r::MPIData,args::MPIData...)
     a = first(args)
     @assert all(i->size(a)==size(i),args)
-    r.item[] = f(map(i->i.item[],args)...)
+    r.item = f(map(i->i.item,args)...)
     r
 end
 
@@ -211,18 +231,18 @@ function gather_impl!(
     if isa(destination,Integer)
         root = destination-1
         if MPI.Comm_rank(comm) == root
-            @assert length(rcv.item[]) == MPI.Comm_size(comm)
-            rcv.item[][destination] = snd.item[]
-            rcv_buffer = MPI.UBuffer(rcv.item[],1)
+            @assert length(rcv.item) == MPI.Comm_size(comm)
+            rcv.item[destination] = snd.item
+            rcv_buffer = MPI.UBuffer(rcv.item,1)
             MPI.Gather!(MPI.IN_PLACE,rcv_buffer,root,comm)
         else
-            MPI.Gather!(snd.item,nothing,root,comm)
+            MPI.Gather!(snd.item_ref,nothing,root,comm)
         end
     else
         @assert destination === :all
-        @assert length(rcv.item[]) == MPI.Comm_size(comm)
-        rcv_buffer = MPI.UBuffer(rcv.item[],1)
-        MPI.Allgather!(snd.item,rcv_buffer,snd.comm)
+        @assert length(rcv.item) == MPI.Comm_size(comm)
+        rcv_buffer = MPI.UBuffer(rcv.item,1)
+        MPI.Allgather!(snd.item_ref,rcv_buffer,snd.comm)
     end
     rcv
 end
@@ -231,25 +251,25 @@ function gather_impl!(
     rcv::MPIData, snd::MPIData,
     destination, ::Type{T}) where T <: AbstractVector
     @assert rcv.comm === snd.comm
-    @assert isa(rcv.item[],JaggedArray)
+    @assert isa(rcv.item,JaggedArray)
     comm = snd.comm
     if isa(destination,Integer)
         root = destination-1
         if MPI.Comm_rank(comm) == root
-            @assert length(rcv.item[]) == MPI.Comm_size(comm)
-            rcv.item[][destination] = snd.item[]
-            counts = ptrs_to_counts(rcv.item[].ptrs)
-            rcv_buffer = MPI.VBuffer(rcv.item[].data,counts)
+            @assert length(rcv.item) == MPI.Comm_size(comm)
+            rcv.item[destination] = snd.item
+            counts = ptrs_to_counts(rcv.item.ptrs)
+            rcv_buffer = MPI.VBuffer(rcv.item.data,counts)
             MPI.Gatherv!(MPI.IN_PLACE,rcv_buffer,root,comm)
         else
-            MPI.Gatherv!(snd.item[],nothing,root,comm)
+            MPI.Gatherv!(snd.item,nothing,root,comm)
         end
     else
         @assert destination === :all
-        @assert length(rcv.item[]) == MPI.Comm_size(comm)
-        counts = ptrs_to_counts(rcv.item[].ptrs)
-        rcv_buffer = MPI.VBuffer(rcv.item[].data,counts)
-        MPI.Allgatherv!(snd.item[],rcv_buffer,comm)
+        @assert length(rcv.item) == MPI.Comm_size(comm)
+        counts = ptrs_to_counts(rcv.item.ptrs)
+        rcv_buffer = MPI.VBuffer(rcv.item.data,counts)
+        MPI.Allgatherv!(snd.item,rcv_buffer,comm)
     end
     rcv
 end
@@ -259,15 +279,15 @@ function scatter_impl!(
     source,::Type{T}) where T
     @assert source !== :all "All to all not implemented"
     @assert rcv.comm === snd.comm
-    @assert eltype(snd.item[]) == typeof(rcv.item[])
+    @assert eltype(snd.item) == typeof(rcv.item)
     comm = snd.comm
     root = source - 1
     if MPI.Comm_rank(comm) == root
-        snd_buffer = MPI.UBuffer(snd.item[],1)
-        rcv.item[] = snd.item[][source]
+        snd_buffer = MPI.UBuffer(snd.item,1)
+        rcv.item = snd.item[source]
         MPI.Scatter!(snd_buffer,MPI.IN_PLACE,root,comm)
     else
-        MPI.Scatter!(nothing,rcv.item,root,comm)
+        MPI.Scatter!(nothing,rcv.item_ref,root,comm)
     end
     rcv
 end
@@ -277,22 +297,22 @@ function scatter_impl!(
     source,::Type{T}) where T<:AbstractVector
     @assert source !== :all "All to all not implemented"
     @assert rcv.comm === snd.comm
-    @assert isa(snd.item[],JaggedArray)
-    @assert eltype(eltype(snd.item[])) == eltype(rcv.item[])
+    @assert isa(snd.item,JaggedArray)
+    @assert eltype(eltype(snd.item)) == eltype(rcv.item)
     comm = snd.comm
     root = source - 1
     if MPI.Comm_rank(comm) == root
-        counts = ptrs_to_counts(snd.item[].ptrs)
-        snd_buffer = MPI.VBuffer(snd.item[].data,counts)
-        rcv.item[] .= snd.item[][source]
+        counts = ptrs_to_counts(snd.item.ptrs)
+        snd_buffer = MPI.VBuffer(snd.item.data,counts)
+        rcv.item .= snd.item[source]
         MPI.Scatterv!(snd_buffer,MPI.IN_PLACE,root,comm)
     else
         # This void Vbuffer is required to circumvent a deadlock
         # that we found with OpenMPI 4.1.X on Gadi. In particular, the
         # deadlock arises whenever buf is set to nothing
-        S = eltype(eltype(snd.item[]))
+        S = eltype(eltype(snd.item))
         snd_buffer = MPI.VBuffer(S[],Int[])
-        MPI.Scatterv!(snd_buffer,rcv.item[],root,comm)
+        MPI.Scatterv!(snd_buffer,rcv.item,root,comm)
     end
     rcv
 end
@@ -304,9 +324,9 @@ function emit_impl!(
     comm = snd.comm
     root = source - 1
     if MPI.Comm_rank(comm) == root
-        rcv.item[] = snd.item[]
+        rcv.item = snd.item
     end
-    MPI.Bcast!(rcv.item,root,comm)
+    MPI.Bcast!(rcv.item_ref,root,comm)
 end
 
 function emit_impl!(
@@ -316,9 +336,9 @@ function emit_impl!(
     comm = snd.comm
     root = source - 1
     if MPI.Comm_rank(comm) == root
-        rcv.item[] = snd.item[]
+        rcv.item = snd.item
     end
-    MPI.Bcast!(rcv.item[],root,comm)
+    MPI.Bcast!(rcv.item,root,comm)
 end
 
 function scan!(op,b::MPIData,a::MPIData;init,type)
@@ -329,22 +349,22 @@ function scan!(op,b::MPIData,a::MPIData;init,type)
     comm = a.comm
     opr = MPI.Op(op,T)
     if type === :inclusive
-        if a.item !== b.item
-            MPI.Scan!(a.item,b.item,opr,comm)
+        if a.item_ref !== b.item_ref
+            MPI.Scan!(a.item_ref,b.item_ref,opr,comm)
         else
-            MPI.Scan!(b.item,opr,comm)
+            MPI.Scan!(b.item_ref,opr,comm)
         end
-        b.item[] = op(b.item[],init)
+        b.item = op(b.item,init)
     else
-        if a.item !== b.item
-            MPI.Exscan!(a.item,b.item,opr,comm)
+        if a.item_ref !== b.item_ref
+            MPI.Exscan!(a.item_ref,b.item_ref,opr,comm)
         else
-            MPI.Exscan!(b.item,opr,comm)
+            MPI.Exscan!(b.item_ref,opr,comm)
         end
         if MPI.Comm_rank(comm) == 0
-            b.item[] = init
+            b.item = init
         else
-            b.item[] = op(b.item[],init)
+            b.item = op(b.item,init)
         end
     end
     b
@@ -358,24 +378,24 @@ function reduction!(op,b::MPIData,a::MPIData;destination=1,init=nothing)
     opr = MPI.Op(op,T)
     if destination !== :all
         root = destination-1
-        if a.item !== b.item
-            MPI.Reduce!(a.item,b.item,opr,root,comm)
+        if a.item_ref !== b.item_ref
+            MPI.Reduce!(a.item_ref,b.item_ref,opr,root,comm)
         else
-            MPI.Reduce!(b.item,opr,root,comm)
+            MPI.Reduce!(b.item_ref,opr,root,comm)
         end
         if MPI.Comm_rank(comm) == root
             if init !== nothing
-                b.item[] = op(b.item[],init)
+                b.item = op(b.item,init)
             end
         end
     else
-        if a.item !== b.item
-            MPI.Allreduce!(a.item,b.item,opr,comm)
+        if a.item_ref !== b.item_ref
+            MPI.Allreduce!(a.item_ref,b.item_ref,opr,comm)
         else
-            MPI.Allreduce!(b.item,opr,comm)
+            MPI.Allreduce!(b.item_ref,opr,comm)
         end
         if init !== nothing
-            b.item[] = op(b.item[],init)
+            b.item = op(b.item,init)
         end
     end
     b
@@ -383,16 +403,16 @@ end
 
 function Base.reduce(op,a::MPIData;kwargs...)
    r = reduction(op,a;destination=:all,kwargs...)
-   r.item[]
+   r.item
 end
 Base.sum(a::MPIData) = reduce(+,a)
 function Base.collect(a::MPIData)
     T = eltype(a)
     N = ndims(a)
     b = Array{T,N}(undef,size(a))
-    c = MPIData(Ref(b),a.comm,size(a))
+    c = MPIData(b,a.comm,size(a))
     gather!(c,a,destination=:all)
-    c.item[]
+    c.item
 end
 
 function exchange_impl!(
@@ -406,16 +426,16 @@ function exchange_impl!(
     @assert graph.rcv.comm === graph.snd.comm
     comm = graph.rcv.comm
     req_all = MPI.Request[]
-    for (i,id_rcv) in enumerate(graph.rcv.item[])
+    for (i,id_rcv) in enumerate(graph.rcv.item)
         rank_rcv = id_rcv-1
-        buff_rcv = view(rcv.item[],i:i)
+        buff_rcv = view(rcv.item,i:i)
         tag_rcv = rank_rcv
         reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
         push!(req_all,reqr)
     end
-    for (i,id_snd) in enumerate(graph.snd.item[])
+    for (i,id_snd) in enumerate(graph.snd.item)
         rank_snd = id_snd-1
-        buff_snd = view(snd.item[],i:i)
+        buff_snd = view(snd.item,i:i)
         tag_snd = MPI.Comm_rank(comm)
         reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
         push!(req_all,reqs)
@@ -445,10 +465,10 @@ function exchange_impl!(
     @assert graph.rcv.comm === graph.snd.comm
     comm = graph.rcv.comm
     req_all = MPI.Request[]
-    data_snd = JaggedArray(snd.item[])
-    data_rcv = rcv.item[]
+    data_snd = JaggedArray(snd.item)
+    data_rcv = rcv.item
     @assert isa(data_rcv,JaggedArray)
-    for (i,id_rcv) in enumerate(graph.rcv.item[])
+    for (i,id_rcv) in enumerate(graph.rcv.item)
         rank_rcv = id_rcv-1
         ptrs_rcv = data_rcv.ptrs
         buff_rcv = view(data_rcv.data,ptrs_rcv[i]:(ptrs_rcv[i+1]-1))
@@ -456,7 +476,7 @@ function exchange_impl!(
         reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
         push!(req_all,reqr)
     end
-    for (i,id_snd) in enumerate(graph.snd.item[])
+    for (i,id_snd) in enumerate(graph.snd.item)
         rank_snd = id_snd-1
         ptrs_snd = data_snd.ptrs
         buff_snd = view(data_snd.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))

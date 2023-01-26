@@ -113,6 +113,10 @@ Base.reverse(a::SparseMatrixAssemblyCache) = SparseMatrixAssemblyCache(reverse(a
 copy_cache(a::SparseMatrixAssemblyCache) = SparseMatrixAssemblyCache(copy_cache(a.cache))
 
 function p_sparse_matrix_cache(matrix_partition,row_partition,col_partition)
+    p_sparse_matrix_cache_impl(eltype(matrix_partition),matrix_partition,row_partition,col_partition)
+end
+
+function p_sparse_matrix_cache_impl(::Type,matrix_partition,row_partition,col_partition)
     function setup_snd(part,parts_snd,row_indices,col_indices,values)
         local_row_to_owner = local_to_owner(row_indices)
         local_to_global_row = local_to_global(row_indices)
