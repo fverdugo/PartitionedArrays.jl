@@ -16,6 +16,8 @@ include("jagged_array.jl")
 
 export nziterator
 export nzindex
+export compresscoo
+export indextype
 include("sparse_utils.jl")
 
 export linear_indices

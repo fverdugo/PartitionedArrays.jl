@@ -1,4 +1,8 @@
 
+indextype(a::AbstractSparseMatrix) = indextype(typeof(a))
+indextype(a::Type{SparseMatrixCSC{Tv,Ti}}) where {Tv,Ti} = Ti
+indextype(a::Type{SparseMatrixCSR{Bi,Tv,Ti}}) where {Bi,Tv,Ti} = Ti
+
 nziterator(a::SparseArrays.AbstractSparseMatrixCSC) = NZIteratorCSC(a)
 
 struct NZIteratorCSC{A}
