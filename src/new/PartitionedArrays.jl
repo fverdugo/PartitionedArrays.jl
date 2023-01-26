@@ -52,8 +52,8 @@ export with_sequential_data
 include("sequential_data.jl")
 
 export MPIData
-export mpi_data
-export with_mpi_data
+export mpi_distribute
+export with_mpi
 include("mpi_data.jl")
 
 export local_range

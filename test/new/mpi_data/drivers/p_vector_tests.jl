@@ -4,7 +4,7 @@ using PartitionedArrays
 
 include(joinpath("..","..","p_vector_tests.jl"))
 
-with_mpi_data(p_vector_tests)
+with_mpi(p_vector_tests)
 
 end # module
 

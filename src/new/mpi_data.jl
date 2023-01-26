@@ -8,7 +8,7 @@ function ptrs_to_counts(ptrs)
 end
 
 """
-    mpi_data(a,comm::MPI.Comm;duplicate_comm=true)
+    mpi_distribute(a,comm::MPI.Comm;duplicate_comm=true)
 
 Create an `MPIData{T,N}` instance (`T=eltype(a)`, `N=ndims(a)`) by distributing
 the items in the collection `a` over the ranks of the given MPI
@@ -22,7 +22,7 @@ Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
 !!! note
 
     Initialize MPI with `MPI.Init()` before using this function,
-    or use [`with_mpi_data`](@ref).
+    or use [`with_mpi`](@ref).
 
 # Examples
 
@@ -33,17 +33,17 @@ Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
     julia> MPI.Init()
     MPI.ThreadLevel(2)
     
-    julia> mpi_data([10],MPI.COMM_WORLD)
+    julia> mpi_distribute([10],MPI.COMM_WORLD)
     1-element MPIData{Int64, 1}:
     [1] = 10
 
-    julia> with_mpi_data(MPI.COMM_WORLD) do distribute
+    julia> with_mpi(MPI.COMM_WORLD) do distribute
              distribute([10])
            end
     1-element MPIData{Int64, 1}:
     [1] = 10
 """
-function mpi_data(a,comm::MPI.Comm;duplicate_comm=true)
+function mpi_distribute(a,comm::MPI.Comm;duplicate_comm=true)
     msg = "Number of MPI ranks needs to be the same as items in the given array"
     @assert length(a) == MPI.Comm_size(comm) msg
     if duplicate_comm
@@ -54,18 +54,18 @@ function mpi_data(a,comm::MPI.Comm;duplicate_comm=true)
 end
 
 """
-    with_mpi_data(f,comm=MPI.COMM_WORLD;kwargs...)
+    with_mpi(f,comm=MPI.COMM_WORLD;kwargs...)
 
-Initialize MPI if need, call `f(a->mpi_data(a,comm;kwargs...))`
+Initialize MPI if need, call `f(a->mpi_distribute(a,comm;kwargs...))`
 and abort MPI if there was an error.
 
 This is the safest way of running the function `f` using MPI.
 """
-function with_mpi_data(f,comm=MPI.COMM_WORLD;kwargs...)
+function with_mpi(f,comm=MPI.COMM_WORLD;kwargs...)
     if !MPI.Initialized()
         MPI.Init()
     end
-    distribute = a -> mpi_data(a,comm;kwargs...)
+    distribute = a -> mpi_distribute(a,comm;kwargs...)
     if MPI.Comm_size(comm) == 1
         f(distribute)
     else
@@ -96,7 +96,7 @@ for performance reasons (communication cost).
 # Properties
 
 The fields of this struct (and the inner constructors) are private. To
-generate an instance of `MPIData` use function [`mpi_data`](@ref).
+generate an instance of `MPIData` use function [`mpi_distribute`](@ref).
 
 # Supertype hierarchy
 
@@ -160,8 +160,8 @@ function Base.setindex!(a::MPIData,v,i::Int)
     end
     v
 end
-linear_indices(a::MPIData) = mpi_data(LinearIndices(a),a.comm,duplicate_comm=false)
-cartesian_indices(a::MPIData) = mpi_data(CartesianIndices(a),a.comm,duplicate_comm=false)
+linear_indices(a::MPIData) = mpi_distribute(LinearIndices(a),a.comm,duplicate_comm=false)
+cartesian_indices(a::MPIData) = mpi_distribute(CartesianIndices(a),a.comm,duplicate_comm=false)
 function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
     header = ""
     if ndims(data) == 1

@@ -16,6 +16,6 @@ function exception_tests(distribute)
     end
 end
 
-with_mpi_data(exception_tests)
+with_mpi(exception_tests)
 
 
