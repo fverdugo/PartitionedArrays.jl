@@ -1,272 +1,84 @@
 # Usage
 
-Distributed linear algebra frameworks are the backbone for efficient parallel
-codes in data analytics, scientific computing and machine learning. The central
-idea is that vectors and matrices can be partitioned into potentially
-overlapping chunks which are distributed across a set of workers on which we
-define the usual operations like products and norms.
+PartitionedArrays.jl considers a data-oriented programming model that allows one to write distributed algorithms
+in a generic way, independent from the message passing back-end used to run them.
+The basic abstraction in this model is that distributed data can be expressed using array containers.
+The particular container type will depend on the back-end used to run the code in parallel (e.g., MPI).
 
 ## Basic example
 
-In this section we take a look on solving the finite difference discretization
-of a Laplace problem in 1D over the domain [0,1]. As a reminder, the Laplace
-problem states to find function u(x) such that Δu(x) = 0 for all x ∈ [0,1].
-Without boundary conditions the problem is not well-posed, hence we introduce
-the Dirichlet condition u(0) = 1.
+We want each rank in a distributed system to print its rank id and the total number of ranks. Here, the distributed
+data are the rank ids. If we have an array with all rank ids, printing the messages is trivial with `map` function.
 
-Applying the finite difference method with length 0.25 we discretize the problem
-into linear system with 5 unkowns (u₁,...,u₅), which we call degrees of freedom:
-```math
-\frac{1}{4}
-\begin{pmatrix}
-1 &  0 &  0 &  0 &  0 \\
-0 & -2 &  1 &  0 &  0 \\
-0 &  1 & -2 &  1 &  0 \\
-0 &  0 &  1 & -2 &  1 \\
-0 &  0 &  0 &  1 & -1
-\end{pmatrix}
-\begin{pmatrix}
-u₁ \\
-u₂ \\
-u₃ \\
-u₄ \\
-u₅
-\end{pmatrix}
-=
-\begin{pmatrix}
- 1 \\
--1 \\
- 0 \\
- 0 \\
- 0
-\end{pmatrix}
+```julia
+np = 4
+ranks = LinearIndices((np,))
+map(ranks) do rank
+   println("I am proc $rank of $np")
+end
+```
+Previous code is not parallel (yet). However, it can be easily parallelized if one considers a suitable distributed
+array type and if this type overloads `map` function with a parallel implementation.
+
+```julia
+# File examples/hello_mpi.jl
+using PartitionedArrays
+using MPI; MPI.Init()
+np = 4
+ranks = mpi_distribute(LinearIndices((np,)))
+map(ranks) do rank
+   println("I am proc $rank of $np")
+end
 ```
 
-A detailed derivation can be found in standard numerical analysis lecture notes and books e.g. [these](https://people.sc.fsu.edu/~jburkardt/classes/math2071_2020/poisson_steady_1d/poisson_steady_1d.pdf). The linear system is then solved with
-conjugate gradients.
+Now this code is parallel. Function `mpi_distribute` takes an array and distributes it over the different
+ranks of a given MPI communicator, a duplicate of `MPI.COMM_WORLD` by default. The result is of a new
+array type called `MPIData`, which overloads function `map` with a parallel implemention.
+Function `mpi_distribute` assigns exactly
+one item in the input array to each rank in the communicator. Thus, the resulting array `rank` will be distributed
+in such a way that each MPI rank will get an integer corresponding to its (1-based) rank id. If we place
+  this code in a file called `"hello_mpi.jl"`, we can run it as any Julia applications using the Julia API for MPI in
+  `MPI.jl`. For instance,
 
-### Commented Code
-
-To distribute the problem across two workers we have do choose a partitioning.
-Here we arbitrarily assign the first 3 columns and rows to worker 1 and the
-remaining 2 rows and columns to worker 2.
-
-First include the packages which are used.
 ```julia
-using PartitionedArrays, SparseArrays, IterativeSolvers
+using MPI
+mpiexec(cmd->run(`$cmd -np4 hello_mpi.jl`))
 ```
 
-We want a partitioning into 2 pieces and chose the sequential backend to handle
-the task sequentially so that the code can be executed in a standard Julia REPL (e.g., to simplify debugging).
-```julia
-np = 2
-backend = SequentialBackend()
-```
+## Communication primitives
 
-Most of the codes using `PartitionedArrays` start creating a distributed object that for each part contains its part id. We call it `parts`.
-```julia
-parts = get_part_ids(backend,np)
-```
+A number of communication primitives are available in this package. For the moment, the package includes
+the basic primitives needed to implement distributed-memory finite differences and finite element codes, but other
+primitives can be added in the future. Communications are represented in PartitionedArrays.jl as operations on arrays.
+The data in the input and output arrays in the communication directives are usually the same, but arranged in a different
+way. When these arrays are distributed, this re-arrangement of the data results in the desired communications.
+In the following code, the first rank generates an array of random integers and scatters it over all ranks. Each rank
+counts the number of even items in its part. Finally, the partial sums are reduced in the first rank.
 
-Now, we generate a partitioning of rows and columns. Note that the entry in row 3
-column 4 is visible to the first worker
 ```julia
-neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
-    if part == 1
-        (
-        Int32[2],
-        IndexSet(part, [1,2,3], Int32[1,1,1]),
-        IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
-        )
+using PartitionedArrays
+np = 4
+ranks = LinearIndices((np,))
+a_snd = map(ranks) do rank
+    if rank == 1
+          n = 10
+          a = rand(1:30,n)
+          load = div(n,np)
+          [ a[(1:load).+(i-1)*load] for i in 1:np ]
     else
-        (
-        Int32[1],
-        IndexSet(part, [3,4,5], Int32[1,2,2]),
-        IndexSet(part, [3,4,5], Int32[1,2,2])
-        )
+          [Int[]]
     end
 end
+a_rcv = scatter(a_snd)
+b_snd = map(ai->count(isodd,ai),a_rcv)
+b_rcv = reduction(+,b_snd,init=0)
 ```
 
-We create information exchangers to manage the synchronization of visible
-shared portions of the sparse matrix and the actual row/col
-```julia
-global_number_of_dofs = 5
-row_exchanger = Exchanger(row_partitioning,neighbors)
-rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
 
-col_exchanger = Exchanger(col_partitioning,neighbors)
-cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
-```
+## Parallel vectors and sparse matrices
 
-Next we create the sparse matrix entries in COO format in their worker-local
-numbering. A note about the exact values of the sparse matrices can be found
-in the subsection below.
-```julia
-I, J, V = map_parts(parts) do part
-    if part == 1
-        (
-        [ 1, 1, 2, 2, 2, 3, 3, 3],
-        [ 1, 2, 1, 2, 3, 2, 3, 4],
-        0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
-        )
-    else
-        (
-        [ 1, 1, 2, 2, 2, 3, 3],
-        [ 1, 2, 1, 2, 3, 2, 3],
-        0.25*Float64[-1, 1, 1,-2, 1, 1,-1])
-    end
-end
-A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
-```
+## Running MPI code safely
 
-Since the previous lines created the local prtions we have to trigger sync
-between the workers.
-```julia
-assemble!(A)
-```
+## Debugging
 
-Construct the right hand side. Note that the first entry of the rhs of worker 2
-is shared with worker 1.
-```julia
-b = PVector{Float64}(undef, A.rows)
-map_parts(parts,local_view(b, b.rows)) do part, b_local
-    if part == 1
-        b_local .= [1.0, -1.0, 0.0]
-    else
-        b_local .= [0.0, 0.0, 0.0]
-    end
-end
-```
 
-Now the sparse matrix and right hand side of the linear system are assembled
-globally and we can solve problem with cg. With the end in the last line we
-close the parallel environment.
-```julia
-u = IterativeSolvers.cg(A,b)
-```
-
-### Parallel Code
-
-Now changing the backend to the MPI backend we can solve the problem in parallel.
-This just requires to change the line
-```julia
-backend = SequentialBackend()
-```
-to
-```julia
-backend = MPIBackend()
-```
-and including and initializing MPI. Now launching the script with MPI makes the run parallel.
-
-```sh
-$ mpirun -n 2 julia my-script.jl
-```
-
-Hence the full MPI code is given in the next code box. Note that we have used the `with_backend` function that automatically includes and initializes MPI for us.
-```julia
-using PartitionedArrays, SparseArrays, IterativeSolvers
-
-np = 2
-backend = MPIBackend()
-
-with_backend(backend,np) do parts
-    # Construct the partitioning
-    neighbors, row_partitioning, col_partitioning = map_parts(parts) do part
-        if part == 1
-            (
-            Int32[2],
-            IndexSet(part, [1,2,3], Int32[1,1,1]),
-            IndexSet(part, [1,2,3,4], Int32[1,1,1,2])
-            )
-        else
-            (
-            Int32[1],
-            IndexSet(part, [3,4,5], Int32[1,2,2]),
-            IndexSet(part, [3,4,5], Int32[1,2,2])
-            )
-        end
-    end
-
-    global_number_of_dofs = 5
-
-    row_exchanger = Exchanger(row_partitioning,neighbors)
-    rows = PRange(global_number_of_dofs,row_partitioning,row_exchanger)
-
-    col_exchanger = Exchanger(col_partitioning,neighbors)
-    cols = PRange(global_number_of_dofs,col_partitioning,col_exchanger)
-
-    # Construct the sparse matrix
-    I, J, V = map_parts(parts) do part
-      if part == 1
-          (
-          [ 1, 1, 2, 2, 2, 3, 3, 3],
-          [ 1, 2, 1, 2, 3, 2, 3, 4],
-          0.25*Float64[1, 0, 0,-2, 1, 1,-1, 0]
-          )
-      else
-          (
-          [ 1, 1, 2, 2, 2, 3, 3],
-          [ 1, 2, 1, 2, 3, 2, 3],
-          0.25*Float64[-1, 1, 1,-2, 1, 1,-1])
-      end
-    end
-    A = PSparseMatrix(I, J, V, rows, cols, ids=:local)
-    assemble!(A)
-
-    # Construct the dense right hand side
-    b = PVector{Float64}(undef, A.rows)
-    map_parts(parts,local_view(b, b.rows)) do part, b_local
-        if part == 1
-            b_local .= [1.0, -1.0, 0.0]
-        else
-            b_local .= [0.0, 0.0, 0.0]
-        end
-    end
-
-    # Solve the linear problem
-    u = IterativeSolvers.cg(A,b)
-end
-```
-
-### Note on Local Matrices
-
-It should be noted that the local matrices are constructed as if they were
-locally assembled on a process without knowledge of the remaining processes.
-Dropping the coefficient 0.25 the global and local matrices look as follows:
-
-```
-     Global Matrix
-   P1  P1  P1  P2  P2
-P1  1   0   0   0   0
-P1  0  -2   1   0   0
-P1  0   1  -2   1   0
-P2  0   0   1  -2   1
-P2  0   0   0   1  -1
-
-           =
-
-   Process 1 Portion
-   P1  P1  P1  P2  P2
-P1  1   0   0   0   0
-P1  0  -2   1   0   0
-P1  0   1  -1   0   0
-P2  x   x   x   x   x
-P2  x   x   x   x   x
-
-          +
-
-   Process 2 Portion
-   P1  P1  P1  P2  P2
-P1  x   x   x   x   x
-P1  x   x   x   x   x
-P1  0   0  -1   1   0
-P2  0   0   1  -2   1
-P2  0   0   0   1  -1
-```
-
-## Advanced example
-
-A more complex example can be found in the package [PartitionedPoisson.jl](https://github.com/fverdugo/PartitionedPoisson.jl),
-which describes the assembly of the finite element discretization of a
-Poisson problem in 3D.

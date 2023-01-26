@@ -9,8 +9,10 @@ makedocs(
     modules = [PartitionedArrays],
     pages = [
         "Home" => "index.md",
-        "Usage" => "usage.md",
+        "usage.md",
+        "examples.md",
         "reference.md",
+        "refindex.md",
     ],
 )
 
