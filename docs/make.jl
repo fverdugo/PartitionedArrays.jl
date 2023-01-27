@@ -22,7 +22,6 @@ makedocs(
                        "reference/primitives.md",
                        "reference/partition.md",
                        "reference/pvector.md",
-                       "reference/psparsematrix.md",
                        "reference/helpers.md",
                       ],
         "refindex.md",
