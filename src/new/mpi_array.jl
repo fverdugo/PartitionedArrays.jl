@@ -10,7 +10,7 @@ end
 """
     distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
 
-Create an `MPIData{T,N}` instance (`T=eltype(a)`, `N=ndims(a)`) by distributing
+Create an `MPIArray{T,N}` instance (`T=eltype(a)`, `N=ndims(a)`) by distributing
 the items in the collection `a` over the ranks of the given MPI
 communicator `comm`. Each rank receives
 exactly one item, thus `length(a)`  and the communicator size need to match.
@@ -24,13 +24,13 @@ Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
     julia> using PartitionedArrays
     
     julia> distribute_with_mpi([10])
-    1-element MPIData{Int64, 1}:
+    1-element MPIArray{Int64, 1}:
     [1] = 10
 
     julia> with_mpi() do distribute
              distribute([10])
            end
-    1-element MPIData{Int64, 1}:
+    1-element MPIArray{Int64, 1}:
     [1] = 10
 """
 function distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
@@ -43,7 +43,7 @@ function distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true
         comm = MPI.Comm_dup(comm)
     end
     i = MPI.Comm_rank(comm)+1
-    MPIData(a[i],comm,size(a))
+    MPIArray(a[i],comm,size(a))
 end
 
 """
@@ -76,7 +76,7 @@ function with_mpi(f,comm=MPI.COMM_WORLD;kwargs...)
 end
 
 """
-    MPIData{T,N}
+    MPIArray{T,N}
 
 Represent an array of element type `T` and number of dimensions `N`, where
 each item in the array is stored in a separate MPI process. I.e., each MPI
@@ -89,44 +89,44 @@ for performance reasons (communication cost).
 # Properties
 
 The fields of this struct (and the inner constructors) are private. To
-generate an instance of `MPIData` use function [`distribute_with_mpi`](@ref).
+generate an instance of `MPIArray` use function [`distribute_with_mpi`](@ref).
 
 # Supertype hierarchy
 
-    MPIData{T,N} <: AbstractArray{T,N}
+    MPIArray{T,N} <: AbstractArray{T,N}
 """
-struct MPIData{T,N} <: AbstractArray{T,N}
+struct MPIArray{T,N} <: AbstractArray{T,N}
     item_ref::Base.RefValue{T}
     comm::MPI.Comm
     size::NTuple{N,Int}
-    function MPIData{T,N}(item,comm::MPI.Comm,size::Dims{N}) where {T,N}
+    function MPIArray{T,N}(item,comm::MPI.Comm,size::Dims{N}) where {T,N}
         @assert MPI.Comm_size(comm) == prod(size)
         new{T,N}(Ref{T}(item),comm,size)
     end
-    function MPIData{T,N}(::UndefInitializer,comm::MPI.Comm,size::Dims{N}) where {T,N}
+    function MPIArray{T,N}(::UndefInitializer,comm::MPI.Comm,size::Dims{N}) where {T,N}
         @assert MPI.Comm_size(comm) == prod(size)
         new{T,N}(Ref{T}(),comm,size)
     end
 end
-function MPIData(item,comm::MPI.Comm,size::Dims)
+function MPIArray(item,comm::MPI.Comm,size::Dims)
     T = typeof(item)
     N = length(size)
-    MPIData{T,N}(item,comm,size)
+    MPIArray{T,N}(item,comm,size)
 end
-function MPIData(::UndefInitializer,comm::MPI.Comm,size::Dims)
-    error("MPIData(undef,comm,size) not allowed. Use MPIData{T,N}(undef,comm,size) instead.")
+function MPIArray(::UndefInitializer,comm::MPI.Comm,size::Dims)
+    error("MPIArray(undef,comm,size) not allowed. Use MPIArray{T,N}(undef,comm,size) instead.")
 end
-function Base.getproperty(x::MPIData,sym::Symbol)
+function Base.getproperty(x::MPIArray,sym::Symbol)
     if sym === :item
         x.item_ref[]
     else
         getfield(x,sym)
     end
 end
-function Base.propertynames(x::MPIData, private::Bool=false)
+function Base.propertynames(x::MPIArray, private::Bool=false)
   (fieldnames(typeof(x))...,:item)
 end
-function Base.setproperty!(x::MPIData, sym::Symbol, v, order::Symbol=:order)
+function Base.setproperty!(x::MPIArray, sym::Symbol, v, order::Symbol=:order)
     if sym === :item
        x.item_ref[] = v
     else
@@ -134,28 +134,28 @@ function Base.setproperty!(x::MPIData, sym::Symbol, v, order::Symbol=:order)
     end
 end
 
-Base.size(a::MPIData) = a.size
-Base.IndexStyle(::Type{<:MPIData}) = IndexLinear()
-function Base.getindex(a::MPIData,i::Int)
+Base.size(a::MPIArray) = a.size
+Base.IndexStyle(::Type{<:MPIArray}) = IndexLinear()
+function Base.getindex(a::MPIArray,i::Int)
     scalar_indexing_action(a)
     if i == MPI.Comm_rank(a.comm)+1
         a.item
     else
-        error("Indexing of MPIData at arbitrary indices not implemented yet.")
+        error("Indexing of MPIArray at arbitrary indices not implemented yet.")
     end
 end
-function Base.setindex!(a::MPIData,v,i::Int)
+function Base.setindex!(a::MPIArray,v,i::Int)
     scalar_indexing_action(a)
     if i == MPI.Comm_rank(a.comm)+1
         a.item = v
     else
-        error("Indexing of MPIData at arbitrary indices not implemented yet.")
+        error("Indexing of MPIArray at arbitrary indices not implemented yet.")
     end
     v
 end
-linear_indices(a::MPIData) = distribute_with_mpi(LinearIndices(a),a.comm,duplicate_comm=false)
-cartesian_indices(a::MPIData) = distribute_with_mpi(CartesianIndices(a),a.comm,duplicate_comm=false)
-function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
+linear_indices(a::MPIArray) = distribute_with_mpi(LinearIndices(a),a.comm,duplicate_comm=false)
+cartesian_indices(a::MPIArray) = distribute_with_mpi(CartesianIndices(a),a.comm,duplicate_comm=false)
+function Base.show(io::IO,k::MIME"text/plain",data::MPIArray)
     header = ""
     if ndims(data) == 1
         header *= "$(length(data))-element"
@@ -189,27 +189,27 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIData)
     end
 end
 
-getany(a::MPIData) = a.item
-i_am_main(a::MPIData) = MPI.Comm_rank(a.comm)+1 == MAIN
+getany(a::MPIArray) = a.item
+i_am_main(a::MPIArray) = MPI.Comm_rank(a.comm)+1 == MAIN
 
-function Base.similar(a::MPIData,::Type{T},dims::Dims) where T
+function Base.similar(a::MPIArray,::Type{T},dims::Dims) where T
     N = length(dims)
-    MPIData{T,N}(undef,a.comm,dims)
+    MPIArray{T,N}(undef,a.comm,dims)
 end
 
-function Base.copyto!(b::MPIData,a::MPIData)
+function Base.copyto!(b::MPIArray,a::MPIArray)
     b.item = a.item
     b
 end
 
-function Base.map(f,args::MPIData...)
+function Base.map(f,args::MPIArray...)
     a = first(args)
     @assert all(i->size(a)==size(i),args)
     item = f(map(i->i.item,args)...)
-    MPIData(item,a.comm,a.size)
+    MPIArray(item,a.comm,a.size)
 end
 
-function Base.map!(f,r::MPIData,args::MPIData...)
+function Base.map!(f,r::MPIArray,args::MPIArray...)
     a = first(args)
     @assert all(i->size(a)==size(i),args)
     r.item = f(map(i->i.item,args)...)
@@ -217,7 +217,7 @@ function Base.map!(f,r::MPIData,args::MPIData...)
 end
 
 function gather_impl!(
-    rcv::MPIData, snd::MPIData,
+    rcv::MPIArray, snd::MPIArray,
     destination, ::Type{T}) where T
     @assert rcv.comm === snd.comm
     comm = snd.comm
@@ -241,7 +241,7 @@ function gather_impl!(
 end
 
 function gather_impl!(
-    rcv::MPIData, snd::MPIData,
+    rcv::MPIArray, snd::MPIArray,
     destination, ::Type{T}) where T <: AbstractVector
     @assert rcv.comm === snd.comm
     @assert isa(rcv.item,JaggedArray)
@@ -268,7 +268,7 @@ function gather_impl!(
 end
 
 function scatter_impl!(
-    rcv::MPIData,snd::MPIData,
+    rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T
     @assert source !== :all "All to all not implemented"
     @assert rcv.comm === snd.comm
@@ -286,7 +286,7 @@ function scatter_impl!(
 end
 
 function scatter_impl!(
-    rcv::MPIData,snd::MPIData,
+    rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T<:AbstractVector
     @assert source !== :all "All to all not implemented"
     @assert rcv.comm === snd.comm
@@ -311,7 +311,7 @@ function scatter_impl!(
 end
 
 function emit_impl!(
-    rcv::MPIData,snd::MPIData,
+    rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T
     @assert rcv.comm === snd.comm
     comm = snd.comm
@@ -323,7 +323,7 @@ function emit_impl!(
 end
 
 function emit_impl!(
-    rcv::MPIData,snd::MPIData,
+    rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T<:AbstractVector
     @assert rcv.comm === snd.comm
     comm = snd.comm
@@ -334,7 +334,7 @@ function emit_impl!(
     MPI.Bcast!(rcv.item,root,comm)
 end
 
-function scan!(op,b::MPIData,a::MPIData;init,type)
+function scan!(op,b::MPIArray,a::MPIArray;init,type)
     @assert b.comm === a.comm
     @assert type in (:inclusive,:exclusive)
     T = eltype(a)
@@ -363,7 +363,7 @@ function scan!(op,b::MPIData,a::MPIData;init,type)
     b
 end
 
-function reduction!(op,b::MPIData,a::MPIData;destination=1,init=nothing)
+function reduction!(op,b::MPIArray,a::MPIArray;destination=1,init=nothing)
     @assert b.comm === a.comm
     T = eltype(a)
     @assert eltype(b) == T
@@ -394,24 +394,24 @@ function reduction!(op,b::MPIData,a::MPIData;destination=1,init=nothing)
     b
 end
 
-function Base.reduce(op,a::MPIData;kwargs...)
+function Base.reduce(op,a::MPIArray;kwargs...)
    r = reduction(op,a;destination=:all,kwargs...)
    r.item
 end
-Base.sum(a::MPIData) = reduce(+,a)
-function Base.collect(a::MPIData)
+Base.sum(a::MPIArray) = reduce(+,a)
+function Base.collect(a::MPIArray)
     T = eltype(a)
     N = ndims(a)
     b = Array{T,N}(undef,size(a))
-    c = MPIData(b,a.comm,size(a))
+    c = MPIArray(b,a.comm,size(a))
     gather!(c,a,destination=:all)
     c.item
 end
 
 function exchange_impl!(
-    rcv::MPIData,
-    snd::MPIData,
-    graph::ExchangeGraph{<:MPIData},
+    rcv::MPIArray,
+    snd::MPIArray,
+    graph::ExchangeGraph{<:MPIArray},
     ::Type{T}) where T
 
     @assert size(rcv) == size(snd)
@@ -448,9 +448,9 @@ function exchange_impl!(
 end
 
 function exchange_impl!(
-    rcv::MPIData,
-    snd::MPIData,
-    graph::ExchangeGraph{<:MPIData},
+    rcv::MPIArray,
+    snd::MPIArray,
+    graph::ExchangeGraph{<:MPIArray},
     ::Type{T}) where T <: AbstractVector
 
     @assert size(rcv) == size(snd)

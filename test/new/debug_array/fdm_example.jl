@@ -1,4 +1,4 @@
-module DebugDataFDMExample
+module DebugArrayFDMExample
 
 using PartitionedArrays
 

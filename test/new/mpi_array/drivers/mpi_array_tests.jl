@@ -1,4 +1,4 @@
-module MPIDataTests
+module MPIArrayTests
 
 using PartitionedArrays
 

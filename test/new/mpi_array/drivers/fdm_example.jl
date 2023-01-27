@@ -1,4 +1,4 @@
-module MPIDataFDMExample
+module MPIArrayFDMExample
 
 using PartitionedArrays
 

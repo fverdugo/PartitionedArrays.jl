@@ -1,4 +1,4 @@
-module MPIDataFEMExample
+module MPIArrayFEMExample
 
 using PartitionedArrays
 

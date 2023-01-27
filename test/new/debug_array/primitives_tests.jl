@@ -1,4 +1,4 @@
-module DebugDataPrimitivesTests
+module DebugArrayPrimitivesTests
 
 using PartitionedArrays
 

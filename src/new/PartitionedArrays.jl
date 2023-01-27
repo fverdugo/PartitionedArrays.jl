@@ -47,11 +47,11 @@ export exchange_fetch!
 export allocate_exchange
 include("primitives.jl")
 
-export DebugData
+export DebugArray
 export with_debug
 include("debug_array.jl")
 
-export MPIData
+export MPIArray
 export distribute_with_mpi
 export with_mpi
 include("mpi_array.jl")

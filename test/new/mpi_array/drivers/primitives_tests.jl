@@ -1,4 +1,4 @@
-module MPIDataPrimitivesTests
+module MPIArrayPrimitivesTests
 
 using PartitionedArrays
 

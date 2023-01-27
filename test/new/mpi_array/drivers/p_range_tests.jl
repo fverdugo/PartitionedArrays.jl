@@ -1,4 +1,4 @@
-module MPIDataPRangeTests
+module MPIArrayPRangeTests
 
 using PartitionedArrays
 

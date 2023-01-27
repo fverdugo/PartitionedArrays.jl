@@ -1,4 +1,4 @@
-module DebugDataRunTests
+module DebugArrayRunTests
 
 using Test
 using PartitionedArrays

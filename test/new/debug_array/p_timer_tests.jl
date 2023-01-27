@@ -1,4 +1,4 @@
-module DebugDataPTimerTests
+module DebugArrayPTimerTests
 
 using PartitionedArrays
 

@@ -1,8 +1,8 @@
 # Examples
 
 !!! note
-    The following examples are run with the `DebugData` array type for demo purposes.
-    Substituting `DebugData` by `distribute_with_mpi` and initializing MPI will convert them
+    The following examples are run with the `DebugArray` array type for demo purposes.
+    Substituting `DebugArray` by `distribute_with_mpi` and initializing MPI will convert them
     to distributed drivers. To learn how to run the examples with MPI, see the Usage section.
 
 ## Hello, world!
@@ -10,7 +10,7 @@
 ```julia
 using PartitionedArrays
 np = 4
-ranks = LinearIndices((np,)) |> DebugData
+ranks = LinearIndices((np,)) |> DebugArray
 map(ranks) do rank
    println("Hello, world! I am proc $rank of $np.")
 end
@@ -25,7 +25,7 @@ counts the number of even items in its part. Finally, the partial sums are reduc
 using PartitionedArrays
 np = 4
 n = 10
-ranks = LinearIndices((np,)) |> DebugData
+ranks = LinearIndices((np,)) |> DebugArray
 a_snd = map(ranks) do rank
     if rank == 1
           a = rand(1:30,n)

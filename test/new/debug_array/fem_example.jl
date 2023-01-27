@@ -1,4 +1,4 @@
-module DebugDataFEMExample
+module DebugArrayFEMExample
 
 using PartitionedArrays
 

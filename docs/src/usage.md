@@ -33,7 +33,7 @@ end
 
 Now this code is parallel. Function `distribute_with_mpi` takes an array and distributes it over the different
 ranks of a given MPI communicator (a duplicate of `MPI.COMM_WORLD` by default). The type of the result is an
-array type called `MPIData`, which overloads function `map` with a parallel implementation.
+array type called `MPIArray`, which overloads function `map` with a parallel implementation.
 Function `distribute_with_mpi` assigns exactly
 one item in the input array to each rank in the communicator. Thus, the resulting array `ranks` will be distributed
 in such a way that each MPI rank will get an integer corresponding to its (1-based) rank id. If we place
@@ -92,19 +92,19 @@ One of the main advantages of PartitionedArrays is that it allows one to write a
 code without using MPI. This makes possible to use the standard Julia development workflow (e.g., Revise)
  when implementing distributed applications, which is certainly useful. This ability comes from the
 fact that one can use standard serial Julia arrays to test your application based on PartitionedArrays.
-However, the array type `MPIData` resulting
+However, the array type `MPIArray` resulting
 after distributing data over MPI processes, is not as flexible as the standard arrays in Julia. There are operations
-that are not allowed for `MPIData`, mainly for performance reasons. One of them is indexing the array at arbitrary indices.
+that are not allowed for `MPIArray`, mainly for performance reasons. One of them is indexing the array at arbitrary indices.
 In consequence, code that runs with the common Julia arrays might fall when switching to MPI.
 In order to anticipate these type of errors,
-PartitionedArrays provides an special array type called `DebugData` for debugging purposes.
-The type `DebugData` tries to mimic the limitations of `MPIData` but it is just a wrapper to a standard
+PartitionedArrays provides an special array type called `DebugArray` for debugging purposes.
+The type `DebugArray` tries to mimic the limitations of `MPIArray` but it is just a wrapper to a standard
 Julia array and therefore can be used in a standard Julia session.
 
 ```julia
 using PartitionedArrays
 np = 4
-ranks = DebugData(LinearIndices((np,)))
+ranks = DebugArray(LinearIndices((np,)))
 ranks[3] # Error!
 ```
 The last line of previous code will throw an error telling that scalar indexing is not allowed. This is to mimic the error
@@ -133,5 +133,5 @@ end
 ```
 then `with_debug(main)` and `with_mpi(main)` will run the code using the
 debug back-end and MPI respectively. If you want to run in using native Julia arrays, you can simply call `main(identity)`.
-Make sure that your code works using `DebugData` before moving to MPI.
+Make sure that your code works using `DebugArray` before moving to MPI.
 

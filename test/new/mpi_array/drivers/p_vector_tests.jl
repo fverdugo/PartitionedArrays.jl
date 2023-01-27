@@ -1,4 +1,4 @@
-module MPIDataPVectorTests
+module MPIArrayPVectorTests
 
 using PartitionedArrays
 

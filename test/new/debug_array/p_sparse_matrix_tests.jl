@@ -1,4 +1,4 @@
-module DebugDataPSparseMatrixTests
+module DebugArrayPSparseMatrixTests
 
 using PartitionedArrays
 

@@ -1,4 +1,4 @@
-module DebugDataPRangeTests
+module DebugArrayPRangeTests
 
 using PartitionedArrays
 

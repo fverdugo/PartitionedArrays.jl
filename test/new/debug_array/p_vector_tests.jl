@@ -1,4 +1,4 @@
-module DebugDataPVectorTests
+module DebugArrayPVectorTests
 
 using PartitionedArrays
 

@@ -1,12 +1,12 @@
 
 @inline current_time(s) = time_ns()
-@inline current_time(s::MPIData) = MPI.Wtime()
+@inline current_time(s::MPIArray) = MPI.Wtime()
 
 to_seconds(s,t) = Float64(t)/1.0e9
-to_seconds(s::MPIData,t) = Float64(t)
+to_seconds(s::MPIArray,t) = Float64(t)
 
 barrier(a) = nothing
-barrier(a::MPIData) = MPI.Barrier(a.comm)
+barrier(a::MPIArray) = MPI.Barrier(a.comm)
 
 mutable struct PTimer{A,B,C}
     parts::A
