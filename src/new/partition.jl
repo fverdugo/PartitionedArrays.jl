@@ -1,55 +1,205 @@
-
 """
-    local_range(p, np, n, ghost=false, periodic=false)
+    uniform_partition(ranks,np,n[,ghost[,periodic]])
 
-Return the local range of indices in the component number `p`
-of a uniform partition of indices `1:n` into `np` parts.
-If `ghost==true` then include a layer of
-"ghost" entries. If `periodic == true` the ghost layer is created assuming
-periodic boundaries in the range  `1:n`. In this case, the first ghost
-index is `0` for `p==1` and the last ghost index is `n+1`  for `p==np`
+Generate an `N` dimensional
+block partition with a (roughly) constant block size.
+
+# Arguments
+- `ranks`: Array containing the distribution of ranks.
+-  `np::NTuple{N}`: Number of parts per direction.
+-  `n::NTuple{N}`: Number of global indices per direction.
+-  `ghost::NTuple{N}=ntuple(i->false,N)`: Use or not ghost indices per direction.
+-  `periodic::NTuple{N}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
+
+For convenience, one can also provide scalar inputs instead tuples
+to create 1D block partitions.
 
 # Examples
 
-## Without ghost entries
+2D partition of 4x4 indices into 2x2 parts with ghost
 
     julia> using PartitionedArrays
     
-    julia> local_range(1,3,10)
-    1:3
-
-    julia> local_range(2,3,10)
-    4:6
-
-    julia> local_range(3,3,10)
-    7:10
-
-## With ghost entries
-
-    julia> using PartitionedArrays
+    julia> rank = LinearIndices((4,));
     
-    julia> local_range(1,3,10,true)
-    1:4
-
-    julia> local_range(2,3,10,true)
-    3:7
-
-    julia> local_range(3,3,10,true)
-    6:10
-
-## With periodic boundaries
-
-    julia> using PartitionedArrays
+    julia> pr = uniform_partition(rank,(2,2),(4,4),(true,true))
+    1:1:16
     
-    julia> local_range(1,3,10,true,true)
-    0:4
+    julia> local_to_global(pr)
+    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{2, Vector{Int32}}}:
+     [1, 2, 3, 5, 6, 7, 9, 10, 11]
+     [2, 3, 4, 6, 7, 8, 10, 11, 12]
+     [5, 6, 7, 9, 10, 11, 13, 14, 15]
+     [6, 7, 8, 10, 11, 12, 14, 15, 16]
 
-    julia> local_range(2,3,10,true,true)
-    3:7
-
-    julia> local_range(3,3,10,true,true)
-    6:11
 """
+function uniform_partition(rank,np,n,args...)
+    @assert prod(np) == length(rank)
+    indices = map(rank) do rank
+        block_with_constant_size(rank,np,n,args...)
+    end
+    if length(args) == 0
+        map(indices) do indices
+            cache = assembly_cache(indices)
+            copy!(cache,empty_assembly_cache())
+        end
+    else
+        assembly_neighbors(indices;symmetric=true)
+    end
+    indices
+end
+
+"""
+    uniform_partition(ranks,n::Integer[,ghost::Bool[,periodic::Bool]])
+
+Generate an  1d dimensional
+block partition with a (roughly) constant block size by inferring the number of parts to use from `ranks`.
+
+# Arguments
+- `ranks`: Array containing the distribution of ranks. The number of parts is taken as `length(ranks)`.
+-  `n`: Number of global indices.
+-  `ghost`: Use or not ghost indices.
+-  `periodic`: Use or not periodic boundaries.
+"""
+function uniform_partition(rank,n::Integer)
+    uniform_partition(rank,length(rank),n)
+end
+
+function uniform_partition(rank,n::Integer,ghost::Bool,periodic::Bool=false)
+    uniform_partition(rank,length(rank),n,ghost,periodic)
+end
+
+function uniform_partition(rank,np::Integer,n::Integer)
+    uniform_partition(rank,(np,),(n,))
+end
+
+function uniform_partition(rank,np::Integer,n::Integer,ghost::Bool,periodic::Bool=false)
+    uniform_partition(rank,(np,),(n,),(ghost,),(periodic,))
+end
+
+function block_with_constant_size(rank,np,n)
+    N = length(n)
+    p = CartesianIndices(np)[rank]
+    ghost = GhostIndices(prod(n))
+    LocalIndicesWithConstantBlockSize(p,np,n,ghost)
+end
+
+function block_with_constant_size(rank,np,n,ghost,periodic=map(i->false,ghost))
+    N = length(n)
+    p = CartesianIndices(np)[rank]
+    own_ranges = map(local_range,Tuple(p),np,n)
+    local_ranges = map(local_range,Tuple(p),np,n,ghost,periodic)
+    owners = map(Tuple(p),own_ranges,local_ranges) do p,or,lr
+        owners = zeros(Int32,length(lr))
+        for i in 1:length(lr)
+            if lr[i] in or
+                owners[i] = p
+            end
+        end
+        if owners[1] == 0
+            owners[1] = p-1
+        end
+        if owners[end] == 0
+            owners[end] = p+1
+        end
+        owners
+    end
+    n_ghost = 0
+    cis = CartesianIndices(map(length,local_ranges))
+    predicate(p,i,owners) = owners[i] == p
+    for ci in cis
+        flags = map(predicate,Tuple(p),Tuple(ci),owners)
+        if !all(flags)
+            n_ghost += 1
+        end
+    end
+    ghost_to_global = zeros(Int,n_ghost)
+    ghost_to_owner = zeros(Int32,n_ghost)
+    n_local = prod(map(length,local_ranges))
+    perm = zeros(Int32,n_local)
+    i_ghost = 0
+    i_own = 0
+    n_own = prod(map(length,own_ranges))
+    lis = CircularArray(LinearIndices(n))
+    local_cis = CartesianIndices(local_ranges)
+    owner_lis = CircularArray(LinearIndices(np))
+    for (i,ci) in enumerate(cis)
+        flags = map(predicate,Tuple(p),Tuple(ci),owners)
+        if !all(flags)
+            i_ghost += 1
+            ghost_to_global[i_ghost] = lis[local_cis[i]]
+            o = map(getindex,owners,Tuple(ci))
+            o_ci = CartesianIndex(o)
+            ghost_to_owner[i_ghost] = owner_lis[o_ci]
+            perm[i] = i_ghost + n_own
+        else
+            i_own += 1
+            perm[i] = i_own
+        end
+    end
+    ghostids = GhostIndices(prod(n),ghost_to_global,ghost_to_owner)
+    ids = LocalIndicesWithConstantBlockSize(p,np,n,ghostids)
+    PermutedLocalIndices(ids,perm)
+end
+
+"""
+    variable_partition(n_own,n_global[;start])
+
+Build a 1D variable-size block partition.
+
+# Arguments
+
+-  `n_own::AbstractArray{<:Integer}`: Array containing the block size for each part.
+-  `n_global::Integer`: Number of global indices. It should be equal to `sum(n_own)`.
+-  `start::AbstractArray{Int}=scan(+,n_own,type=:exclusive,init=1)`: First global index in each part.
+
+We ask the user to provide `n_global` and (optionally) `start` since discovering them requires communications.
+
+# Examples
+
+    julia> using PartitionedArrays
+    
+    julia> rank = LinearIndices((4,));
+    
+    julia> n_own = [3,2,2,3];
+    
+    julia> pr = variable_partition(n_own,sum(n_own))
+    1:1:10
+    
+    julia> own_to_global(pr)
+    4-element Vector{PartitionedArrays.BlockPartitionOwnToGlobal{1}}:
+     [1, 2, 3]
+     [4, 5]
+     [6, 7]
+     [8, 9, 10]
+
+"""
+function variable_partition(
+    n_own,
+    n_global,
+    ghost=false,
+    periodic=false;
+    start=scan(+,n_own,type=:exclusive,init=one(eltype(n_own))))
+    rank = linear_indices(n_own)
+    if ghost == true || periodic == true
+        error("This case is not yet implemented.")
+    end
+    n_parts = length(n_own)
+    indices = map(rank,n_own,start) do rank,n_own,start
+        p = CartesianIndex((rank,))
+        np = (n_parts,)
+        n = (n_global,)
+        ranges = ((1:n_own).+(start-1),)
+        ghost = GhostIndices(n_global)
+        indices = LocalIndicesWithVariableBlockSize(p,np,n,ranges,ghost)
+        # This should be changed when including ghost
+        cache = assembly_cache(indices)
+        copy!(cache,empty_assembly_cache())
+        indices
+    end
+    indices
+end
+
 function local_range(p,np,n,ghost=false,periodic=false)
     l = n ÷ np
     offset = l * (p-1)
@@ -71,150 +221,17 @@ function local_range(p,np,n,ghost=false,periodic=false)
     start:stop
 end
 
-#"""
-#    struct UniformBlockPartition{N}
-#
-#Array-like type representing a uniform block partition of `N` dimensions.
-#
-## Properties
-#-  `np::NTuple{N,Int}`: Number of parts in each direction
-#-  `n::NTuple{N,Int}`: Number of items partitioned in each direction
-#
-## Supertype hierarchy
-#
-#    UniformBlockPartition{N} <: AbstractArray{T,N}
-#
-#where `T=CartesianIndices{N,NTuple{N,UnitRange{Int64}}}`
-#
-#"""
-#struct UniformBlockPartition{N} <: AbstractArray{CartesianIndices{N,NTuple{N,UnitRange{Int64}}},N}
-#    np::NTuple{N,Int}
-#    n::NTuple{N,Int}
-#    @doc """
-#        UniformBlockPartition(np::NTuple{N,Int},n::NTuple{N,Int}) where N
-#
-#Build a uniform block partition resulting from spliting `n` items per direction
-#into `np` parts per direction. The result is an array-like object `a` such that
-#`a[p]` contains the Cartesian indices associated with the block in part `p`.  
-#
-## Examples
-#
-#    julia> using PartitionedArrays
-#    
-#    julia> partition = UniformBlockPartition((3,),(10,))
-#    3-element UniformBlockPartition{1}:
-#     CartesianIndices((1:3,))
-#     CartesianIndices((4:6,))
-#     CartesianIndices((7:10,))
-#      
-#    julia> partition = UniformBlockPartition((3,2),(10,10))
-#    3×2 UniformBlockPartition{2}:
-#     CartesianIndices((1:3, 1:5))   CartesianIndices((1:3, 6:10))
-#     CartesianIndices((4:6, 1:5))   CartesianIndices((4:6, 6:10))
-#     CartesianIndices((7:10, 1:5))  CartesianIndices((7:10, 6:10))
-#    """
-#    function UniformBlockPartition(np::NTuple{N,Int},n::NTuple{N,Int}) where N
-#        new{N}(np,n)
-#    end
-#end
-#
-#Base.size(a::UniformBlockPartition) = a.np
-#Base.IndexStyle(::Type{<:UniformBlockPartition}) = IndexCartesian()
-#function Base.getindex(a::UniformBlockPartition{N},i::Vararg{Int,N}) where N
-#    CartesianIndices(map(local_range,i,a.np,a.n))
-#end
-#
-#"""
-#    struct BlockPartition{N}
-#
-#Array-like type representing a (possibly non-uniform) block partition of `N` dimensions.
-#
-## Properties
-#- `start::NTuple{N,Vector{Int}}`: `start[d][i]:(s[d][i+1]-1)` is the range of indices corresponding to the `i`-th block in direction `d`. `length(start[d])`  is the number of blocks in direction `d` plus one, being `s[d][end]-1` the number of items partitioned in direction `d`.
-#
-## Supertype hierarchy
-#
-#    BlockPartition{N} <: AbstractArray{T,N}
-#
-#where `T=CartesianIndices{N,NTuple{N,UnitRange{Int64}}}`
-#
-#"""
-#struct BlockPartition{N} <: AbstractArray{CartesianIndices{N,NTuple{N,UnitRange{Int64}}},N}
-#    start::NTuple{N,Vector{Int}}
-#    @doc """
-#        BlockPartition(start::NTuple{N,Vector{Int}}) where N
-#
-#Create a (possibly non-uniform) block partition of `N` dimensions. `start` encodes the range
-#of the blocks in each direction. I.e., `start[d][i]:(s[d][i+1]-1)` is the range of indices
-#corresponding to the `i`-th block in direction `d`. `length(start[d])`  is the number
-#of blocks in direction `d` plus one, being `s[d][end]-1` the number of items partitioned
-#in direction `d`. The result is an array-like object `a` such that `a[p]` contains the Cartesian indices associated with the block in part `p`.
-#
-## Examples
-#
-#    julia> using PartitionedArrays
-#    
-#    julia> BlockPartition(([1,3,7,11],))
-#    3-element BlockPartition{1}:
-#     CartesianIndices((1:2,))
-#     CartesianIndices((3:6,))
-#     CartesianIndices((7:10,))
-#
-#    """
-#    BlockPartition(start::NTuple{N,Vector{Int}}) where N = new{N}(start)
-#end
-#
-#Base.size(a::BlockPartition) = map(i->length(i)-1,a.start)
-#Base.IndexStyle(::Type{<:BlockPartition}) = IndexCartesian()
-#function Base.getindex(a::BlockPartition{N},i::Vararg{Int,N}) where N
-#    ranges = map(a.start,i) do start,i
-#        start[i]:(start[i+1]-1)
-#    end
-#    CartesianIndices(ranges)
-#end
-#
-#function Base.convert(::Type{BlockPartition{N}},a::UniformBlockPartition{N}) where N
-#    n = a.n
-#    np = a.np
-#    start = map(n,np) do n,np
-#        start = [first(local_range(p,np,n)) for p in 1:np]
-#        push!(start,last(local_range(np,np,n))+1)
-#        start
-#    end
-#    BlockPartition(start)
-#end
-#
-##function block_start(blocks,n=sum(blocks))
-##    init = one(eltype(blocks))
-##    type = :exclusive
-##    start = collect(scan(+,blocks;type,init))
-##    push!(start,n+one(typeof(n)))
-##    start
-##end
-#
-#
-#"""
-#    part_owner(partition)
-#
-#Return an array `a` indicating which is the part that owns each of the items
-#partitioned in `partition`. `a[i]` is such that `i` is in `partition[a[i]]`.
-#"""
-#function part_owner end
-#
-#struct BlockPartitionOwner{N} <: AbstractArray{CartesianIndex{N},N}
-#    partition::BlockPartition{N}
-#end
-#Base.size(a::BlockPartitionOwner) = map(i->i[end]-1,a.start)
-#Base.IndexStyle(::Type{<:BlockPartitionOwner}) = IndexCartesian()
-#function Base.getindex(a::BlockPartitionOwner{N},i::Vararg{Int,N}) where N
-#    j = map(searchsortedlast,a.start,i)
-#    CartesianIndex(j)
-#end
-#  
-#part_owner(partition::BlockPartition) = BlockPartitionOwner(partition)
-#
-#function part_owner(partition::UniformBlockPartition{N}) where N
-#    part_owner(convert(BlockPartition{N},partition))
-#end
-
+function boundary_owner(p,np,n,ghost=false,periodic=false)
+    start = p
+    stop = p
+    if ghost && np != 1
+        if periodic || p!=1
+            start -= 1
+        end
+        if periodic || p!=np
+            stop += 1
+        end
+    end
+    (start,p,stop)
+end
 

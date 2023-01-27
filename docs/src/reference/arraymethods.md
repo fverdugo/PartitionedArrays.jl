@@ -11,6 +11,7 @@ cartesian_indices
 
 ```@docs
 MAIN
+i_am_main
 map_main
 tuple_of_arrays
 ```

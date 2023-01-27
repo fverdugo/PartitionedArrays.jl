@@ -669,7 +669,7 @@ end
 Send the data in `snd` according the directed graph `graph`.
 This function returns immediately
 and returns a task that produces the result, allowing for latency hiding.
-Use [`fetch`](@ref) to wait and get the result.
+Use `fetch` to wait and get the result.
 The object `snd` and `rcv=fetch(exchange(snd,graph))`
 are array of vectors. The  value `snd[i][j]` is sent
 to node `graph.snd[i][j]`. The value `rcv[i][j]` is the one
@@ -758,7 +758,7 @@ end
 
 In-place and asynchronous version of [`exchange`](@ref). This function
 returns immediately and returns a task that produces `rcv` with the updated values.
-Use [`fetch`](@ref) to get the updated version of `rcv`.
+Use `fetch` to get the updated version of `rcv`.
 The input `rcv` can be allocated with [`allocate_exchange`](@ref).
 """
 function exchange!(rcv,snd,graph::ExchangeGraph)

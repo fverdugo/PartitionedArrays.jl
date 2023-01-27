@@ -95,6 +95,9 @@ export to_local!
 export to_global!
 export partition
 export assembly_graph
+include("abstract_local_indices.jl")
+include("partition.jl")
+include("local_indices.jl")
 include("p_range.jl")
 
 export local_values

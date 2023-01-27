@@ -548,7 +548,7 @@ end
 """
     pfill(v,rows::PRange)
 
-Create a [`Pvector`](@ref) object with the data partition in `rows`
+Create a [`PVector`](@ref) object with the data partition in `rows`
 with all entries equal to `v`.
 """
 pfill(v,index_partition) = pvector(indices->fill(v,local_length(indices)),index_partition)
@@ -578,8 +578,8 @@ pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(
 """
     prand([rng,][s,]rows::PRange)
 
-Create a [`Pvector`](@ref) object with uniform random values and the data partition in `rows`.
-The optional arguments have the same meaning and default values as in [`rand`](@ref).
+Create a [`PVector`](@ref) object with uniform random values and the data partition in `rows`.
+The optional arguments have the same meaning and default values as in `rand`.
 """
 prand(index_partition) = pvector(indices->rand(local_length(indices)),index_partition)
 prand(s,index_partition) = pvector(indices->rand(s,local_length(indices)),index_partition)
@@ -588,8 +588,8 @@ prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)
 """
     prandn([rng,][s,]rows::PRange)
 
-Create a [`Pvector`](@ref) object with normally distributed random values and the data partition in `rows`.
-The optional arguments have the same meaning and default values as in [`randn`](@ref).
+Create a [`PVector`](@ref) object with normally distributed random values and the data partition in `rows`.
+The optional arguments have the same meaning and default values as in `randn`.
 """
 prandn(index_partition) = pvector(indices->randn(local_length(indices)),index_partition)
 prandn(s,index_partition) = pvector(indices->randn(s,local_length(indices)),index_partition)
