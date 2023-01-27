@@ -2,7 +2,7 @@
 
 !!! note
     The following examples are run with the `SequentialData` array type for demo purposes.
-    Substituting `SequentialData` by `mpi_distribute` and initializing MPI will convert them
+    Substituting `SequentialData` by `distribute_with_mpi` and initializing MPI will convert them
     to distributed drivers. To learn how to run the examples with MPI, see the Usage section.
 
 ## Hello, world!

@@ -52,7 +52,7 @@ export with_sequential_data
 include("sequential_data.jl")
 
 export MPIData
-export mpi_distribute
+export distribute_with_mpi
 export with_mpi
 include("mpi_data.jl")
 
