@@ -10,7 +10,7 @@ end
 """
     distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
 
-Create an `MPIArray{T,N}` instance (`T=eltype(a)`, `N=ndims(a)`) by distributing
+Create an [`MPIArray`](@ref) instance by distributing
 the items in the collection `a` over the ranks of the given MPI
 communicator `comm`. Each rank receives
 exactly one item, thus `length(a)`  and the communicator size need to match.
@@ -19,19 +19,8 @@ rank see [`PVector`](@ref) or [`PSparseMatrix`](@ref).
 If `duplicate_comm=false` the result will take ownership of the given communicator.
 Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
 
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> distribute_with_mpi([10])
-    1-element MPIArray{Int64, 1}:
-    [1] = 10
-
-    julia> with_mpi() do distribute
-             distribute([10])
-           end
-    1-element MPIArray{Int64, 1}:
-    [1] = 10
+!!! note
+    This function calls `MPI.Init()` if MPI is not initialized yet.
 """
 function distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
     if !MPI.Initialized()
@@ -49,10 +38,11 @@ end
 """
     with_mpi(f,comm=MPI.COMM_WORLD;kwargs...)
 
-Initialize MPI if need, call `f(a->distribute_with_mpi(a,comm;kwargs...))`
-and abort MPI if there was an error.
+Call `f(a->distribute_with_mpi(a,comm;kwargs...))`
+and abort MPI if there was an error.  This is the safest way of running the function `f` using MPI.
 
-This is the safest way of running the function `f` using MPI.
+!!! note
+    This function calls `MPI.Init()` if MPI is not initialized yet.
 """
 function with_mpi(f,comm=MPI.COMM_WORLD;kwargs...)
     if !MPI.Initialized()
@@ -83,7 +73,7 @@ each item in the array is stored in a separate MPI process. I.e., each MPI
 rank stores only one item. For arrays that can store more than one item per
 rank see [`PVector`](@ref) or [`PSparseMatrix`](@ref). This struct implements
 the Julia array interface.
-However, using [`setindex!`](@ref) and [`getindex!`](@ref) is strongly discouraged
+However, using `setindex!` and `getindex!` is disabled
 for performance reasons (communication cost).
 
 # Properties
@@ -108,6 +98,7 @@ struct MPIArray{T,N} <: AbstractArray{T,N}
         new{T,N}(Ref{T}(),comm,size)
     end
 end
+
 function MPIArray(item,comm::MPI.Comm,size::Dims)
     T = typeof(item)
     N = length(size)

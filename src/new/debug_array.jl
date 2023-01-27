@@ -16,10 +16,11 @@ end
 """
     struct DebugArray{T,N}
 
-Data structure that emulates the behavior of [`MPIArray`](@ref), but that can be
+Data structure that emulates the limitations of [`MPIArray`](@ref), but that can be
 used on a standard sequential (a.k.a. serial) Julia session. This struct implements
 the Julia array interface.
-However, using [`setindex!`](@ref) and [`getindex!`](@ref) is strongly discouraged
+Like for [`MPIArray`](@ref), using `setindex!` and `getindex`
+on `DebugArray` is disabled
 since this will not be efficient in actual parallel runs (communication cost).
 
 # Properties
@@ -32,13 +33,6 @@ The fields of this struct are private.
 """
 struct DebugArray{T,N} <: AbstractArray{T,N}
     items::Array{T,N}
-    @doc """
-        DebugArray{T,N}(a) where {T,N}
-
-    Create a `DebugArray{T,N}` data object from the items in collection
-    `a`. If `a::Array{T,N}`, then the result takes ownership of the input.
-    Otherwise, a copy of the input is created.
-    """
     function DebugArray{T,N}(a) where {T,N}
       new{T,N}(convert(Array{T,N},a))
     end
