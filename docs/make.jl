@@ -1,5 +1,10 @@
 using Documenter
+using Literate
 using PartitionedArrays
+
+examples_jl  = joinpath(@__DIR__,"examples.jl")
+src_dir = joinpath(@__DIR__,"src") 
+Literate.markdown(examples_jl,src_dir)
 
 makedocs(
     sitename = "PartitionedArrays.jl",
