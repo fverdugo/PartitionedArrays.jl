@@ -18,6 +18,7 @@ makedocs(
         "examples.md",
         "Reference" =>[
                        "reference/backends.md",
+                       "reference/arraymethods.md",
                        "reference/primitives.md",
                        "reference/partition.md",
                        "reference/pvector.md",

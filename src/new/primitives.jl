@@ -35,17 +35,18 @@ Convert the array of tuples `a` into a tuple of arrays.
 
 # Examples
 
-    julia> using PartitionedArrays
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> a = [(1,2),(3,4),(5,6)]
-    3-element Vector{Tuple{Int64, Int64}}:
-     (1, 2)
-     (3, 4)
-     (5, 6)
+julia> a = [(1,2),(3,4),(5,6)]
+3-element Vector{Tuple{Int64, Int64}}:
+ (1, 2)
+ (3, 4)
+ (5, 6)
 
-    julia> b,c = tuple_of_arrays(a)
-    ([1, 3, 5], [2, 4, 6])
-
+julia> b,c = tuple_of_arrays(a)
+([1, 3, 5], [2, 4, 6])
+```
 """
 function tuple_of_arrays(a)
     function first_and_tail(a)
@@ -63,15 +64,22 @@ function tuple_of_arrays(a)
 end
 
 
+"""
+"""
 i_am_main(a) = true
 
+"""
+    const MAIN = 1
+
+Constant used to refer the main rank.
+"""
 const MAIN = 1
 
 """
     map_main(f,args...;kwargs...)
 
 Like `map(f,args...)` but only apply `f` to one component of the arrays
-in `args` (the first component by default). Set the remaining entries to `nothing` by default.
+in `args`.
 
 # Optional key-word arguments
 
@@ -80,21 +88,23 @@ in `args` (the first component by default). Set the remaining entries to `nothin
 
 # Examples
 
-    julia> using PartitionedArrays
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> a = [1,2,3,4]
-    4-element Vector{Int64}:
-     1
-     2
-     3
-     4
+julia> a = [1,2,3,4]
+4-element Vector{Int64}:
+ 1
+ 2
+ 3
+ 4
 
-    julia> map_main(-,a,main=2)
-    4-element Vector{Union{Nothing, Int64}}:
-       nothing
-     -2
-       nothing
-       nothing
+julia> map_main(-,a,main=2)
+4-element Vector{Union{Nothing, Int64}}:
+   nothing
+ -2
+   nothing
+   nothing
+```
 """
 function map_main(f,args...;otherwise=(args...)->nothing,main=MAIN)
     if isa(main,Integer)
@@ -113,7 +123,7 @@ function map_main(f,args...;otherwise=(args...)->nothing,main=MAIN)
 end
 
 """
-    gather(snd;destination=1)
+    gather(snd;destination=MAIN)
 
 Return an array whose first entry contains a copy of the elements of array `snd` collected in a vector.
 Another component different from the
@@ -123,27 +133,29 @@ operation.
 
 # Examples
 
-    julia> using PartitionedArrays
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> snd = collect(1:3)
-    3-element Vector{Int64}:
-     1
-     2
-     3
+julia> snd = collect(1:3)
+3-element Vector{Int64}:
+ 1
+ 2
+ 3
 
-    julia> gather(snd,destination=3)
-    3-element Vector{Vector{Int64}}:
-     []
-     []
-     [1, 2, 3]
+julia> gather(snd,destination=3)
+3-element Vector{Vector{Int64}}:
+ []
+ []
+ [1, 2, 3]
 
-    julia> gather(snd,destination=:all)
-    3-element Vector{Vector{Int64}}:
-     [1, 2, 3]
-     [1, 2, 3]
-     [1, 2, 3]
+julia> gather(snd,destination=:all)
+3-element Vector{Vector{Int64}}:
+ [1, 2, 3]
+ [1, 2, 3]
+ [1, 2, 3]
+```
 """
-function gather(snd;destination=1)
+function gather(snd;destination=MAIN)
     T = eltype(snd)
     gather_impl(snd,destination,T)
 end
@@ -155,11 +167,11 @@ function gather_impl(snd,destination,::Type{T}) where T
 end
 
 """
-    allocate_gather(snd;destination=1)
+    allocate_gather(snd;destination=MAIN)
 
 Allocate an array to be used in the first argument of [`gather!`](@ref).
 """
-function allocate_gather(snd;destination=1)
+function allocate_gather(snd;destination=MAIN)
     T = eltype(snd)
     allocate_gather_impl(snd,destination,T)
 end
@@ -201,39 +213,12 @@ function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
 end
 
 """
-    gather!(rcv,snd;destination=1)
+    gather!(rcv,snd;destination=MAIN)
 
-Copy the elements of array `snd` into the first component of the array of arrays `rcv` and return `rcv`.
-Another component different from the
-first one can be used to store the result by setting the optional key-word argument `destination`.
-Setting `destination=:all`, will store the result in all entries of `rcv` resulting in a "gather all"
-operation.
-
+In-place version of [`gather`](@ref). It returns `rcv`.
 The result array `rcv` can be allocated with the helper function [`allocate_gather`](@ref).
-
-# Examples
-
-    julia> using PartitionedArrays
-
-    julia> snd = collect(1:3)
-    3-element Vector{Int64}:
-     1
-     2
-     3
-
-    julia> rcv = allocate_gather(snd,destination=3)
-    3-element Vector{Vector{Int64}}:
-     []
-     []
-     [140002225987696, 140002162818736, 140002162818752]
-
-    julia> gather!(rcv,snd,destination=3)
-    3-element Vector{Vector{Int64}}:
-     []
-     []
-     [1, 2, 3]
 """
-function gather!(rcv,snd;destination=1)
+function gather!(rcv,snd;destination=MAIN)
     @assert size(rcv) == size(snd)
     T = eltype(snd)
     gather_impl!(rcv,snd,destination,T)
@@ -257,7 +242,7 @@ function gather_impl!(rcv,snd,destination,::Type{T}) where T
 end
 
 """
-    scatter(snd;source=1)
+    scatter(snd;source=MAIN)
 
 Copy the items in the collection `snd[source]` into an array of the same
 size and container type as `snd`.
@@ -265,20 +250,21 @@ This function requires `length(snd[source]) == length(snd)`.
 
 # Examples
 
-    julia> using PartitionedArrays
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> a = [Int[],[1,2,3],Int[]]
-    3-element Vector{Vector{Int64}}:
-     []
-     [1, 2, 3]
-     []
+julia> a = [Int[],[1,2,3],Int[]]
+3-element Vector{Vector{Int64}}:
+ []
+ [1, 2, 3]
+ []
 
-    julia> scatter(a,source=2)
-    3-element Vector{Int64}:
-     1
-     2
-     3
-
+julia> scatter(a,source=2)
+3-element Vector{Int64}:
+ 1
+ 2
+ 3
+```
 """
 function scatter(snd;source=1)
     T = eltype(eltype(snd))
@@ -323,6 +309,7 @@ end
 
 In-place version of [`scatter`](@ref). The destination array `rcv`
 can be generated with the helper function [`allocate_scatter`](@ref).
+It returns `rcv`.
 """
 function scatter!(rcv,snd;source=1)
     T = eltype(eltype(snd))
@@ -339,29 +326,31 @@ function scatter_impl!(rcv,snd,source,::Type{T}) where T
 end
 
 """
-    emit(snd;source=1)
+    emit(snd;source=MAIN)
 
 Copy `snd[source]` into a new array of the same size and type as `snd`.
 
 # Examples
 
-    julia> using PartitionedArrays
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> a = [0,0,2,0]
-    4-element Vector{Int64}:
-     0
-     0
-     2
-     0
+julia> a = [0,0,2,0]
+4-element Vector{Int64}:
+ 0
+ 0
+ 2
+ 0
 
-    julia> emit(a,source=3)
-    4-element Vector{Int64}:
-     2
-     2
-     2
-     2
+julia> emit(a,source=3)
+4-element Vector{Int64}:
+ 2
+ 2
+ 2
+ 2
+```
 """
-function emit(snd;source=1)
+function emit(snd;source=MAIN)
     T = eltype(snd)
     emit_impl(snd,source,T)
 end
@@ -403,6 +392,7 @@ end
 
 In-place version of [`emit`](@ref). The destination array `rcv`
 can be generated with the helper function [`allocate_emit`](@ref).
+It returns `rcv`.
 """
 function emit!(rcv,snd;source=1)
     T = eltype(snd)
@@ -427,35 +417,31 @@ the first item in the result will be set to `init`.
 
 # Examples
 
-    julia> using PartitionedArrays
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> a = [2,4,1,3]
-    4-element Vector{Int64}:
-     2
-     4
-     1
-     3
+julia> a = [2,4,1,3]
+4-element Vector{Int64}:
+ 2
+ 4
+ 1
+ 3
 
-    julia> scan(+,a,type=:inclusive,init=0)
-    4-element Vector{Int64}:
-      2
-      6
-      7
-     10
-    
-    julia> scan(+,a,type=:exclusive,init=0)
-    4-element Vector{Int64}:
-     0
-     2
-     6
-     7
+julia> scan(+,a,type=:inclusive,init=0)
+4-element Vector{Int64}:
+  2
+  6
+  7
+ 10
 
-    julia> scan(+,a,type=:exclusive,init=1)
-    4-element Vector{Int64}:
-     1
-     3
-     7
-     8
+julia> scan(+,a,type=:exclusive,init=1)
+4-element Vector{Int64}:
+ 1
+ 3
+ 7
+ 8
+```
+
 """
 function scan(op,a;init,type)
     b = similar(a)
@@ -488,29 +474,30 @@ function scan!(op,b,a;init,type)
 end
 
 """
-    reduction(op,a;destination=1[,init])
+    reduction(op, a; destination=MAIN [,init])
 
 Reduce the values in array `a` according with operation
 `op` and the initial value `init` and store the result in
 a new array of the same size as `a` at index `destination`.
 
 # Examples
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> using PartitionedArrays
-    
-    julia> a = [1,3,2,4]
-    4-element Vector{Int64}:
-     1
-     3
-     2
-     4
-    
-    julia> reduction(+,a;init=0,destination=2)
-    4-element Vector{Int64}:
-      0
-     10
-      0
-      0
+julia> a = [1,3,2,4]
+4-element Vector{Int64}:
+ 1
+ 3
+ 2
+ 4
+
+julia> reduction(+,a;init=0,destination=2)
+4-element Vector{Int64}:
+  0
+ 10
+  0
+  0
+```
 """
 function reduction(op,a;kwargs...)
     b = similar(a)
@@ -518,11 +505,11 @@ function reduction(op,a;kwargs...)
 end
 
 """
-    reduction!(op,b,a;destination=1[,init])
+    reduction!(op, b, a;destination=MAIN [,init])
 
 In-place version of [`reduction`](@ref) on the result `b`.
 """
-function reduction!(op,b,a;destination=1,kwargs...)
+function reduction!(op,b,a;destination=MAIN,kwargs...)
   c = gather(a;destination)
   map!(i->reduce(op,i;kwargs...),b,c)
   b
@@ -532,11 +519,11 @@ end
     struct ExchangeGraph{A}
 
 Type representing a directed graph to be used in exchanges,
-see function [`exchange!`](@ref) and [`exchange`](@ref).
+see function [`exchange`](@ref) and [`exchange!`](@ref).
 
 # Properties
-    snd::A
-    rcv::A
+- `snd::A`
+- `rcv::A`
 
 `snd[i]` contains a list of the outgoing neighbors of node `i`.
 `rcv[i]` contains a list of the incomming neighbors of node `i`.
@@ -544,14 +531,19 @@ see function [`exchange!`](@ref) and [`exchange`](@ref).
 
 # Supertype hierarchy
     ExchangeGraph <: Any
-
-This type has enough information to implement the `AbstractGraph` interface
-of the  `Graphs.jl` package. However, we do not really need the functionallity
-of this package here.
 """
 struct ExchangeGraph{A}
     snd::A
     rcv::A
+    @doc """
+        ExchangeGraph(snd,rcv)
+
+    Create an instance of [`ExchangeGraph`](@ref) from the underlying fields.
+    """
+    function ExchangeGraph(snd,rcv)
+        A = typeof(snd)
+        new{A}(snd,convert(A,rcv))
+    end
 end
 Base.reverse(g::ExchangeGraph) = ExchangeGraph(g.rcv,g.snd)
 
@@ -560,7 +552,7 @@ function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
 end
 
 """
-    ExchangeGraph(snd;neighbors=nothing,symmetric=false)
+    ExchangeGraph(snd; symmetric=false [,neighbors])
 
 Create an `ExchangeGraph` object only from the lists of outgoing 
 neighbors in `snd`. If `symmetric==true`, then the incoming neighbors
@@ -685,35 +677,36 @@ received from  node `graph.rcv[i][j]`.
 
 # Examples
 
-    julia> using PartitionedArrays
-    
-    julia> snd_ids = [[3,4],[1,3],[1,4],[2]]
-    4-element Vector{Vector{Int64}}:
-     [3, 4]
-     [1, 3]
-     [1, 4]
-     [2]
-    
-    julia> graph = ExchangeGraph(snd_ids)
-    ExchangeGraph{Vector{Vector{Int64}}} with 4 nodes
-    
-    
-    julia> snd = [[10,10],[20,20],[30,30],[40]]
-    4-element Vector{Vector{Int64}}:
-     [10, 10]
-     [20, 20]
-     [30, 30]
-     [40]
-    
-    julia> t = exchange(snd,graph)
-    Task (done) @0x00007fe9e3850460
-    
-    julia> rcv = fetch(t)
-    4-element Vector{Vector{Int64}}:
-     [20, 30]
-     [40]
-     [10, 20]
-     [10, 30]
+```jldoctest
+julia> using PartitionedArrays
+
+julia> snd_ids = [[3,4],[1,3],[1,4],[2]]
+4-element Vector{Vector{Int64}}:
+ [3, 4]
+ [1, 3]
+ [1, 4]
+ [2]
+
+julia> graph = ExchangeGraph(snd_ids)
+ExchangeGraph{Vector{Vector{Int64}}} with 4 nodes
+
+
+julia> snd = [[10,10],[20,20],[30,30],[40]]
+4-element Vector{Vector{Int64}}:
+ [10, 10]
+ [20, 20]
+ [30, 30]
+ [40]
+
+julia> t = exchange(snd,graph);
+
+julia> rcv = fetch(t)
+4-element Vector{Vector{Int64}}:
+ [20, 30]
+ [40]
+ [10, 20]
+ [10, 30]
+```
 """
 function exchange(snd,graph::ExchangeGraph)
     rcv = allocate_exchange(snd,graph)
@@ -721,12 +714,6 @@ function exchange(snd,graph::ExchangeGraph)
     task
 end
 
-"""
-    exchange_fetch(snd,graph::ExchangeGraph)
-
-Equivalent to `fetch(exchange(snd,graph))`, but
-it can consider more optimizations.
-"""
 function exchange_fetch(snd,graph::ExchangeGraph)
     fetch(exchange(snd,graph))
 end
@@ -735,7 +722,7 @@ end
     allocate_exchange(snd,graph::ExchangeGraph)
 
 Allocate the result to be used in the first argument
-of [`exchange`](@ref).
+of [`exchange!`](@ref).
 """
 function allocate_exchange(snd,graph::ExchangeGraph)
     T = eltype(eltype(snd))
@@ -773,51 +760,12 @@ In-place and asynchronous version of [`exchange`](@ref). This function
 returns immediately and returns a task that produces `rcv` with the updated values.
 Use [`fetch`](@ref) to get the updated version of `rcv`.
 The input `rcv` can be allocated with [`allocate_exchange`](@ref).
-
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> snd = [[10,10],[20,20],[30,30],[40]]
-    4-element Vector{Vector{Int64}}:
-     [10, 10]
-     [20, 20]
-     [30, 30]
-     [40]
-    
-    julia> graph = ExchangeGraph(snd_ids)
-    ExchangeGraph{Vector{Vector{Int64}}} with 4 nodes
-    
-    
-    julia> rcv = allocate_exchange(snd,graph)
-    4-element Vector{Vector{Int64}}:
-     [140477703842832, 140480236018064]
-     [0]
-     [140477373823312, 140477373823344]
-     [140477691773008, 140480035219440]
-
-
-    julia> t = exchange!(rcv,snd,graph)
-    Task (done) @0x00007fe9e73c1cd0
-    
-    julia> rcv = fetch(t)
-    4-element Vector{Vector{Int64}}:
-     [20, 30]
-     [40]
-     [10, 20]
-     [10, 30]
 """
 function exchange!(rcv,snd,graph::ExchangeGraph)
     T = eltype(eltype(snd))
     exchange_impl!(rcv,snd,graph,T)
 end
 
-"""
-    exchange_fetch!(rcv,snd,graph::ExchangeGraph)
-
-Equivalent to `fetch(exchange_fetch!(rcv,snd,graph))`, but
-it can consider more optimizations.
-"""
 function exchange_fetch!(rcv,snd,graph::ExchangeGraph)
     fetch(exchange!(rcv,snd,graph))
 end
@@ -860,5 +808,4 @@ function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
     end
     @async rcv
 end
-
 
