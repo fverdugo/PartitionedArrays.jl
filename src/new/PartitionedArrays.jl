@@ -48,13 +48,13 @@ export allocate_exchange
 include("primitives.jl")
 
 export DebugData
-export with_debug_data
-include("debug_data.jl")
+export with_debug
+include("debug_array.jl")
 
 export MPIData
 export distribute_with_mpi
 export with_mpi
-include("mpi_data.jl")
+include("mpi_array.jl")
 
 export local_range
 export boundary_owner

@@ -4,7 +4,7 @@
 
 ```@autodocs
 Modules = [PartitionedArrays]
-Pages = ["debug_data.jl","mpi_data.jl"]
+Pages = ["debug_array.jl","mpi_array.jl"]
 ```
 
 ## Parallel primitives

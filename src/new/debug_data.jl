@@ -1,10 +1,10 @@
 
 """
-    with_debug_data(f)
+    with_debug(f)
 
 Call `f(DebugData)`.
 """
-function with_debug_data(f)
+function with_debug(f)
     f(DebugData)
 end
 

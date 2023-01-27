@@ -4,7 +4,7 @@ using PartitionedArrays
 
 include(joinpath("..","p_vector_tests.jl"))
 
-with_debug_data(p_vector_tests)
+with_debug(p_vector_tests)
 
 end # module
 

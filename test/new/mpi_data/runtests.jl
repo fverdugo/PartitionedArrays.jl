@@ -3,7 +3,7 @@ module MPIDataRunTests
 using Test
 using PartitionedArrays
 
-@testset "mpi_data" begin include("mpi_data_tests.jl") end
+@testset "mpi_array" begin include("mpi_array_tests.jl") end
 @testset "primitives" begin include("primitives_tests.jl")  end
 @testset "p_range_tests" begin include("p_range_tests.jl")  end
 @testset "p_vector_tests" begin include("p_vector_tests.jl")  end

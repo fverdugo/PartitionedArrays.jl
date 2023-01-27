@@ -3,7 +3,7 @@ module DebugDataRunTests
 using Test
 using PartitionedArrays
 
-@testset "debug_data" begin include("debug_data_tests.jl") end
+@testset "debug_array" begin include("debug_array_tests.jl") end
 
 @testset "primitives" begin include("primitives_tests.jl")  end
 

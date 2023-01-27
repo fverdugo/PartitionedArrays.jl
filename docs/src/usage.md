@@ -118,7 +118,7 @@ with_mpi() do distribute
     ranks[3] # Error!
 end
 ```
-We also provide function `with_debug_data` which allows to easily switch from one back-end to the other.
+We also provide function `with_debug` which allows to easily switch from one back-end to the other.
 For instance, if we define the following main function
 
 ```julia
@@ -131,7 +131,7 @@ function main(distribute)
     end
 end
 ```
-then `with_debug_data(main)` and `with_mpi(main)` will run the code using the
+then `with_debug(main)` and `with_mpi(main)` will run the code using the
 debug back-end and MPI respectively. If you want to run in using native Julia arrays, you can simply call `main(identity)`.
 Make sure that your code works using `DebugData` before moving to MPI.
 
