@@ -47,9 +47,9 @@ export exchange_fetch!
 export allocate_exchange
 include("primitives.jl")
 
-export SequentialData
-export with_sequential_data
-include("sequential_data.jl")
+export DebugData
+export with_debug_data
+include("debug_data.jl")
 
 export MPIData
 export distribute_with_mpi

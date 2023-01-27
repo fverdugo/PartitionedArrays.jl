@@ -1,10 +1,10 @@
-module SequentialDataFDMExample
+module DebugDataFDMExample
 
 using PartitionedArrays
 
 include(joinpath("..","fdm_example.jl"))
 
-with_sequential_data(fdm_example)
+with_debug_data(fdm_example)
 
 end # module
 

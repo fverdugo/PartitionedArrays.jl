@@ -1,9 +1,9 @@
-module SequentialDataPRangeTests
+module DebugDataPRangeTests
 
 using PartitionedArrays
 
 include(joinpath("..","p_range_tests.jl"))
 
-with_sequential_data(p_range_tests)
+with_debug_data(p_range_tests)
 
 end # module

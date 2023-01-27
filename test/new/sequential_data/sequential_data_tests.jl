@@ -1,16 +1,16 @@
-module SequentialDataTests
+module DebugDataTests
 
 using PartitionedArrays
 using Test
 
-distribute(x) = SequentialData(x)
+distribute(x) = DebugData(x)
 
 parts = distribute(CartesianIndices((3,)))
 display(parts)
 
 @test length(parts) == 3
 
-msg = "Scalar indexing on SequentialData is not allowed for performance reasons."
+msg = "Scalar indexing on DebugData is not allowed for performance reasons."
 
 @test_throws ErrorException(msg) parts[end]
 

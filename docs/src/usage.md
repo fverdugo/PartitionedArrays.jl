@@ -97,14 +97,14 @@ after distributing data over MPI processes, is not as flexible as the standard a
 that are not allowed for `MPIData`, mainly for performance reasons. One of them is indexing the array at arbitrary indices.
 In consequence, code that runs with the common Julia arrays might fall when switching to MPI.
 In order to anticipate these type of errors,
-PartitionedArrays provides an special array type called `SequentialData` for debugging purposes.
-The type `SequentialData` tries to mimic the limitations of `MPIData` but it is just a wrapper to a standard
+PartitionedArrays provides an special array type called `DebugData` for debugging purposes.
+The type `DebugData` tries to mimic the limitations of `MPIData` but it is just a wrapper to a standard
 Julia array and therefore can be used in a standard Julia session.
 
 ```julia
 using PartitionedArrays
 np = 4
-ranks = SequentialData(LinearIndices((np,)))
+ranks = DebugData(LinearIndices((np,)))
 ranks[3] # Error!
 ```
 The last line of previous code will throw an error telling that scalar indexing is not allowed. This is to mimic the error
@@ -118,7 +118,7 @@ with_mpi() do distribute
     ranks[3] # Error!
 end
 ```
-We also provide function `with_sequential_data` which allows to easily switch from one back-end to the other.
+We also provide function `with_debug_data` which allows to easily switch from one back-end to the other.
 For instance, if we define the following main function
 
 ```julia
@@ -131,7 +131,7 @@ function main(distribute)
     end
 end
 ```
-then `with_sequential_data(main)` and `with_mpi(main)` will run the code using the
+then `with_debug_data(main)` and `with_mpi(main)` will run the code using the
 debug back-end and MPI respectively. If you want to run in using native Julia arrays, you can simply call `main(identity)`.
-Make sure that your code works using `SequentialData` before moving to MPI.
+Make sure that your code works using `DebugData` before moving to MPI.
 
