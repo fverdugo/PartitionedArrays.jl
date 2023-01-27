@@ -529,6 +529,8 @@ function test_interfaces(parts)
   @test sqeuclidean(w,v) ≈ (norm(w-v))^2
   @test euclidean(w,v) ≈ norm(w-v)
 
+
+  # Broadcast tests
   w = similar(v)
   w = similar(v,Float64)
   w = similar(v,Float64,ids3)
@@ -546,6 +548,22 @@ function test_interfaces(parts)
   w =  v .+ w .- u
   @test isa(w,PVector)
   w =  v .+ 1 .- u
+  @test isa(w,PVector)
+
+  v  = similar(w,Float64)
+  v .= w
+  w  = similar(v)
+  w .= v
+
+  α = 0.2
+  w .=  w .* (1.0/α) .- v .* ((1.0-α)/α)   # DOES NOT FAIL
+  @. w =  w - v                            # DOES NOT FAIL
+  @. w =  w * α                            # DOES NOT FAIL
+  println(@macroexpand @. w =  w * (1.0/α))
+  # The previous line produces on screen:
+  # w .= (*).(w, (/).(1.0, α))
+  @. w =  w * (1.0/α)                      # FAILS! WHY? I guess due to (/).(1.0, α)
+  #@. w =  w * (1.0/α) - v * ((1.0-α)/α)   # FAILS! WHY?
   @test isa(w,PVector)
 
   w .= v .- u
