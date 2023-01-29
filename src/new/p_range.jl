@@ -2,7 +2,26 @@
     abstract type AbstractLocalIndices
 
 Abstract type representing the *local*, *own*, and *ghost* indices in
-a part of an instance of [`PRange`](@ref).
+a "partition" of the indices in a given range `1:n` with length `n`.
+
+# Notation
+
+Be `1:n` an integer range with length `n`. We denote the indices in `1:n` as the 
+*global* indices. Lets consider a partition of `1:n`. The indices in a part
+ in the partition are called the *own* indices of this part.
+I.e., each part *owns* a subset of `1:n`.
+Let us assume that each part is equipped with a second set of indices called the *ghost* indices. 
+The set of ghost indices in a given part is an arbitrary subset
+of the global indices `1:n` that are owned by other parts. The union of the own and ghost
+indices is referred to as the *local* indices of this part.
+
+The sets of own, ghost, and local indices are stored using vector-like containers
+in concrete implementations of `AbstractLocalIndices`. This
+equips these sets with a certain order. The `i`-th own index
+in a part is defined as the one being stored at index `i` in the array that contains
+the own indices in this part (idem for ghost and local indices).
+The map between indices in these ordered index sets are given by functions such as [`local_to_global`](@ref),
+[`own_to_local`](@ref) etc.
 
 # Supertype hierarchy
 
@@ -421,7 +440,10 @@ permute_indices(a,b) = PermutedLocalIndices(a,b)
     uniform_partition(ranks,np,n[,ghost[,periodic]])
 
 Generate an `N` dimensional
-block partition with a (roughly) constant block size.
+block partition of the indices in `LinearIndices(np)` with a (roughly) constant block size.
+The output is a vector of vectors containing the indices in each component of
+the partition. The `eltype` of the result implements the [`AbstractLocalIndices`](@ref)
+interface.
 
 # Arguments
 - `ranks`: Array containing the distribution of ranks.
@@ -431,25 +453,32 @@ block partition with a (roughly) constant block size.
 -  `periodic::NTuple{N}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
 
 For convenience, one can also provide scalar inputs instead tuples
-to create 1D block partitions.
+to create 1D block partitions. In this case, the argument `np` can be omitted
+and it will be computed as `np=length(ranks)`.
 
 # Examples
 
 2D partition of 4x4 indices into 2x2 parts with ghost
 
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> pr = uniform_partition(rank,(2,2),(4,4),(true,true))
-    1:1:16
-    
-    julia> local_to_global(pr)
-    4-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{2, Vector{Int32}}}:
-     [1, 2, 3, 5, 6, 7, 9, 10, 11]
-     [2, 3, 4, 6, 7, 8, 10, 11, 12]
-     [5, 6, 7, 9, 10, 11, 13, 14, 15]
-     [6, 7, 8, 10, 11, 12, 14, 15, 16]
+```jldoctest
+julia> using PartitionedArrays
+
+julia> rank = LinearIndices((4,));
+
+julia> uniform_partition(rank,10)
+4-element Vector{PartitionedArrays.LocalIndicesWithConstantBlockSize{1}}:
+ [1, 2]
+ [3, 4]
+ [5, 6, 7]
+ [8, 9, 10]
+
+julia> uniform_partition(rank,(2,2),(4,4))
+4-element Vector{PartitionedArrays.LocalIndicesWithConstantBlockSize{2}}:
+ [1, 2, 5, 6]
+ [3, 4, 7, 8]
+ [9, 10, 13, 14]
+ [11, 12, 15, 16]
+```
 
 """
 function uniform_partition(rank,np,n,args...)
@@ -468,18 +497,6 @@ function uniform_partition(rank,np,n,args...)
     indices
 end
 
-"""
-    uniform_partition(ranks,n::Integer[,ghost::Bool[,periodic::Bool]])
-
-Generate an  1d dimensional
-block partition with a (roughly) constant block size by inferring the number of parts to use from `ranks`.
-
-# Arguments
-- `ranks`: Array containing the distribution of ranks. The number of parts is taken as `length(ranks)`.
--  `n`: Number of global indices.
--  `ghost`: Use or not ghost indices.
--  `periodic`: Use or not periodic boundaries.
-"""
 function uniform_partition(rank,n::Integer)
     uniform_partition(rank,length(rank),n)
 end
@@ -564,7 +581,10 @@ end
 """
     variable_partition(n_own,n_global[;start])
 
-Build a 1D variable-size block partition.
+Build a 1D variable-size block partition of the range `1:n`.
+The output is a vector of vectors containing the indices in each component of
+the partition. The `eltype` of the result implements the [`AbstractLocalIndices`](@ref)
+interface.
 
 # Arguments
 
@@ -575,23 +595,20 @@ Build a 1D variable-size block partition.
 We ask the user to provide `n_global` and (optionally) `start` since discovering them requires communications.
 
 # Examples
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> n_own = [3,2,2,3];
-    
-    julia> pr = variable_partition(n_own,sum(n_own))
-    1:1:10
-    
-    julia> own_to_global(pr)
-    4-element Vector{PartitionedArrays.BlockPartitionOwnToGlobal{1}}:
-     [1, 2, 3]
-     [4, 5]
-     [6, 7]
-     [8, 9, 10]
+julia> rank = LinearIndices((4,));
 
+julia> n_own = [3,2,2,3];
+
+julia> variable_partition(n_own,sum(n_own))
+4-element Vector{PartitionedArrays.LocalIndicesWithVariableBlockSize{1}}:
+ [1, 2, 3]
+ [4, 5]
+ [6, 7]
+ [8, 9, 10]
+```
 """
 function variable_partition(
     n_own,
@@ -1503,28 +1520,17 @@ function local_to_owner(a::LocalIndicesInBlockPartition)
 end
 
 """
-    struct PRange{A,B}
+    struct PRange{A}
 
 `PRange` (partitioned range) is a type representing a range of indices `1:n_global`
-distributed into several parts. The indices in the range `1:n_global` are called the
-*global* indices. Each global index is *owned* by one part and only one part.
-The set of indices owned by a part are called the *own* indices of this part.
-Each part contains a second set of indices called the *ghost* indices. 
-The set of ghost indices in a given part is an arbitrary subset
-of the global indices that are owned by other parts. The union of the own and ghost
-indices is referred to as the *local* indices of this part.
-The sets of own, ghost, and local indices are stored using vector-like containers,
-which equips them with a certain order. Thus, the `i`-th own index
-in a part is the one being stored at index `i` in the array that contains
-the own indices in this part.
-The same rationale applies for ghost and local indices.
+partitioned into several parts. This type is used to represent the axes of instances
+of [`PVector`](@ref) and [`PSparseMatrix`](@ref).
 
 # Properties
-- `indices::A`: Array-like object with `length(indices)` equal to the number of parts in the partitioned range.
+- `partition::A`
 
-
-The item `indices[i]` is an object that contains information about the own, ghost, and local indices of part number `i`.
-`typeof(indices[i])` is a type that
+The item `partition[i]` is an object that contains information about the own, ghost, and local indices of part number `i`.
+`typeof(partition[i])` is a type that
 implements the methods of the [`AbstractLocalIndices`](@ref) interface. Use this
 interface to access the underlying information about own, ghost, and local indices.
 
@@ -1536,38 +1542,20 @@ interface to access the underlying information about own, ghost, and local indic
 struct PRange{A} <: AbstractUnitRange{Int}
     partition::A
     @doc """
-        PRange(n_global,indices)
+        PRange(partition)
 
-    Build an instance of [`PRange`](@ref) from the underlying properties
-    `n_global` and `indices`.
-
-    # Examples
-   
-        julia> using PartitionedArrays
-        
-        julia> rank = LinearIndices((2,));
-        
-        julia> indices = map(rank) do rank
-                   if rank == 1
-                       LocalIndices(8,1,[1,2,3,4,5],Int32[1,1,1,1,2])
-                   else
-                       LocalIndices(8,2,[4,5,6,7,8],Int32[1,2,2,2,2])
-                   end
-               end;
-        
-        julia> pr = PRange(8,indices)
-        1:1:8
-        
-        julia> local_to_global(pr)
-        2-element Vector{Vector{Int64}}:
-         [1, 2, 3, 4, 5]
-         [4, 5, 6, 7, 8]
+    Build an instance of [`PRange`](@ref) from the underlying `partition`.
     """
-    function PRange(indices)
-        A = typeof(indices)
-        new{A}(indices)
+    function PRange(partition)
+        A = typeof(partition)
+        new{A}(partition)
     end
 end
+"""
+    partition(a::PRange)
+
+Get `a.partition`.
+"""
 partition(a::PRange) = a.partition
 Base.first(a::PRange) = 1
 Base.last(a::PRange) = getany(map(global_length,partition(a)))
@@ -1598,115 +1586,20 @@ end
 
 ##prange(f,args...) = PRange(f(args...))
 
-"""
-    global_length(pr::PRange)
-
-Equivalent to `map(global_length,pr.indices)`.
-"""
 global_length(pr::PRange) = map(local_length,partition(pr))
-
-"""
-    local_length(pr::PRange)
-
-Equivalent to `map(local_length,pr.indices)`.
-"""
 local_length(pr::PRange) = map(local_length,partition(pr))
-
-"""
-    own_length(pr::PRange)
-
-Equivalent to `map(own_length,pr.indices)`.
-"""
 own_length(pr::PRange) = map(own_length,partition(pr))
-
-"""
-    local_to_global(pr::PRange)
-
-Equivalent to `map(local_to_global,pr.indices)`.
-"""
 local_to_global(pr::PRange) = map(local_to_global,partition(pr))
-
-"""
-    own_to_global(pr::PRange)
-
-Equivalent to `map(own_to_global,pr.indices)`.
-"""
 own_to_global(pr::PRange) = map(own_to_global,partition(pr))
-
-"""
-    ghost_to_global(pr::PRange)
-
-Equivalent to `map(ghost_to_global,pr.indices)`.
-"""
 ghost_to_global(pr::PRange) = map(ghost_to_global,partition(pr))
-
-"""
-    local_to_owner(pr::PRange)
-
-Equivalent to `map(local_to_owner,pr.indices)`.
-"""
 local_to_owner(pr::PRange) = map(local_to_owner,partition(pr))
-
-"""
-    own_to_owner(pr::PRange)
-
-Equivalent to `map(own_to_owner,pr.indices)`.
-"""
 own_to_owner(pr::PRange) = map(own_to_owner,partition(pr))
-
-"""
-    ghost_to_owner(pr::PRange)
-
-Equivalent to `map(ghost_to_owner,pr.indices)`.
-"""
 ghost_to_owner(pr::PRange) = map(ghost_to_owner,partition(pr))
-
-"""
-    global_to_local(pr::PRange)
-
-Equivalent to `map(global_to_local,pr.indices)`.
-"""
 global_to_local(pr::PRange) = map(global_to_local,partition(pr))
-
-"""
-    global_to_own(pr::PRange)
-
-Equivalent to `map(global_to_own,pr.indices)`.
-"""
 global_to_own(pr::PRange) = map(global_to_own,partition(pr))
-
-"""
-    global_to_ghost(pr::PRange)
-
-Equivalent to `map(global_to_ghost,pr.indices)`.
-"""
 global_to_ghost(pr::PRange) = map(global_to_ghost,partition(pr))
-
-"""
-    own_to_local(pr::PRange)
-
-Equivalent to `map(own_to_local,pr.indices)`.
-"""
 own_to_local(pr::PRange) = map(own_to_local,partition(pr))
-
-"""
-    ghost_to_local(pr::PRange)
-
-Equivalent to `map(ghost_to_local,pr.indices)`.
-"""
 ghost_to_local(pr::PRange) = map(ghost_to_local,partition(pr))
-
-"""
-    local_to_own(pr::PRange)
-
-Equivalent to `map(local_to_own,pr.indices)`.
-"""
 local_to_own(pr::PRange) = map(local_to_own,partition(pr))
-
-"""
-    local_to_ghost(pr::PRange)
-
-Equivalent to `map(local_to_ghost,pr.indices)`.
-"""
 local_to_ghost(pr::PRange) = map(local_to_ghost,partition(pr))
 

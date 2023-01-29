@@ -1,32 +1,40 @@
-
 # Data partition
 
 ## Partitioners
 
-```@autodocs
-Modules = [PartitionedArrays]
-Pages = ["partition.jl"]
-```
-
-## PRange
-
-```@autodocs
-Modules = [PartitionedArrays]
-Pages = ["p_range.jl"]
+```@docs
+uniform_partition
+variable_partition
 ```
 
 ## AbstractLocalIndices
 
-```@autodocs
-Modules = [PartitionedArrays]
-Pages = ["abstract_local_indices.jl"]
+```@docs
+AbstractLocalIndices
+local_to_global
+own_to_global
+ghost_to_global
+local_to_owner
+own_to_owner
+ghost_to_owner
+global_to_local
+global_to_own
+global_to_ghost
+own_to_local
+ghost_to_local
+local_to_own
+local_to_ghost
+local_length
+own_length
+ghost_length
+global_length
+part_id
 ```
 
-## Concrete Implementations
+## PRange
 
-```@autodocs
-Modules = [PartitionedArrays]
-Pages = ["local_indices.jl"]
+```@docs
+PRange
+partition(::PRange)
 ```
-
 

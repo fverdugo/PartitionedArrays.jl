@@ -119,7 +119,7 @@ function allocate_local_values(::Type{<:OwnAndGhostVectors{A}},indices) where {A
 end
 
 """
-    struct PVector{T,A,B}
+    struct PVector{V,A,B,...}
 
 `PVector` (partitioned vector) is a type representing a vector whose entries are
 distributed (a.k.a. partitioned) over different parts for distributed-memory
@@ -130,22 +130,29 @@ parallel implementations.
 
 # Properties
 
-- `values::A`: A vector such that `values[i]` contains the vector of local values of the `i`-th part in the data distribution. The first type parameter `V` corresponds to `typeof(values[i])` i.e. the vector type used to store the local values.
-- `rows::B`: An instance of `PRange` describing the distribution of the rows.
+- `vector_partition::A`
+- `index_partition::B`
+
+`vector_partition[i]` contains the vector of local values of the `i`-th part in the data distribution. The first type parameter `V` corresponds to `typeof(values[i])` i.e. the vector type used to store the local values. The item `index_partition[i]` implements the [`AbstractLocalIndices`](@ref) interface providing information about the
+local, own, and ghost indices in the `i`-th part.
+
+The rest of fields of this struct and type parameters are private.
 
 # Supertype hierarchy
 
-    PVector{T,A,B} <: AbstractVector{T}
+    PVector{V,A,B,...} <: AbstractVector{T}
+
+with `T=eltype(V)`.
 """
 struct PVector{V,A,B,C,T} <: AbstractVector{T}
     vector_partition::A
     index_partition::B
     cache::C
     @doc """
-        PVector(values,rows)
+        PVector(vector_partition,index_partition)
 
     Create an instance of [`PVector`](@ref) from the underlying properties
-    `values` and `rows`.
+    `vector_partition` and `index_partition`.
     """
     function PVector(
             vector_partition,
@@ -356,27 +363,33 @@ It returns a task that produces `a` with updated values. After the transfer,
 the source ghost values are set to zero.
 
 # Examples
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
-    1:1:6
-    
-    julia> a = pones(rows);
-    
-    julia> local_values(a)
-    2-element Vector{Vector{Float64}}:
-     [1.0, 1.0, 1.0, 1.0]
-     [1.0, 1.0, 1.0, 1.0]
-    
-    julia> assemble!(a) |> wait
-    
-    julia> local_values(a)
-    2-element Vector{Vector{Float64}}:
-     [1.0, 1.0, 2.0, 0.0]
-     [0.0, 2.0, 1.0, 1.0]
+julia> rank = LinearIndices((2,));
+
+julia> row_partition = uniform_partition(rank,6,true);
+
+julia> map(local_to_global,row_partition)
+2-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{1, Vector{Int32}}}:
+ [1, 2, 3, 4]
+ [3, 4, 5, 6]
+
+julia> a = pones(row_partition)
+6-element PVector{Vector{Float64}} partitioned into 2 parts
+
+julia> local_values(a)
+2-element Vector{Vector{Float64}}:
+ [1.0, 1.0, 1.0, 1.0]
+ [1.0, 1.0, 1.0, 1.0]
+
+julia> assemble!(a) |> wait
+
+julia> local_values(a)
+2-element Vector{Vector{Float64}}:
+ [1.0, 1.0, 2.0, 0.0]
+ [0.0, 2.0, 1.0, 1.0]
+```
 """
 function assemble!(a::PVector)
     assemble!(+,a)
@@ -402,26 +415,33 @@ part that owns the associated global global id.
 
 # Examples
 
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
-    1:1:6
-    
-    julia> a = pvector(inds->fill(part_id(inds),length(inds)),rows);
-    
-    julia> local_values(a)
-    2-element Vector{Vector{Int32}}:
-     [1, 1, 1, 1]
-     [2, 2, 2, 2]
-    
-    julia> consistent!(a) |> wait
-    
-    julia> local_values(a)
-    2-element Vector{Vector{Int32}}:
-     [1, 1, 1, 2]
-     [1, 2, 2, 2]
+```jldoctest
+julia> using PartitionedArrays
+
+julia> rank = LinearIndices((2,));
+
+julia> row_partition = uniform_partition(rank,6,true);
+
+julia> map(local_to_global,row_partition)
+2-element Vector{PartitionedArrays.BlockPartitionLocalToGlobal{1, Vector{Int32}}}:
+ [1, 2, 3, 4]
+ [3, 4, 5, 6]
+
+julia> a = pvector(inds->fill(part_id(inds),length(inds)),row_partition)
+6-element PVector{Vector{Int32}} partitioned into 2 parts
+
+julia> local_values(a)
+2-element Vector{Vector{Int32}}:
+ [1, 1, 1, 1]
+ [2, 2, 2, 2]
+
+julia> consistent!(a) |> wait
+
+julia> local_values(a)
+2-element Vector{Vector{Int32}}:
+ [1, 1, 1, 2]
+ [1, 2, 2, 2]
+```
 """
 function consistent!(a::PVector)
     insert(a,b) = b
@@ -484,38 +504,27 @@ function Base.fill!(a::PVector,v)
 end
 
 """
-    pvector(f,rows::PRange)
-
-Create a [`PVector`](@ref) instance defined over the partitioned range `rows`,
-by initializing the local values with function `f`. The signature of `f` is
-`f(indices)`, where `indices` are the local indices in the corresponding part.
+    pvector(f,index_partition)
 
 Equivalent to 
 
-    values = map(f,rows.indices)
-    PVector(values,rows)
+    vector_partition = map(f,index_partition)
+    PVector(vector_partition,index_partition)
 
-# Examples
-
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((2,));
-    
-    julia> rows = PRange(ConstantBlockSize(),rank,2,6,true)
-    1:1:6
-
-    julia> a = pvector(i->rand(1:3,length(i)),rows);
-    
-    julia> local_values(a)
-    2-element Vector{Vector{Int64}}:
-     [2, 1, 1, 3]
-     [3, 3, 2, 3]
 """
 function pvector(f,index_partition)
     vector_partition = map(f,index_partition)
     PVector(vector_partition,index_partition)
 end
 
+"""
+    pvector!([f,]I,V,index_partition;discover_rows=true) -> Task
+
+Crate an instance of [`PVector`](@ref) by setting arbitrary entries
+from each of the underlying parts. It returns a task that produces the
+instance of [`PVector`](@ref) allowing latency hiding while performing
+the communications needed in its setup.
+"""
 function pvector!(f,I,V,index_partition;discover_rows=true)
     if discover_rows
         I_owner = find_owner(index_partition,I)
@@ -546,39 +555,36 @@ function default_local_values(I,V,indices)
 end
 
 """
-    pfill(v,rows::PRange)
-
-Create a [`PVector`](@ref) object with the data partition in `rows`
-with all entries equal to `v`.
+    pfill(v,index_partition)
 """
 pfill(v,index_partition) = pvector(indices->fill(v,local_length(indices)),index_partition)
 
 """
-    pzeros(rows::PRange)
-    pzeros(::Type{T},rows::PRange) where T
+    pzeros(index_partition)
+    pzeros(::Type{T},index_partition) where T
 
 Equivalent to
 
-    pfill(zero(T),rows)
+    pfill(zero(T),index_partition)
 """
 pzeros(index_partition) = pzeros(Float64,index_partition)
 pzeros(::Type{T},index_partition) where T = pvector(indices->zeros(T,local_length(indices)),index_partition)
 
 """
-    pones(rows::PRange)
-    pones(::Type{T},rows::PRange) where T
+    pones(index_partition)
+    pones(::Type{T},index_partition) where T
 
 Equivalent to
 
-    pfill(one(T),rows)
+    pfill(one(T),index_partition)
 """
 pones(index_partition) = pones(Float64,index_partition)
 pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(indices)),index_partition)
 
 """
-    prand([rng,][s,]rows::PRange)
+    prand([rng,][s,]index_partition)
 
-Create a [`PVector`](@ref) object with uniform random values and the data partition in `rows`.
+Create a [`PVector`](@ref) object with uniform random values and the data partition in `index_partition`.
 The optional arguments have the same meaning and default values as in `rand`.
 """
 prand(index_partition) = pvector(indices->rand(local_length(indices)),index_partition)
@@ -586,9 +592,9 @@ prand(s,index_partition) = pvector(indices->rand(s,local_length(indices)),index_
 prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)),index_partition)
 
 """
-    prandn([rng,][s,]rows::PRange)
+    prandn([rng,][s,]index_partition)
 
-Create a [`PVector`](@ref) object with normally distributed random values and the data partition in `rows`.
+Create a [`PVector`](@ref) object with normally distributed random values and the data partition in `index_partition`.
 The optional arguments have the same meaning and default values as in `randn`.
 """
 prandn(index_partition) = pvector(indices->randn(local_length(indices)),index_partition)

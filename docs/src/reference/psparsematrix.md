@@ -1,7 +1,9 @@
 # PSparseMatrix
 
-```@autodocs
-Modules = [PartitionedArrays]
-Pages = ["p_sparse_matrix.jl"]
-```
+## Type signature
 
+## Accessors
+
+## Constructors
+
+## Assembly
