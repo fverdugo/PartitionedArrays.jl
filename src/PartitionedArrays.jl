@@ -1,3 +1,5 @@
+module PartitionedArrays
+
 using SparseArrays
 using SparseMatricesCSR
 using LinearAlgebra
@@ -127,3 +129,4 @@ export toc!
 export print_timer
 include("p_timer.jl")
 
+end # module
