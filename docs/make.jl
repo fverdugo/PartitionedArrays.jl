@@ -14,7 +14,7 @@ makedocs(
     ),
     modules = [PartitionedArrays],
     pages = [
-        "Home" => "index.md",
+        "Introduction" => "index.md",
         "usage.md",
         "examples.md",
         "Reference" =>[
