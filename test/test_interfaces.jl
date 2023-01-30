@@ -552,20 +552,24 @@ function test_interfaces(parts)
 
   v  = similar(w,Float64)
   v .= w
+  
   w  = similar(v)
   w .= v
-
+  
   α = 0.2
-  w .=  w .* (1.0/α) .- v .* ((1.0-α)/α)   # DOES NOT FAIL
-  @. w =  w - v                            # DOES NOT FAIL
-  @. w =  w * α                            # DOES NOT FAIL
-  println(@macroexpand @. w =  w * (1.0/α))
-  # The previous line produces on screen:
-  # w .= (*).(w, (/).(1.0, α))
-  @. w =  w * (1.0/α)                      # FAILS! WHY? I guess due to (/).(1.0, α)
-  #@. w =  w * (1.0/α) - v * ((1.0-α)/α)   # FAILS! WHY?
-  @test isa(w,PVector)
-
+  w .=  w .* (1.0/α)
+  @. v =  v * (1.0/α)
+  map_parts(w.values,v.values) do w,v
+    @test w == v
+  end
+  
+  v .= w
+  w .=  (1.0/α) .* w 
+  @. v = (1.0/α) * v 
+  map_parts(w.values,v.values) do w,v
+    @test w == v
+  end
+     
   w .= v .- u
   w .= v .- 1 .- u
   w .= u

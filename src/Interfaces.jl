@@ -1856,6 +1856,20 @@ end
 function Base.broadcasted(
   f,
   a::Union{PVector,DistributedBroadcasted},
+  b::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}})
+ Base.broadcasted(f,a,Base.materialize(b))
+end
+
+function Base.broadcasted(
+  f,
+  a::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}},
+  b::Union{PVector,DistributedBroadcasted})
+  Base.broadcasted(f,Base.materialize(a),b)
+end
+
+function Base.broadcasted(
+  f,
+  a::Union{PVector,DistributedBroadcasted},
   b::Number)
 
   owned_values = map_parts(a->Base.broadcasted(f,a,b),a.owned_values)
