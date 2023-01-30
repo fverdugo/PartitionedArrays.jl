@@ -22,6 +22,6 @@ See the documentation to learn more about this library.
 This package is under active development and there are several ways to contribute:
 
 - by enhancing the documentation.
-- by addressing one of the issues [issues waiting for help](https://github.com/fverdugo/PartitionedArrays.jl/labels/help%20wanted).
+- by addressing one of the [issues waiting for help](https://github.com/fverdugo/PartitionedArrays.jl/labels/help%20wanted).
 - by extending the current functionality. In this case, open a discussion [here](https://github.com/fverdugo/PartitionedArrays.jl/discussions) to coordinate with the package maintainers before proposing significant changes.
 
