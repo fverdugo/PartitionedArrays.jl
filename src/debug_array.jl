@@ -161,9 +161,11 @@ function exchange_impl!(
     graph::ExchangeGraph{<:DebugArray},
     ::Type{T}) where T
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    t = exchange_impl!(rcv.items,snd.items,g,T)
-    rcv = DebugArray(fetch(t))
-    @async rcv
+    @async begin
+        sleep(0.2) # This is to make more likely to have errors if we don't wait
+        exchange_impl!(rcv.items,snd.items,g,T) |> wait
+        rcv
+    end
 end
 
 function exchange_impl!(
@@ -172,8 +174,10 @@ function exchange_impl!(
     graph::ExchangeGraph{<:DebugArray},
     ::Type{T}) where T <: AbstractVector
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    t = exchange_impl!(rcv.items,snd.items,g,T)
-    rcv = DebugArray(fetch(t))
-    @async rcv
+    @async begin
+        sleep(0.2) # This is to make more likely to have errors if we don't wait
+        exchange_impl!(rcv.items,snd.items,g,T) |> wait
+        rcv
+    end
 end
 
