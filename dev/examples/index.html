@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · PartitionedArrays.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/custom.css" rel="stylesheet" type="text/css"/><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="PartitionedArrays.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">PartitionedArrays.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><a class="tocitem" href="../usage/">Usage</a></li><li class="is-active"><a class="tocitem" href>Examples</a><ul class="internal"><li><a class="tocitem" href="#Hello,-world!"><span>Hello, world!</span></a></li><li><a class="tocitem" href="#Collective-communication"><span>Collective communication</span></a></li><li><a class="tocitem" href="#Point-to-point-communication"><span>Point-to-point communication</span></a></li><li><a class="tocitem" href="#Distributed-sparse-linear-solve"><span>Distributed sparse linear solve</span></a></li></ul></li><li><span class="tocitem">Reference</span><ul><li><a class="tocitem" href="../reference/backends/">Back-ends</a></li><li><a class="tocitem" href="../reference/arraymethods/">Array methods</a></li><li><a class="tocitem" href="../reference/primitives/">Parallel primitives</a></li><li><a class="tocitem" href="../reference/partition/">Data partition</a></li><li><a class="tocitem" href="../reference/pvector/">PVector</a></li><li><a class="tocitem" href="../reference/psparsematrix/">PSparseMatrix</a></li><li><a class="tocitem" href="../reference/advanced/">Advanced</a></li><li><a class="tocitem" href="../reference/helpers/">Helpers</a></li></ul></li><li><a class="tocitem" href="../refindex/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Examples</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Examples</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/fverdugo/PartitionedArrays.jl/blob/master/docs/examples.jl" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h1><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>The following examples are run with the native Julia arrays for demo purposes. Substituting <code>LinearIndices((np,))</code> by <code>distribute_with_mpi(LinearIndices((np,)))</code> will convert them to distributed drivers. To learn how to run the examples with MPI, see the <a href="../usage/#Usage">Usage</a> section.</p></div></div><h2 id="Hello,-world!"><a class="docs-heading-anchor" href="#Hello,-world!">Hello, world!</a><a id="Hello,-world!-1"></a><a class="docs-heading-anchor-permalink" href="#Hello,-world!" title="Permalink"></a></h2><pre><code class="language-julia hljs">using PartitionedArrays
+np = 4
+ranks = LinearIndices((np,))
+map(ranks) do rank
+    println(&quot;Hello, world! I am proc $rank of $np.&quot;)
+end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Hello, world! I am proc 1 of 4.
+Hello, world! I am proc 2 of 4.
+Hello, world! I am proc 3 of 4.
+Hello, world! I am proc 4 of 4.</code></pre><h2 id="Collective-communication"><a class="docs-heading-anchor" href="#Collective-communication">Collective communication</a><a id="Collective-communication-1"></a><a class="docs-heading-anchor-permalink" href="#Collective-communication" title="Permalink"></a></h2><p>The first rank generates an array of random integers in <code>1:30</code> and scatters it over all ranks. Each rank counts the number of even items in its part. Finally, the partial sums are reduced in the first rank.</p><p>The first rank generates the data to send.</p><pre><code class="language-julia hljs">using PartitionedArrays
+np = 4
+load = 3
+n = load*np
+ranks = LinearIndices((np,))
+a_snd = map(ranks) do rank
+    if rank == 1
+        a = rand(1:30,n)
+        [ a[(1:load).+(i-1)*load] for i in 1:np ]
+    else
+        [ Int[] ]
+    end
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Vector{Int64}}}:
+ [[22, 27, 27], [19, 11, 19], [4, 13, 7], [20, 21, 12]]
+ [[]]
+ [[]]
+ [[]]</code></pre><p>Note that only the first entry contains meaningful data in previous output.</p><pre><code class="language-julia hljs">a_rcv = scatter(a_snd,source=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Int64}}:
+ [22, 27, 27]
+ [19, 11, 19]
+ [4, 13, 7]
+ [20, 21, 12]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
+ 2
+ 3
+ 2
+ 1</code></pre><p>Finally we reduce the partial sums.</p><pre><code class="language-julia hljs">b_rcv = reduction(+,b_snd,init=0,destination=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
+ 8
+ 0
+ 0
+ 0</code></pre><p>Only the destination rank will receive the correct result.</p><h2 id="Point-to-point-communication"><a class="docs-heading-anchor" href="#Point-to-point-communication">Point-to-point communication</a><a id="Point-to-point-communication-1"></a><a class="docs-heading-anchor-permalink" href="#Point-to-point-communication" title="Permalink"></a></h2><p>Each rank generates some message (in this case an integer 10 times the current rank id). Each rank sends this data to the next rank. The last one sends it to the first, closing the circle. After repeating this exchange a number of times equal to the number of ranks, we check that we ended up with the original message.</p><p>First, each rank generates the ids of the neighbor to send data to.</p><pre><code class="language-julia hljs">using PartitionedArrays
+np = 3
+ranks = LinearIndices((np,))
+neigs_snd = map(ranks) do rank
+    if rank != np
+        [rank + 1]
+    else
+        [1]
+    end
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element Vector{Vector{Int64}}:
+ [2]
+ [3]
+ [1]</code></pre><p>Now, generate the data we want to send</p><pre><code class="language-julia hljs">data_snd = map(ranks) do rank
+    [10*rank]
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element Vector{Vector{Int64}}:
+ [10]
+ [20]
+ [30]</code></pre><p>Prepare, the point-to-point communication graph</p><pre><code class="language-julia hljs">graph = ExchangeGraph(neigs_snd)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">ExchangeGraph{Vector{Vector{Int64}}} with 3 nodes
+</code></pre><p>Do the first exchange, and wait for the result to arrive</p><pre><code class="language-julia hljs">data_rcv = exchange(data_snd,graph) |&gt; fetch</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element Vector{Vector{Int64}}:
+ [30]
+ [10]
+ [20]</code></pre><p>Do the second exchange and wait for the result to arrive</p><pre><code class="language-julia hljs">map(copy!,data_snd,data_rcv)
+exchange!(data_rcv,data_snd,graph) |&gt; fetch</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element Vector{Vector{Int64}}:
+ [20]
+ [30]
+ [10]</code></pre><p>Do the last exchange</p><pre><code class="language-julia hljs">map(copy!,data_snd,data_rcv)
+exchange!(data_rcv,data_snd,graph) |&gt; fetch</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element Vector{Vector{Int64}}:
+ [10]
+ [20]
+ [30]</code></pre><p>Check that we got the initial message</p><pre><code class="language-julia hljs">map(ranks,data_rcv) do rank,data_rcv
+    @assert data_rcv == [10*rank]
+end;</code></pre><h2 id="Distributed-sparse-linear-solve"><a class="docs-heading-anchor" href="#Distributed-sparse-linear-solve">Distributed sparse linear solve</a><a id="Distributed-sparse-linear-solve-1"></a><a class="docs-heading-anchor-permalink" href="#Distributed-sparse-linear-solve" title="Permalink"></a></h2><p>Solve the following linear system by distributing it over several parts.</p><p class="math-container">\[\begin{pmatrix}
+1 &amp;  0 &amp;  0 &amp;  0 &amp;  0 \\
+-1 &amp; 2 &amp; -1 &amp;  0 &amp;  0 \\
+0 &amp; -1 &amp; 2 &amp; -1 &amp;  0 \\
+0 &amp;  0 &amp; -1 &amp; 2 &amp; -1 \\
+0 &amp;  0 &amp;  0 &amp;  0 &amp;  1
+\end{pmatrix}
+\begin{pmatrix}
+u₁ \\
+u₂ \\
+u₃ \\
+u₄ \\
+u₅
+\end{pmatrix}
+=
+\begin{pmatrix}
+ 1 \\
+ 0 \\
+ 0 \\
+ 0 \\
+-1
+\end{pmatrix}\]</p><p>First generate the row partition</p><pre><code class="language-julia hljs">using PartitionedArrays
+using IterativeSolvers
+using LinearAlgebra
+np = 3
+n = 5
+ranks = LinearIndices((np,))
+row_partition = uniform_partition(ranks,n)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element Vector{PartitionedArrays.LocalIndicesWithConstantBlockSize{1}}:
+ [1]
+ [2, 3]
+ [4, 5]</code></pre><p>Compute the rhs vector</p><pre><code class="language-julia hljs">IV = map(row_partition) do row_indices
+    I,V = Int[], Float64[]
+    for global_row in local_to_global(row_indices)
+        if global_row == 1
+            v = 1.0
+        elseif global_row == n
+            v = -1.0
+        else
+            continue
+        end
+        push!(I,global_row)
+        push!(V,v)
+    end
+    I,V
+end
+I,V = tuple_of_arrays(IV)
+b = pvector!(I,V,row_partition) |&gt; fetch</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">5-element PVector{Vector{Float64}} partitioned into 3 parts
+</code></pre><p>Compute the system matrix</p><pre><code class="language-julia hljs">IJV = map(row_partition) do row_indices
+    I,J,V = Int[], Int[], Float64[]
+    for global_row in local_to_global(row_indices)
+        if global_row in (1,n)
+            push!(I,global_row)
+            push!(J,global_row)
+            push!(V,1.0)
+        else
+            push!(I,global_row)
+            push!(J,global_row-1)
+            push!(V,-1.0)
+            push!(I,global_row)
+            push!(J,global_row)
+            push!(V,2.0)
+            push!(I,global_row)
+            push!(J,global_row+1)
+            push!(V,-1.0)
+        end
+    end
+    I,J,V
+end
+I,J,V = tuple_of_arrays(IJV)
+col_partition = row_partition
+A = psparse!(I,J,V,row_partition,col_partition) |&gt; fetch</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">5×5 PSparseMatrix{SparseArrays.SparseMatrixCSC{Float64, Int64}} partitioned into 3 parts
+</code></pre><p>Generate an initial guess that fulfills the boundary conditions. Solve and check the result</p><pre><code class="language-julia hljs">x = similar(b,axes(A,2))
+x .= b
+IterativeSolvers.cg!(x,A,b)
+r = A*x - b
+norm(r)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3.1401849173675503e-16</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../reference/backends/">Back-ends »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Monday 30 January 2023 17:45">Monday 30 January 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
