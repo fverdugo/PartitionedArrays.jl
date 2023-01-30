@@ -7,6 +7,7 @@ src_dir = joinpath(@__DIR__,"src")
 Literate.markdown(examples_jl,src_dir)
 
 makedocs(
+    strict=true,
     sitename = "PartitionedArrays.jl",
     format = Documenter.HTML(
         assets = ["assets/custom.css", "assets/favicon.ico",],

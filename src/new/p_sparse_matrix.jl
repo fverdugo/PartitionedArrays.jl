@@ -43,6 +43,8 @@ function ghost_own_values(values,indices_rows,indices_cols)
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
+"""
+"""
 struct PSparseMatrix{V,A,B,C,D,T} <: AbstractMatrix{T}
     matrix_partition::A
     row_partition::B
@@ -68,22 +70,32 @@ end
 partition(a::PSparseMatrix) = a.matrix_partition
 Base.axes(a::PSparseMatrix) = (PRange(a.row_partition),PRange(a.col_partition))
 
+"""
+"""
 function local_values(a::PSparseMatrix)
     partition(a)
 end
 
+"""
+"""
 function own_values(a::PSparseMatrix)
     map(own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
+"""
+"""
 function ghost_values(a::PSparseMatrix)
     map(ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
+"""
+"""
 function own_ghost_values(a::PSparseMatrix)
     map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
+"""
+"""
 function ghost_own_values(a::PSparseMatrix)
     map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
@@ -188,6 +200,8 @@ function assemble!(a::PSparseMatrix)
     assemble!(+,a)
 end
 
+"""
+"""
 function assemble!(o,a::PSparseMatrix)
     t = assemble!(o,partition(a),a.cache)
     @async begin
@@ -357,6 +371,8 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     c
 end
 
+"""
+"""
 function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true)
     if discover_rows
         I_owner = find_owner(row_partition,I)
@@ -378,6 +394,8 @@ function psparse!(I,J,V,row_partition,col_partition;kwargs...)
     psparse!(default_local_values,I,J,V,row_partition,col_partition;kwargs...)
 end
 
+"""
+"""
 function psparse(f,row_partition,col_partition)
     matrix_partition = map(f,row_partition,col_partition)
     PSparseMatrix(matrix_partition,row_partition,col_partition)

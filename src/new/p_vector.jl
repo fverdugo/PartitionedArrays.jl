@@ -38,7 +38,7 @@ Use this type to avoid duplicating memory when passing data to these other packa
 
 - `own_values::A`: The vector of own values.
 - `ghost_values::A`: The vector of ghost values.
-- `perm::C`: A permutation vector such that `vcat(own_values,ghost_values)[perm]` corresponds to the local values.
+- `permumation::C`: A permutation vector such that `vcat(own_values,ghost_values)[permutation]` corresponds to the local values.
 
 # Supertype hierarchy
 
@@ -47,14 +47,7 @@ Use this type to avoid duplicating memory when passing data to these other packa
 struct OwnAndGhostVectors{A,C,T} <: AbstractVector{T}
     own_values::A
     ghost_values::A
-    perm::C
-    @doc """
-        OwnAndGhostVectors{A,C}(own_values,ghost_values,perm) where {A,C}
-        OwnAndGhostVectors{A}(own_values,ghost_values,perm) where {A}
-        OwnAndGhostVectors(own_values::A,ghost_values::A,perm) where A
-
-    Build an instance of [`OwnAndGhostVectors`](@ref) from the underlying fields.
-    """
+    permutation::C
     function OwnAndGhostVectors{A,C}(own_values,ghost_values,perm) where {A,C}
         T = eltype(A)
         new{A,C,T}(
@@ -67,14 +60,21 @@ function OwnAndGhostVectors{A}(own_values,ghost_values,perm) where A
     C = typeof(perm)
     OwnAndGhostVectors{A,C}(own_values,ghost_values,perm)
 end
-function OwnAndGhostVectors(own_values::A,ghost_values::A,perm) where A
+
+"""
+    OwnAndGhostVectors(own_values,ghost_values,permutation)
+
+Build an instance of [`OwnAndGhostVectors`](@ref) from the underlying fields.
+"""
+function OwnAndGhostVectors(own_values,ghost_values,perm)
+    A = typeof(own_values)
     OwnAndGhostVectors{A}(own_values,ghost_values,perm)
 end
 Base.IndexStyle(::Type{<:OwnAndGhostVectors}) = IndexLinear()
 Base.size(a::OwnAndGhostVectors) = (length(a.own_values)+length(a.ghost_values),)
 function Base.getindex(a::OwnAndGhostVectors,local_id::Int)
     n_own = length(a.own_values)
-    j = a.perm[local_id]
+    j = a.permutation[local_id]
     if j > n_own
         a.ghost_values[j-n_own]
     else
@@ -83,7 +83,7 @@ function Base.getindex(a::OwnAndGhostVectors,local_id::Int)
 end
 function Base.setindex!(a::OwnAndGhostVectors,v,local_id::Int)
     n_own = length(a.own_values)
-    j = a.perm[local_id]
+    j = a.permutation[local_id]
     if j > n_own
         a.ghost_values[j-n_own] = v
     else
@@ -473,6 +473,9 @@ end
 function PVector(::UndefInitializer,index_partition)
     PVector{Vector{Float64}}(undef,index_partition)
 end
+
+"""
+"""
 function PVector{V}(::UndefInitializer,index_partition) where V
     vector_partition = map(index_partition) do indices
         allocate_local_values(V,indices)

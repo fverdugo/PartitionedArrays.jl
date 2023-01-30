@@ -16,6 +16,7 @@ ghost_values(::PVector)
 
 ```@docs
 PVector(a,b)
+PVector{V}(::UndefInitializer,b) where V
 pvector
 pvector!
 pfill

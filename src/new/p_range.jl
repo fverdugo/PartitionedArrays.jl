@@ -2,22 +2,23 @@
     abstract type AbstractLocalIndices
 
 Abstract type representing the *local*, *own*, and *ghost* indices in
-a "partition" of the indices in a given range `1:n` with length `n`.
+a part of a partition of a range `1:n` with length `n`.
 
 # Notation
 
-Be `1:n` an integer range with length `n`. We denote the indices in `1:n` as the 
-*global* indices. Lets consider a partition of `1:n`. The indices in a part
+Let `1:n` be an integer range with length `n`. We denote the indices in `1:n` as the 
+*global* indices. Let us consider a partition of `1:n`. The indices in a part
  in the partition are called the *own* indices of this part.
-I.e., each part *owns* a subset of `1:n`.
+I.e., each part *owns* a subset of `1:n`. All these subsets are disjoint.
 Let us assume that each part is equipped with a second set of indices called the *ghost* indices. 
 The set of ghost indices in a given part is an arbitrary subset
 of the global indices `1:n` that are owned by other parts. The union of the own and ghost
-indices is referred to as the *local* indices of this part.
+indices is referred to as the *local* indices of this part. The sets of local indices might overlap
+between the different parts.
 
 The sets of own, ghost, and local indices are stored using vector-like containers
 in concrete implementations of `AbstractLocalIndices`. This
-equips these sets with a certain order. The `i`-th own index
+equips them with a certain order. The `i`-th own index
 in a part is defined as the one being stored at index `i` in the array that contains
 the own indices in this part (idem for ghost and local indices).
 The map between indices in these ordered index sets are given by functions such as [`local_to_global`](@ref),
@@ -264,30 +265,40 @@ function to_global!(I,indices)
 end
 
 """
-    find_owner(indices,global_ids)
+    find_owner(index_partition,global_ids)
 
 Find the owners of the global ids in `global_ids`. The input `global_ids` is
-a vector of vectors distributed over the same parts as `pr`. Each part will
+a vector of vectors distributed over the same parts as `index_partition`. Each part will
 look for the owners in parallel, when using a parallel back-end.
 
 # Example
 
+```jldoctest
+julia> using PartitionedArrays
 
-    julia> using PartitionedArrays
-    
-    julia> rank = LinearIndices((4,));
-    
-    julia> pr = PRange(ConstantBlockSize(),rank,4,10)
-    1:1:10
-    
-    julia> gids = [[3],[4,5],[7,2],[9,10,1]];
-    
-    julia> find_owner(pr,gids)
-    4-element Vector{Vector{Int32}}:
-     [2]
-     [2, 3]
-     [3, 1]
-     [4, 4, 1]
+julia> rank = LinearIndices((4,));
+
+julia> index_partition = uniform_partition(rank,10)
+4-element Vector{PartitionedArrays.LocalIndicesWithConstantBlockSize{1}}:
+ [1, 2]
+ [3, 4]
+ [5, 6, 7]
+ [8, 9, 10]
+
+julia> gids = [[3],[4,5],[7,2],[9,10,1]]
+4-element Vector{Vector{Int64}}:
+ [3]
+ [4, 5]
+ [7, 2]
+ [9, 10, 1]
+
+julia> find_owner(index_partition,gids)
+4-element Vector{Vector{Int32}}:
+ [2]
+ [2, 3]
+ [3, 1]
+ [4, 4, 1]
+```
 """
 function find_owner(indices,global_ids)
     find_owner(indices,global_ids,eltype(indices))
@@ -458,7 +469,7 @@ and it will be computed as `np=length(ranks)`.
 
 # Examples
 
-2D partition of 4x4 indices into 2x2 parts with ghost
+2D partition of 4x4 indices into 2x2 parts without ghost
 
 ```jldoctest
 julia> using PartitionedArrays
@@ -728,7 +739,7 @@ Build an instance of [`OwnIndices`](@ref) from the underlying properties `n_glob
 `owner`, and `own_to_global`. The types of these variables need to match
 the type of the properties in [`OwnIndices`](@ref).
 """
-function OwnIndices(n_global::Int,owner::Integer,own_to_global::Vector{Int})
+function OwnIndices(n_global,owner,own_to_global)
     n_own = length(own_to_global)
     global_to_own = VectorFromDict(
       own_to_global,Int32.(1:n_own),n_global)
@@ -923,7 +934,7 @@ end
 """
     struct LocalIndices
 
-Container for local indices.
+Container for arbitrary local indices.
 
 # Properties
 
@@ -960,11 +971,7 @@ Build an instance of [`LocalIndices`](@ref) from the underlying properties
  The types of these variables need to match
 the type of the properties in [`LocalIndices`](@ref).
 """
-function LocalIndices(
-    n_global::Integer,
-    owner::Integer,
-    local_to_global::Vector{Int},
-    local_to_owner::Vector{Int32})
+function LocalIndices(n_global,owner,local_to_global,local_to_owner)
 
     own_to_local = findall(i->i==owner,local_to_owner)
     ghost_to_local = findall(i->i!=owner,local_to_owner)
@@ -1522,7 +1529,7 @@ end
 """
     struct PRange{A}
 
-`PRange` (partitioned range) is a type representing a range of indices `1:n_global`
+`PRange` (partitioned range) is a type representing a range of indices `1:n`
 partitioned into several parts. This type is used to represent the axes of instances
 of [`PVector`](@ref) and [`PSparseMatrix`](@ref).
 

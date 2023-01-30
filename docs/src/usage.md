@@ -4,7 +4,8 @@ PartitionedArrays considers a data-oriented programming model that allows one to
 in a generic way, independent from the message passing back-end used to run them.
 The basic abstraction of this model consists in expressing distributed data using array containers.
 The particular container type will depend on the back-end used to run the code in parallel. MPI is one of the possible
-back-ends, used to run large cases on computational clusters.
+back-ends, used to run large cases on computational clusters. However, one can also use serial arrays to
+prototype and debug complex codes in an effective way.
 
 ## Basic usage
 
@@ -47,44 +48,6 @@ mpiexec(cmd->run(`$cmd -np4 hello_mpi.jl`))
 
 The construction of the array `ranks` containing the rank ids is just the first step of a computation
 using PartitionedArrays. See the [Examples](@ref) for more interesting cases.
-
-
-## Running MPI code safely
-
-MPI applications should call `MPI.Abort` if they stop prematurely (e.g., by an error).
-The Julia error handling system is not aware of that. For this reasons, codes like the following one
-will crash and stop without calling `MPI.Abort`.
-
-```julia
-using PartitionedArrays
-np = 3
-ranks = distribute_with_mpi(LinearIndices((np,)))
-map(ranks) do rank
-    if rank == 2
-        error("I have crashed")
-    end
-end
-```
-Even worse, the code will crash only in the 2nd MPI process. The other processes will finish normally.
-This can lead to zombie MPI processes running in the background (and provably consuming quota in your cluster account until
-the queuing system kills them).
-To fix this, PartitionedArrays provides function `with_mpi`. We rewrite the previous example using it.
-
-```julia
-using PartitionedArrays
-with_mpi() do distribute
-    np = 3
-    ranks = distribute(LinearIndices((np,)))
-    map(ranks) do rank
-        if rank == 2
-            error("I have crashed")
-        end
-    end
-end
-```
-Essentially, `with_mpi(f)` calls `f(distribute_with_mpi)` in a `try`-`catch` block. If some error is cached, 
-`MPI.Abort` will be called, safely finishing all the MPI processes, also the ones that did not experienced
-the error.
 
 ## Debugging
 
@@ -134,4 +97,43 @@ end
 then `with_debug(main)` and `with_mpi(main)` will run the code using the
 debug back-end and MPI respectively. If you want to run in using native Julia arrays, you can simply call `main(identity)`.
 Make sure that your code works using `DebugArray` before moving to MPI.
+
+
+## Running MPI code safely
+
+MPI applications should call `MPI.Abort` if they stop prematurely (e.g., by an error).
+The Julia error handling system is not aware of that. For this reasons, codes like the following one
+will crash and stop without calling `MPI.Abort`.
+
+```julia
+using PartitionedArrays
+np = 3
+ranks = distribute_with_mpi(LinearIndices((np,)))
+map(ranks) do rank
+    if rank == 2
+        error("I have crashed")
+    end
+end
+```
+Even worse, the code will crash only in the 2nd MPI process. The other processes will finish normally.
+This can lead to zombie MPI processes running in the background (and provably consuming quota in your cluster account until
+the queuing system kills them).
+To fix this, PartitionedArrays provides function `with_mpi`. We rewrite the previous example using it.
+
+```julia
+using PartitionedArrays
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    map(ranks) do rank
+        if rank == 2
+            error("I have crashed")
+        end
+    end
+end
+```
+Essentially, `with_mpi(f)` calls `f(distribute_with_mpi)` in a `try`-`catch` block. If some error is cached, 
+`MPI.Abort` will be called, safely finishing all the MPI processes, also the ones that did not experienced
+the error.
+
 
