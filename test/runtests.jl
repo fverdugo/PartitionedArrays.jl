@@ -1,14 +1,10 @@
-module RunTests
+module PartitionedArraysRunTests
 
 using Test
 
-@testset "IndexSets" begin include("IndexSetsTests.jl") end
-
-@testset "SparseUtils" begin include("SparseUtilsTests.jl") end
-
-@testset "Sequential" begin include("sequential/runtests.jl") end
-
-@testset "MPI" begin include("mpi/runtests.jl") end
+@testset "jagged_array" begin include("jagged_array_tests.jl") end
+@testset "sparse_utils" begin include("sparse_utils_tests.jl") end
+@testset "debug_array" begin include("debug_array/runtests.jl") end
+@testset "mpi_array" begin include("mpi_array/runtests.jl") end
 
 end # module
-
