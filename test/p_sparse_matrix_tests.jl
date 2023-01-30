@@ -113,6 +113,7 @@ function p_sparse_matrix_tests(distribute)
     x .= 0
     ldiv!(x,factors,y)
     r = A*x-y
+    map(i->fill!(i,100),ghost_values(r))
     @test norm(r) < 1.0e-9
     display(A)
 
