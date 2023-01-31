@@ -136,4 +136,63 @@ Essentially, `with_mpi(f)` calls `f(distribute_with_mpi)` in a `try`-`catch` blo
 `MPI.Abort` will be called, safely finishing all the MPI processes, also the ones that did not experienced
 the error.
 
+## Benchmarking distributed codes
+
+When using MPI, the computational time to run some code can be different for each one of
+the processes. Usually, one measures the time for each process and computes some statistics
+of the resulting values. To this end, the library provides a special timer type called
+[`PTimer`](@ref).
+In the following example we force different computation times at each of the processes
+by sleeping a value proportional to the rank id.
+When displayed, the instance of [`PTimer`](@ref) shows some statistics of the
+times over the different processes.
+
+```julia
+using PartitionedArrays
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = PTimer(ranks)
+    tic!(t)
+    map(ranks) do rank
+        sleep(rank)
+    end
+    toc!(t,"Sleep")
+    display(t)
+end
+```
+
+```
+───────────────────────────────────────────
+Section         max         min         avg
+───────────────────────────────────────────
+Sleep     3.021e+00   1.021e+00   2.021e+00
+───────────────────────────────────────────
+```
+
+This mechanism also works for the other back-ends. For sequential ones, it provides the type
+spend by all parts combined.
+
+```julia
+using PartitionedArrays
+with_debug() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = PTimer(ranks)
+    tic!(t)
+    map(ranks) do rank
+        sleep(rank)
+    end
+    toc!(t,"Sleep")
+    display(t)
+end
+```
+
+```
+───────────────────────────────────────────
+Section         max         min         avg
+───────────────────────────────────────────
+Sleep     6.010e+00   6.010e+00   6.010e+00
+───────────────────────────────────────────
+```
 

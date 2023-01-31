@@ -1,4 +1,9 @@
 
+"""
+    indextype(a)
+"""
+function indextype end
+
 indextype(a::AbstractSparseMatrix) = indextype(typeof(a))
 indextype(a::Type{SparseMatrixCSC{Tv,Ti}}) where {Tv,Ti} = Ti
 indextype(a::Type{SparseMatrixCSR{Bi,Tv,Ti}}) where {Bi,Tv,Ti} = Ti
@@ -260,6 +265,11 @@ function nzindex(A::SparseMatrixCSR, i0::Integer, i1::Integer)
   k = searchsortedfirst(colvals(A), i1o, r1, r2, Base.Order.Forward)
   ((k > r2) || (colvals(A)[k] != i1o)) ? 0 : k
 end
+
+"""
+    compresscoo(T,args...)
+"""
+function compresscoo end
 
 compresscoo(a::AbstractSparseMatrix,args...) = compresscoo(typeof(a),args...)
 

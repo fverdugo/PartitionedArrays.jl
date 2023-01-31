@@ -43,9 +43,7 @@ export reduction
 export reduction!
 export ExchangeGraph
 export exchange
-export exchange_fetch
 export exchange!
-export exchange_fetch!
 export allocate_exchange
 include("primitives.jl")
 
@@ -58,8 +56,6 @@ export distribute_with_mpi
 export with_mpi
 include("mpi_array.jl")
 
-export local_range
-export boundary_owner
 export PRange
 export uniform_partition
 export variable_partition
@@ -88,7 +84,6 @@ export own_to_local
 export ghost_to_local
 export local_to_own
 export local_to_ghost
-export prange
 export replace_ghost
 export union_ghost
 export find_owner
@@ -97,12 +92,13 @@ export to_local!
 export to_global!
 export partition
 export assembly_graph
+export assembly_neighbors
+export assembly_local_indices
 include("p_range.jl")
 
 export local_values
 export own_values
 export ghost_values
-export allocate_local_values
 export OwnAndGhostVectors
 export PVector
 export pvector
@@ -113,7 +109,6 @@ export pones
 export prand
 export prandn
 export consistent!
-export neutral_element
 include("p_vector.jl")
 
 export PSparseMatrix
@@ -126,7 +121,7 @@ include("p_sparse_matrix.jl")
 export PTimer
 export tic!
 export toc!
-export print_timer
+export statistics
 include("p_timer.jl")
 
 end # module

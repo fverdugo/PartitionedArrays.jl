@@ -2,6 +2,8 @@
 using PartitionedArrays
 using Test
 
+using PartitionedArrays: local_range
+
 @test 1:3 == local_range(1,3,10)
 @test 4:6 == local_range(2,3,10)
 @test 7:10 == local_range(3,3,10)

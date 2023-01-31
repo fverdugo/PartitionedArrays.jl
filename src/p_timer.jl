@@ -8,6 +8,17 @@ to_seconds(s::MPIArray,t) = Float64(t)
 barrier(a) = nothing
 barrier(a::MPIArray) = MPI.Barrier(a.comm)
 
+"""
+    struct PTimer{...}
+
+# Properties
+
+Properties and type parameters are private
+
+# Sub-type hierarchy
+
+    PTimer{...} <: Any
+"""
 mutable struct PTimer{A,B,C}
     parts::A
     timings::B
@@ -15,6 +26,9 @@ mutable struct PTimer{A,B,C}
     verbose::Bool
 end
 
+"""
+    PTimer(parts;verbose::Bool=false)
+"""
 function PTimer(parts;verbose::Bool=false)
     current = current_time(parts)
     timing = map(p->current,parts)
@@ -44,10 +58,29 @@ function Base.getproperty(t::PTimer, sym::Symbol)
     end
 end
 
+"""
+    statistics(t::PTimer)
+"""
+function statistics(t::PTimer)
+    d = (min=0.0,max=0.0,avg=0.0)
+    T = typeof(d)
+    dict = Dict{String}{T}()
+    for (name,timing) in t.timings
+        part_to_timing = collect(timing)
+        ns = map(i->to_seconds(t.parts,i),part_to_timing)
+        d = (min=minimum(ns),max=maximum(ns),avg=sum(ns)/length(ns))
+        dict[name] = d
+    end
+    dict
+end
+
 function Base.propertynames(x::PTimer, private=false)
     (fieldnames(typeof(x))...,:data)
 end
 
+"""
+    tic!(t::PTimer;barrier=false)
+"""
 function tic!(t::PTimer;barrier=false)
     if barrier
         PartitionedArrays.barrier(t.parts)
@@ -55,6 +88,9 @@ function tic!(t::PTimer;barrier=false)
     t.current = current_time(t.parts)
 end
 
+"""
+    toc!(t::PTimer,name::String)
+"""
 function toc!(t::PTimer,name::String)
     current = current_time(t.parts)
     dt = current-t.current

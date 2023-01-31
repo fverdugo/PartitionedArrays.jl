@@ -12,7 +12,6 @@ OwnIndices(a,b,c)
 GhostIndices
 GhostIndices(a,b,c)
 ```
-
 ## Transform partitions
 
 ```@docs
@@ -22,10 +21,25 @@ permute_indices
 find_owner
 ```
 
+## Transform indices
+
+```@docs
+to_global!
+to_local!
+```
+
 ## Local vector storage
 
 ```@docs
 OwnAndGhostVectors
 OwnAndGhostVectors(a,b,c)
+```
+
+## Assembly
+
+```@docs
+assembly_graph
+assembly_neighbors
+assembly_local_indices
 ```
 

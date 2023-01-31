@@ -24,6 +24,7 @@ makedocs(
                        "reference/partition.md",
                        "reference/pvector.md",
                        "reference/psparsematrix.md",
+                       "reference/ptimer.md",
                        "reference/advanced.md",
                        "reference/helpers.md",
                       ],

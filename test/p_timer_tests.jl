@@ -19,9 +19,11 @@ function p_timer_tests(distribute)
     sleep(0.4)
     toc!(t,"Matrix Assembly")
 
-    map_main(t.data) do data
+    dict = statistics(t)
+
+    map_main(parts) do part
         open("times.txt","w") do io
-            println(io,data)
+            println(io,dict)
         end
     end
 

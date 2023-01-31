@@ -248,6 +248,9 @@ function union_ghost(indices,gids,owners)
     replace_ghost(indices,ghost)
 end
 
+"""
+    to_local!(I,indices)
+"""
 function to_local!(I,indices)
     global_to_local_indices = global_to_local(indices)
     for k in 1:length(I)
@@ -256,6 +259,9 @@ function to_local!(I,indices)
     I
 end
 
+"""
+    to_global!(I,indices)
+"""
 function to_global!(I,indices)
     local_to_global_indices = local_to_global(indices)
     for k in 1:length(I)
@@ -339,11 +345,17 @@ function empty_assembly_cache()
                  )
 end
 
+"""
+    assembly_graph(index_partition;kwargs...)
+"""
 function assembly_graph(index_partition;kwargs...)
     neighbors_snd,neighbors_rcv = assembly_neighbors(index_partition;kwargs...)
     ExchangeGraph(neighbors_snd,neighbors_rcv)
 end
 
+"""
+    assembly_neighbors(index_partition;kwargs...)
+"""
 function assembly_neighbors(indices;kwargs...)
     cache = map(assembly_cache,indices)
     mask =  map(cache) do cache
@@ -377,6 +389,14 @@ function compute_assembly_neighbors(indices;kwargs...)
     end
     graph = ExchangeGraph(parts_snd;kwargs...)
     graph.snd, graph.rcv
+end
+
+"""
+    assembly_local_indices(index_partition)
+"""
+function assembly_local_indices(index_partition)
+    neigs = assembly_neighbors(index_partition)
+    assembly_local_indices(index_partition,neigs...)
 end
 
 function assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
