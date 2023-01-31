@@ -16,6 +16,7 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
 
 [compat]
+CircularArrays = "1"
 Distances = "0.10"
 IterativeSolvers = "0.9"
 MPI = "0.16, 0.17, 0.18, 0.19, 0.20"
