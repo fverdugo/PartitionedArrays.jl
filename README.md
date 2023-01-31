@@ -6,7 +6,7 @@
 <img src="https://github.com/fverdugo/PartitionedArrays.jl/raw/master/assets/logo.png" width="300" title="Logo">
 
 
-This package provides distributed (a.k.a. partitioned) vectors and sparse matrices in Julia by means of a programming model more friendly to Julia users than using MPI. This package can be used to prototype and debug codes as well as for deploying large production runs on supercomupets. See the documentatio for further details.
+This package provides distributed (a.k.a. partitioned) vectors and sparse matrices in Julia by means of a programming model more friendly to Julia users than using MPI-based libraries. This package can be used to prototype and debug codes as well as for deploying large production runs on supercomputers. See the documentatio for further details.
 
 | **Documentation** |
 |:------------ |
