@@ -202,4 +202,18 @@ function p_vector_tests(distribute)
         @test w == u
     end
 
+    α = 0.2
+    v .= w
+    w .=  (1.0/α) .* w
+    @. v = (1.0/α) * v
+    map(local_values(w),local_values(v)) do w,v
+      @test w == v
+    end
+
+    v .= w
+    w .=  w .* (1.0/α)
+    @. v =  v * (1.0/α)
+    map(local_values(w),local_values(v)) do w,v
+      @test w == v
+    end
 end

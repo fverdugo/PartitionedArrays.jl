@@ -746,6 +746,19 @@ function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
     PBroadcasted(own_values_out,ghost_values_out,a.index_partition)
 end
 
+function Base.broadcasted(f,
+                          a::Union{PVector,PBroadcasted},
+                          b::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}})
+    Base.broadcasted(f,a,Base.materialize(b))
+end
+
+function Base.broadcasted(
+    f,
+    a::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}},
+    b::Union{PVector,PBroadcasted})
+    Base.broadcasted(f,Base.materialize(a),b)
+ end
+
 function Base.materialize(b::PBroadcasted)
     own_values_out = map(Base.materialize,b.own_values)
     T = eltype(eltype(own_values_out))
