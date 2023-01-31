@@ -1,9 +1,22 @@
 
+
+
+
+
 <img src="https://github.com/fverdugo/PartitionedArrays.jl/raw/master/assets/logo.png" width="300" title="Logo">
 
-[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://fverdugo.github.io/PartitionedArrays.jl/dev)
-[![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions)
-[![Coverage](https://codecov.io/gh/fverdugo/PartitionedArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/PartitionedArrays.jl)
+
+This package provides distributed (a.k.a. partitioned) vectors and sparse matrices in Julia by means of a programming model more friendly to Julia users than using MPI. This package can be used to prototype and debug codes as well as for deploying large production runs on supercomupets. See the documentatio for further details.
+
+| **Documentation** |
+|:------------ |
+| [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://fverdugo.github.io/PartitionedArrays.jl/dev) |
+|**Build Status** |
+| [![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions) |
+|**Coverage** |
+| [![Coverage](https://codecov.io/gh/fverdugo/PartitionedArrays.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/fverdugo/PartitionedArrays.jl)|
+
+
 
 ## Documentation
 
@@ -19,7 +32,8 @@
 
 This package is under active development and there are several ways to contribute:
 
-- by enhancing the documentation.
+- by enhancing the documentation (e.g., fixing typos, enhancing doc strings, adding examples).
 - by addressing one of the [issues waiting for help](https://github.com/fverdugo/PartitionedArrays.jl/labels/help%20wanted).
+- by adding more tests to increase the code coverage.
 - by extending the current functionality. In this case, open a discussion [here](https://github.com/fverdugo/PartitionedArrays.jl/discussions) to coordinate with the package maintainers before proposing significant changes.
 
