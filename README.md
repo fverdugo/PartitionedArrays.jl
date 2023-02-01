@@ -10,7 +10,7 @@ This package provides distributed (a.k.a. partitioned) vectors and sparse matric
 
 | **Documentation** |
 |:------------ |
-| [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://fverdugo.github.io/PartitionedArrays.jl/dev) |
+| [![Documentation](https://img.shields.io/badge/docs-stable-blue)](https://fverdugo.github.io/PartitionedArrays.jl/stable) [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://fverdugo.github.io/PartitionedArrays.jl/dev) |
 |**Build Status** |
 | [![Build Status](https://github.com/fverdugo/PartitionedArrays.jl/workflows/CI/badge.svg)](https://github.com/fverdugo/PartitionedArrays.jl/actions) |
 |**Coverage** |
@@ -20,8 +20,8 @@ This package provides distributed (a.k.a. partitioned) vectors and sparse matric
 
 ## Documentation
 
-- [**STABLE**](https://fverdugo.github.io/PartitionedArrays.jl/dev) &mdash; **Documentation for the most recently tagged version.**
-- [**DEVEL**](https://fverdugo.github.io/PartitionedArrays.jl/dev) &mdash; *Documentation for the in-development version.*
+- [**STABLE**](https://fverdugo.github.io/PartitionedArrays.jl/stable) &mdash; **Documentation for the most recently tagged version.**
+- [**LATEST**](https://fverdugo.github.io/PartitionedArrays.jl/dev) &mdash; *Documentation for the in-development version.*
 
 ## Help and discussion
 
