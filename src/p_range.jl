@@ -250,6 +250,8 @@ end
 
 """
     to_local!(I,indices)
+
+Transform the global indices in `I` into local ids according to `indices`.
 """
 function to_local!(I,indices)
     global_to_local_indices = global_to_local(indices)
@@ -261,6 +263,8 @@ end
 
 """
     to_global!(I,indices)
+
+Transform the local indices in `I` into global ids according to `indices`.
 """
 function to_global!(I,indices)
     local_to_global_indices = local_to_global(indices)
@@ -347,6 +351,17 @@ end
 
 """
     assembly_graph(index_partition;kwargs...)
+
+Return an instance of [`ExchangeGraph`](@ref) representing the communication
+graph needed to perform assembly of distributed vectors defined on the index
+partition `index_partition`. `kwargs` are delegated to [`ExchangeGraph`](@ref)
+in order to find the receiving neighbors from the sending ones.
+
+Equivalent to
+
+    neighbors = assembly_neighbors(index_partition;kwargs...)
+    ExchangeGraph(neighbors...)
+
 """
 function assembly_graph(index_partition;kwargs...)
     neighbors_snd,neighbors_rcv = assembly_neighbors(index_partition;kwargs...)
@@ -354,7 +369,13 @@ function assembly_graph(index_partition;kwargs...)
 end
 
 """
-    assembly_neighbors(index_partition;kwargs...)
+    neigs_snd, neigs_rcv = assembly_neighbors(index_partition;kwargs...)
+
+Return the ids of the neighbor parts from we send and receive data respectively
+in the assembly of distributed vectors defined on the index
+partition `index_partition`.
+partition `index_partition`. `kwargs` are delegated to [`ExchangeGraph`](@ref)
+in order to find the receiving neighbors from the sending ones.
 """
 function assembly_neighbors(indices;kwargs...)
     cache = map(assembly_cache,indices)
@@ -392,7 +413,18 @@ function compute_assembly_neighbors(indices;kwargs...)
 end
 
 """
-    assembly_local_indices(index_partition)
+    ids_snd, ids_rcv = assembly_local_indices(index_partition)
+
+Return the local ids to be sent and received  
+in the assembly of distributed vectors defined on the index
+partition `index_partition`.
+
+Local values corresponding to the local
+indices in `ids_snd[i]` (respectively `ids_rcv[i]`)
+are sent to part `neigs_snd[i]` (respectively `neigs_rcv[i]`),
+where `neigs_snd, neigs_rcv = assembly_neighbors(index_partition)`.
+
+
 """
 function assembly_local_indices(index_partition)
     neigs = assembly_neighbors(index_partition)

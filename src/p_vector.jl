@@ -357,7 +357,7 @@ end
 """
     assemble!([op,] a::PVector) -> Task
 
-Transfer the ghost values to its owner part
+Transfer the ghost values to their owner part
 and insert them according with the insertion operation `op` (`+` by default).
 It returns a task that produces `a` with updated values. After the transfer,
 the source ghost values are set to zero.
@@ -475,6 +475,11 @@ function PVector(::UndefInitializer,index_partition)
 end
 
 """
+    PVector{V}(undef,index_partition)
+    PVector(undef,index_partition)
+
+Create an instance of [`PVector`](@ref) with local uninitialized values
+stored in a vector of type `V` (which defaults to `V=Vector{Float64}`).
 """
 function PVector{V}(::UndefInitializer,index_partition) where V
     vector_partition = map(index_partition) do indices
@@ -563,8 +568,7 @@ end
 pfill(v,index_partition) = pvector(indices->fill(v,local_length(indices)),index_partition)
 
 """
-    pzeros(index_partition)
-    pzeros(::Type{T},index_partition) where T
+    pzeros([T,]index_partition)
 
 Equivalent to
 
@@ -574,8 +578,7 @@ pzeros(index_partition) = pzeros(Float64,index_partition)
 pzeros(::Type{T},index_partition) where T = pvector(indices->zeros(T,local_length(indices)),index_partition)
 
 """
-    pones(index_partition)
-    pones(::Type{T},index_partition) where T
+    pones([T,]index_partition)
 
 Equivalent to
 

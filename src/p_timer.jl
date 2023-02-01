@@ -11,6 +11,8 @@ barrier(a::MPIArray) = MPI.Barrier(a.comm)
 """
     struct PTimer{...}
 
+Type used to benchmark distributed applications based on PartitionedArrays.
+
 # Properties
 
 Properties and type parameters are private
@@ -27,7 +29,11 @@ mutable struct PTimer{A,B,C}
 end
 
 """
-    PTimer(parts;verbose::Bool=false)
+    PTimer(ranks;verbose::Bool=false)
+
+Construct an instance of [`PTimer`](@ref) by using the same data
+distribution as for `ranks`.  If `verbose==true`, then a message will
+be printed each time a new section is added in the timer when calling [`toc!`](@ref).
 """
 function PTimer(parts;verbose::Bool=false)
     current = current_time(parts)
@@ -60,6 +66,9 @@ end
 
 """
     statistics(t::PTimer)
+
+Return a dictionary with statistics of the compute time for the sections
+currently stored in the timer `t`. 
 """
 function statistics(t::PTimer)
     d = (min=0.0,max=0.0,avg=0.0)
@@ -80,6 +89,11 @@ end
 
 """
     tic!(t::PTimer;barrier=false)
+
+Reset the timer `t` to start measuring the time in a section.  
+If `barrier==true`, all process will be synchronized before 
+resetting the timer if using a distributed back-end.
+For MPI, this will result in a call to `MPI.Barrier`.
 """
 function tic!(t::PTimer;barrier=false)
     if barrier
@@ -90,6 +104,8 @@ end
 
 """
     toc!(t::PTimer,name::String)
+
+Finish measuring a code section with name `name` in timer `t`.
 """
 function toc!(t::PTimer,name::String)
     current = current_time(t.parts)

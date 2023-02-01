@@ -1,6 +1,9 @@
 
 """
     indextype(a)
+
+Return the element type of the vector
+used to store the row or column indices in the sparse matrix `a`. 
 """
 function indextype end
 
@@ -9,7 +12,12 @@ indextype(a::Type{SparseMatrixCSC{Tv,Ti}}) where {Tv,Ti} = Ti
 indextype(a::Type{SparseMatrixCSR{Bi,Tv,Ti}}) where {Bi,Tv,Ti} = Ti
 
 """
-    nziterator(a)
+    for (i,j,v) in nziterator(a)
+    ...
+    end
+
+Iterate over the non zero entries of `a` returning the corresponding
+row `i`, column `j` and value `v`.
 """
 function nziterator end
 
@@ -241,6 +249,9 @@ end
 
 """
     nzindex(a,i,j)
+
+Return the position in `nonzeros(a)` that stores the non zero value of `a` at row `i`
+and column `j`.
 """
 function nzindex end
 
@@ -268,6 +279,8 @@ end
 
 """
     compresscoo(T,args...)
+
+Like `sparse(args...)`, but generates a sparse matrix of type `T`.
 """
 function compresscoo end
 
