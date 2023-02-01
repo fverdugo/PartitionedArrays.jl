@@ -44,6 +44,38 @@ function ghost_own_values(values,indices_rows,indices_cols)
 end
 
 """
+    struct PSparseMatrix{V,A,B,C,...}
+
+`PSparseMatrix` (partitioned sparse matrix)
+is a type representing a matrix whose rows are
+distributed (a.k.a. partitioned) over different parts for distributed-memory
+parallel computations. Each part stores a subset of the rows of the matrix and their
+corresponding non zero columns.
+
+This type overloads numerous array-like operations with corresponding
+parallel implementations.
+
+# Properties
+
+- `matrix_partition::A`
+- `row_partition::B`
+- `col_partition::C`
+
+`matrix_partition[i]` contains a (sparse) matrix with the local rows and the
+corresponding nonzero columns (the local columns) in the part number `i`.
+`eltype(matrix_partition) == V`.
+`row_partition[i]` and `col_partition[i]` contain information
+about the local, own, and ghost rows and columns respectively in part number `i`.
+The types `eltype(row_partition)` and `eltype(col_partition)` implement the
+[`AbstractLocalIndices`](@ref) interface.
+
+The rest of fields of this struct and type parameters are private.
+
+# Supertype hierarchy
+
+    PSparseMatrix{V,A,B,C,...} <: AbstractVector{T}
+
+with `T=eltype(V)`.
 """
 struct PSparseMatrix{V,A,B,C,D,T} <: AbstractMatrix{T}
     matrix_partition::A
@@ -51,6 +83,10 @@ struct PSparseMatrix{V,A,B,C,D,T} <: AbstractMatrix{T}
     col_partition::C
     cache::D
     @doc """
+        PSparseMatrix(matrix_partition,row_partition,col_partition)
+
+    Build an instance for [`PSparseMatrix`](@ref) from the underlying fields
+    `matrix_partition`, `row_partition`, and `col_partition`.
     """
     function PSparseMatrix(
             matrix_partition,
@@ -71,30 +107,50 @@ partition(a::PSparseMatrix) = a.matrix_partition
 Base.axes(a::PSparseMatrix) = (PRange(a.row_partition),PRange(a.col_partition))
 
 """
+    local_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the local rows and columns
+in each part of `a`.
 """
 function local_values(a::PSparseMatrix)
     partition(a)
 end
 
 """
+    own_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the own rows and columns
+in each part of `a`.
 """
 function own_values(a::PSparseMatrix)
     map(own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
 """
+    ghost_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the own rows and columns
+in each part of `a`.
 """
 function ghost_values(a::PSparseMatrix)
     map(ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
 """
+    own_ghost_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the own rows and ghost columns
+in each part of `a`.
 """
 function own_ghost_values(a::PSparseMatrix)
     map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
 """
+    ghost_own_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the ghost rows and own columns
+in each part of `a`.
 """
 function ghost_own_values(a::PSparseMatrix)
     map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
@@ -201,6 +257,12 @@ function assemble!(a::PSparseMatrix)
 end
 
 """
+    assemble!([op,] a::PSparseMatrix) -> Task
+
+Transfer the ghost rows to their owner part
+and insert them according with the insertion operation `op` (`+` by default).
+It returns a task that produces `a` with updated values. After the transfer,
+the source ghost rows are set to zero.
 """
 function assemble!(o,a::PSparseMatrix)
     t = assemble!(o,partition(a),a.cache)
@@ -372,6 +434,12 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
 end
 
 """
+    psparse!([f,]I,J,V,row_partition,col_partition;discover_rows=true) -> Task
+
+Crate an instance of [`PSparseMatrix`](@ref) by setting arbitrary entries
+from each of the underlying parts. It returns a task that produces the
+instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
+the communications needed in its setup.
 """
 function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true)
     if discover_rows
@@ -395,6 +463,15 @@ function psparse!(I,J,V,row_partition,col_partition;kwargs...)
 end
 
 """
+    psparse(f,row_partition,col_partition)
+
+Build an instance of [`PSparseMatrix`](@ref) from the initialization function
+`f` and the partition for rows and columns `row_partition` and `col_partition`.
+
+Equivalent to
+
+    matrix_partition = map(f,row_partition,col_partition)
+    PSparseMatrix(matrix_partition,row_partition,col_partition)
 """
 function psparse(f,row_partition,col_partition)
     matrix_partition = map(f,row_partition,col_partition)
