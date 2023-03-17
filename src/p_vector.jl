@@ -323,11 +323,10 @@ end
 function assemble_impl!(f,vector_partition,cache,::Type{<:VectorAssemblyCache})
     buffer_snd = map(vector_partition,cache) do values,cache
         local_indices_snd = cache.local_indices_snd
-        buffer_snd = cache.buffer_snd
         for (p,lid) in enumerate(local_indices_snd.data)
-            buffer_snd.data[p] = values[lid]
+            cache.buffer_snd.data[p] = values[lid]
         end
-        buffer_snd
+        cache.buffer_snd
     end
     neighbors_snd, neighbors_rcv, buffer_rcv = map(cache) do cache
         cache.neighbors_snd, cache.neighbors_rcv, cache.buffer_rcv
@@ -339,9 +338,8 @@ function assemble_impl!(f,vector_partition,cache,::Type{<:VectorAssemblyCache})
         wait(t)
         map(vector_partition,cache) do values,cache
             local_indices_rcv = cache.local_indices_rcv
-            buffer_rcv = cache.buffer_rcv
             for (p,lid) in enumerate(local_indices_rcv.data)
-                values[lid] = f(values[lid],buffer_rcv.data[p])
+                values[lid] = f(values[lid],cache.buffer_rcv.data[p])
             end
         end
         nothing
