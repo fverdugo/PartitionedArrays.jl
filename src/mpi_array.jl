@@ -193,10 +193,18 @@ function Base.copyto!(b::MPIArray,a::MPIArray)
     b
 end
 
-function Base.map(f,args::MPIArray...)
+function Base.map(f,args::Vararg{MPIArray,N}) where N
     a = first(args)
     @assert all(i->size(a)==size(i),args)
     item = f(map(i->i.item,args)...)
+    MPIArray(item,a.comm,a.size)
+end
+
+function Base.map(f,args::Vararg{MPIArray,2})
+    a = first(args)
+    @assert all(i->size(a)==size(i),args)
+    t1,t2 = map(i->i.item,args)
+    item = f(t1,t2)
     MPIArray(item,a.comm,a.size)
 end
 
