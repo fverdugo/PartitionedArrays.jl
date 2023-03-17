@@ -43,7 +43,7 @@ in such a way that each MPI rank will get an integer corresponding to its (1-bas
 
 ```julia
 using MPI
-mpiexec(cmd->run(`$cmd -np4 hello_mpi.jl`))
+mpiexec(cmd->run(`$cmd -np 4 julia --project=. hello_mpi.jl`))
 ```
 
 The construction of the array `ranks` containing the rank ids is just the first step of a computation
