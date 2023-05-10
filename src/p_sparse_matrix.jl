@@ -506,12 +506,13 @@ function to_trivial_partition(b::PVector,row_partition_in_main)
     destination = 1
     T = eltype(b)
     b_in_main = similar(b,T,PRange(row_partition_in_main))
-    map(own_values(b),partition(b_in_main),partition(axes(b,1))) do bown,b_in_main,indices
+    fill!(b_in_main,zero(T))
+    map(own_values(b),partition(b_in_main),partition(axes(b,1))) do bown,my_b_in_main,indices
         part = part_id(indices)
         if part == destination
-            b_in_main[own_to_global(indices)] .= bown
+            my_b_in_main[own_to_global(indices)] .= bown
         else
-            b_in_main .= bown
+            my_b_in_main .= bown
         end
     end
     assemble!(b_in_main) |> wait
@@ -521,12 +522,12 @@ end
 function from_trivial_partition!(c::PVector,c_in_main::PVector)
     destination = 1
     consistent!(c_in_main) |> wait
-    map(own_values(c),partition(c_in_main),partition(axes(c,1))) do cown, c_in_main, indices
+    map(own_values(c),partition(c_in_main),partition(axes(c,1))) do cown, my_c_in_main, indices
         part = part_id(indices)
         if part == destination
-            cown .= view(c_in_main,own_to_global(indices))
+            cown .= view(my_c_in_main,own_to_global(indices))
         else
-            cown .= c_in_main
+            cown .= my_c_in_main
         end
     end
     c
@@ -549,33 +550,33 @@ function to_trivial_partition(
                 n += 1
             end
         end
-        I = zeros(Int,n)
-        J = zeros(Int,n)
-        V = zeros(Ta,n)
+        myI = zeros(Int,n)
+        myJ = zeros(Int,n)
+        myV = zeros(Ta,n)
         n = 0
         for (i,j,v) in nziterator(a)
             if local_row_to_owner[i] == owner
                 n += 1
-                I[n] = local_to_global_row[i]
-                J[n] = local_to_global_col[j]
-                V[n] = v
+                myI[n] = local_to_global_row[i]
+                myJ[n] = local_to_global_col[j]
+                myV[n] = v
             end
         end
-        I,J,V
+        myI,myJ,myV
     end |> tuple_of_arrays
     assemble_coo!(I,J,V,row_partition_in_main) |> wait
-    I,J,V = map(partition(axes(a,1)),I,J,V) do row_indices,I,J,V
+    I,J,V = map(partition(axes(a,1)),I,J,V) do row_indices,myI,myJ,myV
         owner = part_id(row_indices)
         if owner == destination
-            I,J,V
+            myI,myJ,myV
         else
-            similar(I,eltype(I),0),similar(J,eltype(J),0),similar(V,eltype(V),0)
+            similar(myI,eltype(myI),0),similar(myJ,eltype(myJ),0),similar(myV,eltype(myV),0)
         end
     end |> tuple_of_arrays
-    values = map(I,J,V,row_partition_in_main,col_partition_in_main) do I,J,V,row_indices,col_indices
+    values = map(I,J,V,row_partition_in_main,col_partition_in_main) do myI,myJ,myV,row_indices,col_indices
         m = local_length(row_indices)
         n = local_length(col_indices)
-        compresscoo(M,I,J,V,m,n)
+        compresscoo(M,myI,myJ,myV,m,n)
     end
     PSparseMatrix(values,row_partition_in_main,col_partition_in_main)
 end
@@ -586,11 +587,12 @@ function Base.:\(a::PSparseMatrix,b::PVector)
     Tb = eltype(b)
     T = typeof(one(Ta)\one(Tb)+one(Ta)\one(Tb))
     c = PVector{Vector{T}}(undef,partition(axes(a,2)))
+    fill!(c,zero(T))
     a_in_main = to_trivial_partition(a)
     b_in_main = to_trivial_partition(b,partition(axes(a_in_main,1)))
     c_in_main = to_trivial_partition(c,partition(axes(a_in_main,2)))
-    map_main(partition(c_in_main),partition(a_in_main),partition(b_in_main)) do c, a, b
-        c .= a\b
+    map_main(partition(c_in_main),partition(a_in_main),partition(b_in_main)) do myc, mya, myb
+        myc .= mya\myb
         nothing
     end
     from_trivial_partition!(c,c_in_main)
