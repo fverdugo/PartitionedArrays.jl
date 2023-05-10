@@ -433,19 +433,18 @@ end
 
 function assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
     cache = map(assembly_cache,indices)
-    mask =  map(cache) do cache
-        isassigned(cache.local_indices_snd) && isassigned(cache.local_indices_rcv)
+    mask =  map(cache) do mycache
+        isassigned(mycache.local_indices_snd) && isassigned(mycache.local_indices_rcv)
     end
     if ! getany(mask)
-        local_indices_snd, local_indices_rcv = compute_assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
-        map(cache,local_indices_snd,local_indices_rcv) do cache, local_indices_snd, local_indices_rcv
-            cache.local_indices_snd[] = local_indices_snd
-            cache.local_indices_rcv[] = local_indices_rcv
+        new_local_indices_snd, new_local_indices_rcv = compute_assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
+        map(cache,new_local_indices_snd,new_local_indices_rcv) do mycache, mylocal_indices_snd, mylocal_indices_rcv
+            mycache.local_indices_snd[] = mylocal_indices_snd
+            mycache.local_indices_rcv[] = mylocal_indices_rcv
         end
-        return local_indices_snd, local_indices_rcv
     end
-    local_indices_snd, local_indices_rcv = map(cache) do cache
-        cache.local_indices_snd[], cache.local_indices_rcv[]
+    local_indices_snd, local_indices_rcv = map(cache) do mycache
+        mycache.local_indices_snd[], mycache.local_indices_rcv[]
     end |> tuple_of_arrays
     local_indices_snd, local_indices_rcv
 end
@@ -476,20 +475,20 @@ function compute_assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
             end
         end
         rewind_ptrs!(ptrs)
-        local_indices_snd = JaggedArray(data_lids,ptrs)
-        global_indices_snd = JaggedArray(data_gids,ptrs)
-        local_indices_snd, global_indices_snd
+        my_local_indices_snd = JaggedArray(data_lids,ptrs)
+        my_global_indices_snd = JaggedArray(data_gids,ptrs)
+        my_local_indices_snd, my_global_indices_snd
     end |>  tuple_of_arrays
     graph = ExchangeGraph(parts_snd,parts_rcv)
     global_indices_rcv = exchange_fetch(global_indices_snd,graph)
-    local_indices_rcv = map(global_indices_rcv,indices) do global_indices_rcv,indices
-        ptrs = global_indices_rcv.ptrs
+    local_indices_rcv = map(global_indices_rcv,indices) do myglobal_indices_rcv,myindices
+        ptrs = myglobal_indices_rcv.ptrs
         data_lids = zeros(Int32,ptrs[end]-1)
-        global_to_local_indices = global_to_local(indices)
-        for (k,gid) in enumerate(global_indices_rcv.data)
+        global_to_local_indices = global_to_local(myindices)
+        for (k,gid) in enumerate(myglobal_indices_rcv.data)
             data_lids[k] = global_to_local_indices[gid]
         end
-        local_indices_rcv = JaggedArray(data_lids,ptrs)
+        my_local_indices_rcv = JaggedArray(data_lids,ptrs)
     end
     local_indices_snd,local_indices_rcv
 end
@@ -568,9 +567,7 @@ function uniform_partition(rank,n::Integer,ghost::Bool,periodic::Bool=false)
     uniform_partition(rank,length(rank),n,ghost,periodic)
 end
 
-function uniform_partition(rank,np::Integer,n::Integer)
-    uniform_partition(rank,(np,),(n,))
-end
+function uniform_partition(rank,np::Integer,n::Integer) uniform_partition(rank,(np,),(n,)) end
 
 function uniform_partition(rank,np::Integer,n::Integer,ghost::Bool,periodic::Bool=false)
     uniform_partition(rank,(np,),(n,),(ghost,),(periodic,))
@@ -589,19 +586,19 @@ function block_with_constant_size(rank,np,n,ghost,periodic=map(i->false,ghost))
     own_ranges = map(local_range,Tuple(p),np,n)
     local_ranges = map(local_range,Tuple(p),np,n,ghost,periodic)
     owners = map(Tuple(p),own_ranges,local_ranges) do p,or,lr
-        owners = zeros(Int32,length(lr))
+        myowners = zeros(Int32,length(lr))
         for i in 1:length(lr)
             if lr[i] in or
-                owners[i] = p
+                myowners[i] = p
             end
         end
-        if owners[1] == 0
-            owners[1] = p-1
+        if myowners[1] == 0
+            myowners[1] = p-1
         end
-        if owners[end] == 0
-            owners[end] = p+1
+        if myowners[end] == 0
+            myowners[end] = p+1
         end
-        owners
+        myowners
     end
     n_ghost = 0
     cis = CartesianIndices(map(length,local_ranges))

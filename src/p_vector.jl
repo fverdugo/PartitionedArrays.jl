@@ -251,10 +251,10 @@ function copy_cache(a::VectorAssemblyCache)
                     buffer_rcv)
 end
 function p_vector_cache_impl(::Type,vector_partition,index_partition)
-    neighbors = assembly_neighbors(index_partition)
-    indices = assembly_local_indices(index_partition,neighbors...)
-    buffers = map(assembly_buffers,vector_partition,indices...) |> tuple_of_arrays
-    map(VectorAssemblyCache,neighbors...,indices...,buffers...)
+    neighbors_snd,neighbors_rcv= assembly_neighbors(index_partition)
+    indices_snd,indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
+    buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,indices_snd,indices_rcv) |> tuple_of_arrays
+    map(VectorAssemblyCache,neighbors_snd,neighbors_rcv,indices_snd,indices_rcv,buffers_snd,buffers_rcv)
 end
 function assembly_buffers(values,local_indices_snd,local_indices_rcv)
     T = eltype(values)
@@ -267,8 +267,8 @@ function assembly_buffers(values,local_indices_snd,local_indices_rcv)
     buffer_snd, buffer_rcv
 end
 
-struct JaggedArrayAssemblyCache
-    cache::VectorAssemblyCache
+struct JaggedArrayAssemblyCache{T}
+    cache::VectorAssemblyCache{T}
 end
 Base.reverse(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(reverse(a.cache))
 copy_cache(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(copy_cache(a.cache))
@@ -518,7 +518,7 @@ Equivalent to
     PVector(vector_partition,index_partition)
 
 """
-function pvector(f,index_partition)
+@inline function pvector(f,index_partition)
     vector_partition = map(f,index_partition)
     PVector(vector_partition,index_partition)
 end
