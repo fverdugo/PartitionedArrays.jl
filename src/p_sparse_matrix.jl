@@ -73,7 +73,7 @@ The rest of fields of this struct and type parameters are private.
 
 # Supertype hierarchy
 
-    PSparseMatrix{V,A,B,C,...} <: AbstractVector{T}
+    PSparseMatrix{V,A,B,C,...} <: AbstractMatrix{T}
 
 with `T=eltype(V)`.
 """
