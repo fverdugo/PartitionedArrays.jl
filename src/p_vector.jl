@@ -551,7 +551,7 @@ function default_local_values(indices)
 end
 
 function default_local_values(I,V,indices)
-    values = Vector{Float64}(undef,local_length(indices))
+    values = Vector{eltype(V)}(undef,local_length(indices))
     fill!(values,zero(eltype(values)))
     for k in 1:length(I)
         li = I[k]
