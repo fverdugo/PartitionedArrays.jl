@@ -3,7 +3,7 @@ const SCALAR_INDEXING_ACTION = Ref(:error)
 
 function scalar_indexing_action(a)
     if SCALAR_INDEXING_ACTION[] === :warn
-        @warn "Scalar indexing on $(nameof(typeof(a))) is discuraged for performance reasons."
+        @warn "Scalar indexing on $(nameof(typeof(a))) is discouraged for performance reasons."
     elseif SCALAR_INDEXING_ACTION[] === :error
         error("Scalar indexing on $(nameof(typeof(a))) is not allowed for performance reasons.")
     end
