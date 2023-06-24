@@ -129,7 +129,7 @@ end
 """
     ghost_values(a::PSparseMatrix)
 
-Get a vector of matrices containing the own rows and columns
+Get a vector of matrices containing the ghost rows and columns
 in each part of `a`.
 """
 function ghost_values(a::PSparseMatrix)
@@ -279,6 +279,10 @@ function assemble!(o,a::PSparseMatrix)
 end
 
 function assemble_coo!(I,J,V,row_partition)
+    """
+      Returns three JaggedArrays with the coo triplets
+      to be sent to the corresponding owner parts in parts_snd
+    """
     function setup_snd(part,parts_snd,row_lids,coo_values)
         global_to_local_row = global_to_local(row_lids)
         local_row_to_owner = local_to_owner(row_lids)
@@ -318,7 +322,11 @@ function assemble_coo!(I,J,V,row_partition)
         v_snd = JaggedArray(v_snd_data,ptrs)
         gi_snd, gj_snd, v_snd
     end
-    function setup_rcv(gi_rcv,gj_rcv,v_rcv,coo_values)
+    """
+      Pushes to coo_values the triplets gi_rcv,gj_rcv,v_rcv
+      received from remote processes
+    """
+    function setup_rcv!(coo_values,gi_rcv,gj_rcv,v_rcv)
         k_gi, k_gj, k_v = coo_values
         current_n = length(k_gi)
         new_n = current_n + length(gi_rcv.data)
@@ -343,7 +351,7 @@ function assemble_coo!(I,J,V,row_partition)
         gi_rcv = fetch(t1)
         gj_rcv = fetch(t2)
         v_rcv = fetch(t3)
-        map(setup_rcv,gi_rcv,gj_rcv,v_rcv,coo_values)
+        map(setup_rcv!,coo_values,gi_rcv,gj_rcv,v_rcv)
         I,J,V
     end
 end
