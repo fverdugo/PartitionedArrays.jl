@@ -593,7 +593,7 @@ function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
         for i in snd_ids
             dict_rcv[i] = rank
         end
-        [ dict_rcv[n] for n in neighbors_snd ]
+        T[ dict_rcv[n] for n in neighbors_snd ]
     end
     data_rcv = exchange_fetch(data_snd,neighbors)
     # build rcv_ids
