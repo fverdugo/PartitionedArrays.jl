@@ -168,11 +168,6 @@ function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrix)
     end
 end
 
-function Base.copy(a::PSparseMatrix)
-    a_matrix_partition = similar(a.matrix_partition)
-    copy!(a_matrix_partition, a.matrix_partition)
-    PSparseMatrix(a_matrix_partition,a.row_partition,a.col_partition)
-end
 
 struct SparseMatrixAssemblyCache
     cache::VectorAssemblyCache
