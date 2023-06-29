@@ -9,12 +9,6 @@ function allocate_local_values(a,::Type{T},indices_rows,indices_cols) where T
     similar(a,T,m,n)
 end
 
-function allocate_local_values(::Type{V},indices_rows,indices_cols) where V
-    m = local_length(indices_rows)
-    n = local_length(indices_cols)
-    similar(V,m,n)
-end
-
 function local_values(values,indices_rows,indices_cols)
     values
 end
@@ -365,16 +359,10 @@ end
 
 function Base.similar(a::PSparseMatrix,::Type{T},inds::Tuple{<:PRange,<:PRange}) where T
     rows,cols = inds
-    matrix_partition = map(partition(a),partition(rows),partition(cols)) do values, row_indices, col_indices
+    row_partition = partition(rows)
+    col_partition = partition(rows)
+    matrix_partition = map(partition(a),row_partition,col_partition) do values, row_indices, col_indices
         allocate_local_values(values,T,row_indices,col_indices)
-    end
-    PSparseMatrix(values,row_partition,col_partition)
-end
-
-function Base.similar(::Type{<:PSparseMatrix{V}},inds::Tuple{<:PRange,<:PRange}) where V
-    rows,cols = inds
-    matrix_partition = map(partition(a),partition(rows),partition(cols)) do values, row_indices, col_indices
-        allocate_local_values(V,row_indices,col_indices)
     end
     PSparseMatrix(matrix_partition,row_partition,col_partition)
 end
