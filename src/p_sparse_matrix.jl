@@ -168,6 +168,12 @@ function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrix)
     end
 end
 
+function Base.copy(a::PSparseMatrix)
+    a_matrix_partition = similar(a.matrix_partition)
+    copy!(a_matrix_partition, a.matrix_partition)
+    PSparseMatrix(a_matrix_partition,a.row_partition,a.col_partition)
+end
+
 struct SparseMatrixAssemblyCache
     cache::VectorAssemblyCache
 end
@@ -360,7 +366,7 @@ end
 function Base.similar(a::PSparseMatrix,::Type{T},inds::Tuple{<:PRange,<:PRange}) where T
     rows,cols = inds
     row_partition = partition(rows)
-    col_partition = partition(rows)
+    col_partition = partition(cols)
     matrix_partition = map(partition(a),row_partition,col_partition) do values, row_indices, col_indices
         allocate_local_values(values,T,row_indices,col_indices)
     end
