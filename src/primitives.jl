@@ -583,8 +583,22 @@ function ExchangeGraph(snd;neighbors=nothing,symmetric=false)
     end
 end
 
+function _is_included(snd_ids_a,snd_ids_b)
+    is_included_all=map(snd_ids_a, snd_ids_b) do snd_ids_a, snd_ids_b
+        all(i->i in snd_ids_b,snd_ids_a)
+    end
+    result=false
+    and(a,b)=a && b
+    is_included_all=reduction(and,is_included_all,destination=:all,init=one(eltype(is_included_all)))
+    map(is_included_all) do is_included_all
+        result = is_included_all
+    end
+    result
+end 
+
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
 function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
+    @boundscheck _is_included(snd_ids,neighbors.snd) || error("snd_ids must be a subset of neighbors.snd")
     rank = linear_indices(snd_ids)
     # Tell the neighbors whether I want to send to them
     data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors_snd, snd_ids
@@ -602,63 +616,6 @@ function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
         data_rcv[k]
     end
     ExchangeGraph(snd_ids,rcv_ids)
-end
-
-# If neighbors not provided, we need to gather in main
-function ExchangeGraph_impl(snd_ids,neighbors::Nothing)
-    discover_neighbors_action()
-    snd_ids_main = gather(snd_ids)
-    rcv_ids_main = map(snd_ids_main) do snd_ids_main
-        snd = JaggedArray(snd_ids_main)
-        I = Int32[]
-        J = Int32[]
-        np = length(snd)
-        for p in 1:np
-            kini = snd.ptrs[p]
-            kend = snd.ptrs[p+1]-1
-            for k in kini:kend
-                push!(I,p)
-                push!(J,snd.data[k])
-            end
-        end
-        adjmat = sparse(I,J,I,np,np)
-        ptrs = similar(snd.ptrs)
-        fill!(ptrs,zero(eltype(ptrs)))
-        for (i,j,_) in nziterator(adjmat)
-            ptrs[j+1] += 1
-        end
-        length_to_ptrs!(ptrs)
-        ndata = ptrs[end]-1
-        data = similar(snd.data,eltype(snd.data),ndata)
-        for (i,j,_) in nziterator(adjmat)
-            data[ptrs[j]] = i
-            ptrs[j] += 1
-        end
-        rewind_ptrs!(ptrs)
-        rcv = JaggedArray(data,ptrs)
-    end
-    rcv_ids = scatter(rcv_ids_main)
-    ExchangeGraph(snd_ids,rcv_ids)
-end
-
-const DISCOVER_NEIGHBORS_ACTION = Ref(:allow)
-
-function discover_neighbors_action()
-    DISCOVER_NEIGHBORS_ACTION[] === :allow && return nothing
-    msg =
-    """
-    [PartitionedArrays.jl] Using a non-scalable implementation
-    to discover the incoming neighbours of a ExchangeGraph instance.
-    This might cause trouble when running the code at medium/large scales.
-    You can avoid this using the key-word arguments in the ExchangeGraph constructor.
-    See the documetation of ExchangeGraph for further help.
-    """
-    if DISCOVER_NEIGHBORS_ACTION[] === :error
-        error(msg)
-    elseif DISCOVER_NEIGHBORS_ACTION[] === :warn
-        @warn msg
-    end
-    nothing
 end
 
 function is_consistent(graph::ExchangeGraph)

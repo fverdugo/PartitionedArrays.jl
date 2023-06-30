@@ -181,3 +181,40 @@ function exchange_impl!(
     end
 end
 
+# If neighbors not provided, we can gather them in main
+# This implementation is fine for debugging purposes
+function ExchangeGraph_impl(snd_ids::DebugArray,neighbors::Nothing)
+    snd_ids_main = gather(snd_ids)
+    rcv_ids_main = map(snd_ids_main) do snd_ids_main
+        snd = JaggedArray(snd_ids_main)
+        I = Int32[]
+        J = Int32[]
+        np = length(snd)
+        for p in 1:np
+            kini = snd.ptrs[p]
+            kend = snd.ptrs[p+1]-1
+            for k in kini:kend
+                push!(I,p)
+                push!(J,snd.data[k])
+            end
+        end
+        adjmat = sparse(I,J,I,np,np)
+        ptrs = similar(snd.ptrs)
+        fill!(ptrs,zero(eltype(ptrs)))
+        for (i,j,_) in nziterator(adjmat)
+            ptrs[j+1] += 1
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = similar(snd.data,eltype(snd.data),ndata)
+        for (i,j,_) in nziterator(adjmat)
+            data[ptrs[j]] = i
+            ptrs[j] += 1
+        end
+        rewind_ptrs!(ptrs)
+        rcv = JaggedArray(data,ptrs)
+    end
+    rcv_ids = scatter(rcv_ids_main)
+    ExchangeGraph(snd_ids,rcv_ids)
+end
+

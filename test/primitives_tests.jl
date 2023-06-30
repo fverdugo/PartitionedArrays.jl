@@ -334,9 +334,4 @@ function primitives_tests(distribute)
    map(parts_snd,parts_snd_2) do parts_snd, parts_snd_2
        @test parts_snd == parts_snd_2
    end
-
-   PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :error
-   @test_throws ErrorException graph2 = ExchangeGraph(parts_rcv)
-   PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :allow
-
 end

@@ -527,3 +527,62 @@ function exchange_impl!(
     end
 end
 
+# This should go eventually into MPI.jl! 
+Issend(data, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request(); dest::Integer, tag::Integer=0) =
+    Issend(data, dest, tag, comm, req)
+
+function Issend(buf::MPI.Buffer, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request())
+    @assert MPI.isnull(req)
+    # int MPI_Issend(const void* buf, int count, MPI_Datatype datatype, int dest,
+    #               int tag, MPI_Comm comm, MPI_Request *request)
+    MPI.API.MPI_Issend(buf.data, buf.count, buf.datatype, dest, tag, comm, req)
+    MPI.setbuffer!(req, buf)
+    return req
+end
+Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request()) =
+    Issend(MPI.Buffer_send(data), dest, tag, comm, req)
+
+"""
+ Implements Alg. 2 in https://dl.acm.org/doi/10.1145/1837853.1693476
+ The algorithm's complexity is claimed to be O(log(p))
+"""
+function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::Nothing) where T
+    comm = snd_ids.comm
+    rcv_ids=map(snd_ids) do snd_ids 
+        requests=MPI.Request[]
+        for snd_rank in snd_ids 
+          push!(requests,Issend(snd_rank,snd_rank-1,0,comm))
+        end
+        rcv_ids=T[]
+        done=false
+        barrier_emitted=false
+        all_sends_done=length(snd_ids)==0 ? true : false
+        barrier_req=nothing
+        while (!done)
+            # Check whether any message has arrived
+            ismsg, status = MPI.Iprobe(comm,MPI.Status)
+            
+            # If message has arrived ...
+            if (ismsg)
+                push!(rcv_ids, MPI.Get_source(status)+1)
+                tag = MPI.Get_tag(status)
+                recv_data=MPI.Recv(Int64, comm; source=rcv_ids[end]-1, tag=tag)
+            end     
+    
+            if (!all_sends_done)
+                # Check if all sends are done 
+                all_sends_done = MPI.Testall(requests)
+            end
+            if (all_sends_done)
+                if (!barrier_emitted)
+                    barrier_req=MPI.Ibarrier(comm)
+                    barrier_emitted=true
+                end
+                done=MPI.Test(barrier_req)
+            end
+        end
+        sort(rcv_ids)
+    end
+    ExchangeGraph(snd_ids,rcv_ids)
+end
+
