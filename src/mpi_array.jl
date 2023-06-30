@@ -587,6 +587,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
         print("\n")
         res 
     end
+    MPI.Barrier(comm)
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
