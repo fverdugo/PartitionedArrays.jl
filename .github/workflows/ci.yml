@@ -23,6 +23,9 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v1
+      - name: Select OpenMPI_jll
+        run: julia --project -e 'using Pkg; Pkg.add("MPIPreferences")'
+        run: julia --project -e 'using MPIPreferences; MPIPreferences.use_jll_binary("OpenMPI_jll")'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
