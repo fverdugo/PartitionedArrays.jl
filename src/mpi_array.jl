@@ -548,13 +548,16 @@ Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractReque
 """
 function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::Nothing) where T
     comm = snd_ids.comm
-    rcv_ids=map(snd_ids) do snd_ids 
+    snd_ids_converted=map(snd_ids) do snd_ids
+        convert(Vector{Int64},snd_ids)
+    end 
+    rcv_ids=map(snd_ids_converted) do snd_ids 
         requests=MPI.Request[]
         for snd_rank in snd_ids 
           println("XXXX: $(typeof(snd_rank))")
           push!(requests,Issend(snd_rank,snd_rank-1,0,comm))
         end
-        rcv_ids=T[]
+        rcv_ids=eltype(snd_ids)[]
         done=false
         barrier_emitted=false
         all_sends_done=length(snd_ids)==0 ? true : false
@@ -567,7 +570,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
             if (ismsg)
                 push!(rcv_ids, MPI.Get_source(status)+1)
                 tag = MPI.Get_tag(status)
-                recv_data=MPI.Recv(T, comm; source=rcv_ids[end]-1, tag=tag)
+                recv_data=MPI.Recv(eltype(snd_ids), comm; source=rcv_ids[end]-1, tag=tag)
             end     
     
             if (!all_sends_done)
@@ -587,7 +590,9 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
         print("\n")
         res 
     end
-    MPI.Barrier(comm)
+    rcv_ids=map(rcv_ids,snd_ids) do rcv_ids, snd_ids
+       convert(typeof(snd_ids),rcv_ids)
+    end 
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
