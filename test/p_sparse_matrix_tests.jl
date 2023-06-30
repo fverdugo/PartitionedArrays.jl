@@ -55,8 +55,9 @@ function p_sparse_matrix_tests(distribute)
         @test all( values .== 6 )
     end
 
-    inds = (PRange(A.row_partition),PRange(A.col_partition))
+    inds = axes(A)
     A2 = similar(A, eltype(A), inds)
+
     consistent!(b) |> wait
     map(partition(b)) do values
       @test all( values .== 6 )
