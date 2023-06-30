@@ -581,7 +581,10 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
                 done=MPI.Test(barrier_req)
             end
         end
-        sort(rcv_ids)
+        res=sort(rcv_ids)
+        print("MPI rank[$(MPI.Comm_rank(comm))]: snd_ids=$(snd_ids) rcv_ids=$(res)") 
+        print("\n")
+        res 
     end
     ExchangeGraph(snd_ids,rcv_ids)
 end
