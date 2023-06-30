@@ -554,7 +554,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
     rcv_ids=map(snd_ids_converted) do snd_ids 
         requests=MPI.Request[]
         for snd_rank in snd_ids 
-          println("XXXX: $(typeof(snd_rank))")
+          println("xxx rank[$(MPI.Comm_rank(comm)+1)] sends to rank[$snd_rank] xxx")
           push!(requests,Issend(snd_rank,snd_rank-1,0,comm))
         end
         rcv_ids=eltype(snd_ids)[]
@@ -586,7 +586,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
             end
         end
         res=sort(rcv_ids)
-        print("MPI rank[$(MPI.Comm_rank(comm))]: snd_ids=$(snd_ids) rcv_ids=$(res)") 
+        print("MPI rank[$(MPI.Comm_rank(comm)+1)]: snd_ids=$(snd_ids) rcv_ids=$(res)") 
         print("\n")
         res 
     end
