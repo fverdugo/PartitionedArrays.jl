@@ -562,12 +562,12 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
         rcv_ids=eltype(snd_ids)[]
         done=false
         barrier_emitted=false
-        all_sends_done=length(snd_ids)==0 ? true : false
+        all_sends_done=false
         barrier_req=nothing
         status = Ref(MPI.STATUS_ZERO)
         while (!done)
             # Check whether any message has arrived
-            ismsg = MPI.Iprobe(comm, status)
+            ismsg = MPI.Iprobe(comm, status; tag=tag)
             
             # If message has arrived ...
             if (ismsg)
