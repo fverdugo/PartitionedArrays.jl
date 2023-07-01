@@ -5,7 +5,7 @@ function run_mpi_driver(file;procs)
   a=mpiexec()
   run(`$(a) --version`)
   mpiexec() do cmd
-    println("XXXX:", $(cmd))
+    println("XXXX:", "$(cmd)")
     if MPI.MPI_LIBRARY == "OpenMPI" || (isdefined(MPI, :OpenMPI) && MPI.MPI_LIBRARY == MPI.OpenMPI)
       run(`$cmd -n $procs --oversubscribe $(Base.julia_cmd()) --project=$repodir $(file)`)
     else
