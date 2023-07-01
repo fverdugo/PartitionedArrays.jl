@@ -553,7 +553,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
     end 
     rcv_ids=map(snd_ids_converted) do snd_ids 
         requests=MPI.Request[]
-        tag=0
+        tag=10000
         for snd_part in snd_ids
           snd_rank = snd_part-1 
           println("xxx rank[$(MPI.Comm_rank(comm)+1)] sends to rank[$snd_part] xxx")
