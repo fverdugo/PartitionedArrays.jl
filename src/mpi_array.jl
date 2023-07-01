@@ -596,7 +596,10 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
     end
     rcv_ids=map(rcv_ids,snd_ids) do rcv_ids, snd_ids
        convert(typeof(snd_ids),rcv_ids)
-    end 
+    end
+    for i=1:10
+      MPI.Barrier(comm)
+    end
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
