@@ -571,6 +571,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
                 push!(rcv_ids, MPI.Get_source(status)+1)
                 tag = MPI.Get_tag(status)
                 recv_data=MPI.Recv(eltype(snd_ids), comm; source=rcv_ids[end]-1, tag=tag)
+                println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag) xxx")
             end     
     
             if (!all_sends_done)
