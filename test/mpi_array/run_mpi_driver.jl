@@ -5,6 +5,7 @@ function run_mpi_driver(file;procs)
   println(MPI.versioninfo())
   a=mpiexec()
   run(`$(a) --version`)
+  println("AAAA: $(MPI.MPI_LIBRARY)")
   mpiexec() do cmd
     println("XXXX:", "$(cmd)")
     if MPI.MPI_LIBRARY == "OpenMPI" || (isdefined(MPI, :OpenMPI) && MPI.MPI_LIBRARY == MPI.OpenMPI)
