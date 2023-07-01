@@ -2,6 +2,7 @@ using MPI
 using Test
 function run_mpi_driver(file;procs)
   repodir = normpath(joinpath(@__DIR__,"..",".."))
+  println(MPI.versioninfo())
   a=mpiexec()
   run(`$(a) --version`)
   mpiexec() do cmd
