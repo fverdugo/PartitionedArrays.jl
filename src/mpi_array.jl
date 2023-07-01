@@ -571,10 +571,11 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
             
             # If message has arrived ...
             if (ismsg)
-                push!(rcv_ids, MPI.Get_source(status[])+1)
-                tag = MPI.Get_tag(status[])
-                rcv_data=MPI.Recv(eltype(snd_ids), comm; source=rcv_ids[end]-1, tag=tag)
-                println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag) rcv_data=$(rcv_data) rcv_ids=$(rcv_ids) xxx")
+                push!(rcv_ids, status[].source+1)
+                tag = status[].tag
+                dummy=eltype(snd_ids)[0]
+                MPI.Recv!(dummy, comm; source=rcv_ids[end]-1, tag=tag)
+                println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag) rcv_data=$(dummy) rcv_ids=$(rcv_ids) xxx")
             end     
     
             if (!all_sends_done)
@@ -597,9 +598,9 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
     rcv_ids=map(rcv_ids,snd_ids) do rcv_ids, snd_ids
        convert(typeof(snd_ids),rcv_ids)
     end
-    for i=1:10
-      MPI.Barrier(comm)
-    end
+    # for i=1:10
+    #   MPI.Barrier(comm)
+    # end
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
