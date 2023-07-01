@@ -564,14 +564,15 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
         barrier_emitted=false
         all_sends_done=length(snd_ids)==0 ? true : false
         barrier_req=nothing
+        status = Ref(MPI.STATUS_ZERO)
         while (!done)
             # Check whether any message has arrived
-            ismsg, status = MPI.Iprobe(comm,MPI.Status)
+            ismsg = MPI.Iprobe(comm, status)
             
             # If message has arrived ...
             if (ismsg)
-                push!(rcv_ids, MPI.Get_source(status)+1)
-                tag = MPI.Get_tag(status)
+                push!(rcv_ids, MPI.Get_source(status[])+1)
+                tag = MPI.Get_tag(status[])
                 rcv_data=MPI.Recv(eltype(snd_ids), comm; source=rcv_ids[end]-1, tag=tag)
                 println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag) rcv_data=$(rcv_data) rcv_ids=$(rcv_ids) xxx")
             end     
