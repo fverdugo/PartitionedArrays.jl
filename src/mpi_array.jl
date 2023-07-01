@@ -578,16 +578,14 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
                 println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag) rcv_data=$(dummy) rcv_ids=$(rcv_ids) xxx")
             end     
     
-            if (!all_sends_done)
-                # Check if all sends are done 
+            if (barrier_emitted)
+                done=MPI.Test(barrier_req)
+            else
                 all_sends_done = MPI.Testall(requests)
-            end
-            if (all_sends_done)
-                if (!barrier_emitted)
+                if (all_sends_done)
                     barrier_req=MPI.Ibarrier(comm)
                     barrier_emitted=true
                 end
-                done=MPI.Test(barrier_req)
             end
         end
         res=sort(rcv_ids)
