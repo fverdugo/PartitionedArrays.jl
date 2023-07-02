@@ -562,18 +562,14 @@ Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractReque
 """
 function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::Nothing) where T
     comm = snd_ids.comm
-    snd_ids_converted=map(snd_ids) do snd_ids
-        convert(Vector{Int64},snd_ids)
-    end 
-    rcv_ids=map(snd_ids_converted) do snd_ids 
+    rcv_ids=map(snd_ids) do snd_ids 
         requests=MPI.Request[]
         tag=new_exchange_graph_impl_tag()
         for snd_part in snd_ids
-          snd_rank = snd_part-1 
-          println("xxx rank[$(MPI.Comm_rank(comm)+1)] sends to rank[$snd_part] xxx")
-          push!(requests,Issend(snd_rank,snd_rank,tag,comm))
+          snd_rank = snd_part-1
+          push!(requests,Issend(T(0),snd_rank,tag,comm))
         end
-        rcv_ids=eltype(snd_ids)[]
+        rcv_ids=T[]
         done=false
         barrier_emitted=false
         all_sends_done=false
@@ -587,9 +583,8 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
             if (ismsg)
                 push!(rcv_ids, status[].source+1)
                 tag_rcv = status[].tag
-                dummy=eltype(snd_ids)[0]
+                dummy=T[0]
                 MPI.Recv!(dummy, comm; source=rcv_ids[end]-1, tag=tag_rcv)
-                println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag_rcv) rcv_data=$(dummy) rcv_ids=$(rcv_ids) xxx")
                 @boundscheck @assert tag_rcv == tag "Inconsistent tag in ExchangeGraph_impl()!" 
             end     
     
@@ -603,17 +598,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
                 end
             end
         end
-        res=sort(rcv_ids)
-        print("MPI rank[$(MPI.Comm_rank(comm)+1)]: snd_ids=$(snd_ids) rcv_ids=$(res)") 
-        print("\n")
-        res 
+        sort(rcv_ids)
     end
-    rcv_ids=map(rcv_ids,snd_ids) do rcv_ids, snd_ids
-       convert(typeof(snd_ids),rcv_ids)
-    end
-    # for i=1:10
-    #   MPI.Barrier(comm)
-    # end
     ExchangeGraph(snd_ids,rcv_ids)
 end
-
