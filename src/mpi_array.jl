@@ -1,4 +1,22 @@
 
+const EXCHANGE_IMPL_TAG  = 0 
+const EXCHANGE_GRAPH_IMPL_TAG = Ref(Int64(1))
+
+function _new_exchange_graph_impl_tag()
+  EXCHANGE_GRAPH_IMPL_TAG[] = 
+       (EXCHANGE_GRAPH_IMPL_TAG[] + 1)%(MPI.tag_ub()+1)
+  return EXCHANGE_GRAPH_IMPL_TAG[]     
+end 
+
+function new_exchange_graph_impl_tag()
+   _new_exchange_graph_impl_tag()
+   if EXCHANGE_GRAPH_IMPL_TAG[] == EXCHANGE_IMPL_TAG
+      return _new_exchange_graph_impl_tag()
+   else 
+      return EXCHANGE_GRAPH_IMPL_TAG[]
+   end
+end 
+
 function ptrs_to_counts(ptrs)
     counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
     @inbounds for i in 1:length(counts)
@@ -458,15 +476,13 @@ function exchange_impl!(
     for (i,id_rcv) in enumerate(graph.rcv.item)
         rank_rcv = id_rcv-1
         buff_rcv = view(rcv.item,i:i)
-        tag_rcv = rank_rcv
-        reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+        reqr = MPI.Irecv!(buff_rcv,rank_rcv,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqr)
     end
     for (i,id_snd) in enumerate(graph.snd.item)
         rank_snd = id_snd-1
         buff_snd = view(snd.item,i:i)
-        tag_snd = MPI.Comm_rank(comm)
-        reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+        reqs = MPI.Isend(buff_snd,rank_snd,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqs)
     end
     @async begin
@@ -501,16 +517,14 @@ function exchange_impl!(
         rank_rcv = id_rcv-1
         ptrs_rcv = data_rcv.ptrs
         buff_rcv = view(data_rcv.data,ptrs_rcv[i]:(ptrs_rcv[i+1]-1))
-        tag_rcv = rank_rcv
-        reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+        reqr = MPI.Irecv!(buff_rcv,rank_rcv,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqr)
     end
     for (i,id_snd) in enumerate(graph.snd.item)
         rank_snd = id_snd-1
         ptrs_snd = data_snd.ptrs
         buff_snd = view(data_snd.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))
-        tag_snd = MPI.Comm_rank(comm)
-        reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+        reqs = MPI.Isend(buff_snd,rank_snd,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqs)
     end
     @async begin
@@ -553,7 +567,7 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
     end 
     rcv_ids=map(snd_ids_converted) do snd_ids 
         requests=MPI.Request[]
-        tag=10000
+        tag=new_exchange_graph_impl_tag()
         for snd_part in snd_ids
           snd_rank = snd_part-1 
           println("xxx rank[$(MPI.Comm_rank(comm)+1)] sends to rank[$snd_part] xxx")
@@ -572,10 +586,11 @@ function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::No
             # If message has arrived ...
             if (ismsg)
                 push!(rcv_ids, status[].source+1)
-                tag = status[].tag
+                tag_rcv = status[].tag
                 dummy=eltype(snd_ids)[0]
-                MPI.Recv!(dummy, comm; source=rcv_ids[end]-1, tag=tag)
-                println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag) rcv_data=$(dummy) rcv_ids=$(rcv_ids) xxx")
+                MPI.Recv!(dummy, comm; source=rcv_ids[end]-1, tag=tag_rcv)
+                println("xxx rank[$(MPI.Comm_rank(comm)+1)] receives rank[$(rcv_ids[end])] tag=$(tag_rcv) rcv_data=$(dummy) rcv_ids=$(rcv_ids) xxx")
+                @boundscheck @assert tag_rcv == tag "Inconsistent tag in ExchangeGraph_impl()!" 
             end     
     
             if (barrier_emitted)
