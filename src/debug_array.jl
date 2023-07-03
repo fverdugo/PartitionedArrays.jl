@@ -4,8 +4,8 @@
 
 Call `f(DebugArray)`.
 """
-function with_debug(f,args...;kwargs...)
-    f(DebugArray,args...;kwargs...)
+function with_debug(f)
+    f(DebugArray)
 end
 
 # Auxiliary array type

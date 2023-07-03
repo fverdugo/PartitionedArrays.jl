@@ -36,7 +36,7 @@ function distribute_with_mpi(a;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true
 end
 
 """
-    with_mpi(f,args...;comm=MPI.COMM_WORLD,duplicate_comm=true,kwargs...)
+    with_mpi(f;comm=MPI.COMM_WORLD,duplicate_comm=true,kwargs...)
 
 Call `f(a->distribute_with_mpi(a;comm=comm,kwargs...))`
 and abort MPI if there was an error.  This is the safest way of running the function `f` using MPI.
@@ -44,16 +44,16 @@ and abort MPI if there was an error.  This is the safest way of running the func
 !!! note
     This function calls `MPI.Init()` if MPI is not initialized yet.
 """
-function with_mpi(f,args...;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true,kwargs...)
+function with_mpi(f;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true,kwargs...)
     if !MPI.Initialized()
         MPI.Init()
     end
     distribute = a -> distribute_with_mpi(a;comm=comm,duplicate_comm=duplicate_comm)
     if MPI.Comm_size(comm) == 1
-        f(distribute,args...;kwargs...)
+        f(distribute)
     else
         try
-            f(distribute,args...;kwargs...)
+            f(distribute)
         catch e
             @error "" exception=(e, catch_backtrace())
             if MPI.Initialized() && !MPI.Finalized()
