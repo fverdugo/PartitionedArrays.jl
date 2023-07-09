@@ -26,7 +26,7 @@ function ptrs_to_counts(ptrs)
 end
 
 """
-    distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
+    distribute_with_mpi(a;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true)
 
 Create an [`MPIArray`](@ref) instance by distributing
 the items in the collection `a` over the ranks of the given MPI
@@ -40,7 +40,7 @@ Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
 !!! note
     This function calls `MPI.Init()` if MPI is not initialized yet.
 """
-function distribute_with_mpi(a,comm::MPI.Comm=MPI.COMM_WORLD;duplicate_comm=true)
+function distribute_with_mpi(a;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true)
     if !MPI.Initialized()
         MPI.Init()
     end
@@ -162,8 +162,8 @@ function Base.setindex!(a::MPIArray,v,i::Int)
     end
     v
 end
-linear_indices(a::MPIArray) = distribute_with_mpi(LinearIndices(a),a.comm,duplicate_comm=false)
-cartesian_indices(a::MPIArray) = distribute_with_mpi(CartesianIndices(a),a.comm,duplicate_comm=false)
+linear_indices(a::MPIArray) = distribute_with_mpi(LinearIndices(a);comm=a.comm,duplicate_comm=false)
+cartesian_indices(a::MPIArray) = distribute_with_mpi(CartesianIndices(a);comm=a.comm,duplicate_comm=false)
 function Base.show(io::IO,k::MIME"text/plain",data::MPIArray)
     header = ""
     if ndims(data) == 1
