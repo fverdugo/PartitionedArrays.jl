@@ -20,18 +20,18 @@ a_snd = map(ranks) do rank
         [ Int[] ]
     end
 end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Vector{Int64}}}:
- [[7, 13, 28], [20, 6, 30], [28, 2, 14], [18, 5, 28]]
+ [[20, 18, 6], [25, 24, 8], [4, 18, 30], [25, 22, 9]]
  [[]]
  [[]]
  [[]]</code></pre><p>Note that only the first entry contains meaningful data in previous output.</p><pre><code class="language-julia hljs">a_rcv = scatter(a_snd,source=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Int64}}:
- [7, 13, 28]
- [20, 6, 30]
- [28, 2, 14]
- [18, 5, 28]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
- 2
+ [20, 18, 6]
+ [25, 24, 8]
+ [4, 18, 30]
+ [25, 22, 9]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
  0
+ 1
  0
- 1</code></pre><p>Finally we reduce the partial sums.</p><pre><code class="language-julia hljs">b_rcv = reduction(+,b_snd,init=0,destination=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
+ 2</code></pre><p>Finally we reduce the partial sums.</p><pre><code class="language-julia hljs">b_rcv = reduction(+,b_snd,init=0,destination=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
  3
  0
  0
@@ -141,4 +141,4 @@ A = psparse!(I,J,V,row_partition,col_partition) |&gt; fetch</code></pre><pre cla
 x .= b
 IterativeSolvers.cg!(x,A,b)
 r = A*x - b
-norm(r)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3.1401849173675503e-16</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../reference/backends/">Back-ends »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.28.0-DEV on <span class="colophon-date" title="Sunday 9 July 2023 14:47">Sunday 9 July 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+norm(r)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3.1401849173675503e-16</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../reference/backends/">Back-ends »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.28.0-DEV on <span class="colophon-date" title="Monday 10 July 2023 12:57">Monday 10 July 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
