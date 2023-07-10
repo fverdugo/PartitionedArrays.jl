@@ -564,6 +564,10 @@ function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
     println(io,typeof(data)," with $(length(data.snd)) nodes")
 end
 
+function _default_rcv_ids(::AbstractArray)
+    find_rcv_ids_gather_scatter
+end 
+
 """
     ExchangeGraph(snd; symmetric=false [,neighbors,find_rcv_ids])
 
@@ -573,16 +577,11 @@ are set to `snd`. Otherwise, either the optional `neighbors` or
 `find_rcv_ids` are considered, in that order. `neighbors` is also an `ExchangeGraph`
 that contains a super set of the outgoing and incoming neighbors
 associated with `snd`. It is used to find the incoming neighbors `rcv`
-efficiently. If `neighbors` nor `symmetric` are provided, then `find_rcv_ids` 
+efficiently. If `neighbors` are not provided, then `find_rcv_ids` 
 is used (either the user-provided or a default one).
 `find_rcv_ids` is a function that implements an algorithm to find the 
 rcv side of the exchange graph out of the snd side information.
 """
-
-function _default_rcv_ids(::AbstractArray)
-    find_rcv_ids_gather_scatter
-end 
-
 function ExchangeGraph(snd;
                        neighbors=nothing,
                        symmetric=false,
