@@ -556,11 +556,16 @@ end
 Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request()) =
     Issend(MPI.Buffer_send(data), dest, tag, comm, req)
 
+
+function _default_rcv_ids(::MPIArray)
+    find_rcv_ids_gather_scatter
+end
+
 """
  Implements Alg. 2 in https://dl.acm.org/doi/10.1145/1837853.1693476
  The algorithm's complexity is claimed to be O(log(p))
 """
-function ExchangeGraph_impl(snd_ids::MPIArray{<:AbstractVector{T}},neighbors::Nothing) where T
+function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
     comm = snd_ids.comm
     rcv_ids=map(snd_ids) do snd_ids 
         requests=MPI.Request[]

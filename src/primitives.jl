@@ -565,26 +565,39 @@ function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
 end
 
 """
-    ExchangeGraph(snd; symmetric=false [,neighbors])
+    ExchangeGraph(snd; symmetric=false [,neighbors,find_rcv_ids])
 
 Create an `ExchangeGraph` object only from the lists of outgoing 
 neighbors in `snd`. If `symmetric==true`, then the incoming neighbors
-are set to `snd`. Otherwise, the optional `neighbors` is considered.
- `neighbors` is also an `ExchangeGraph`
+are set to `snd`. Otherwise, either the optional `neighbors` or 
+`find_rcv_ids` are considered, in that order. `neighbors` is also an `ExchangeGraph`
 that contains a super set of the outgoing and incoming neighbors
 associated with `snd`. It is used to find the incoming neighbors `rcv`
-efficiently.
+efficiently. If `neighbors` nor `symmetric` are provided, then `find_rcv_ids` 
+is used (either the user-provided or a default one).
+`find_rcv_ids` is a function that implements an algorithm to find the 
+rcv side of the exchange graph out of the snd side information.
 """
-function ExchangeGraph(snd;neighbors=nothing,symmetric=false)
+
+function _default_rcv_ids(::AbstractArray)
+    find_rcv_ids_gather_scatter
+end 
+
+function ExchangeGraph(snd;
+                       neighbors=nothing,
+                       symmetric=false,
+                       find_rcv_ids=_default_rcv_ids(snd))
     if symmetric
         ExchangeGraph(snd,snd)
-    else
-        ExchangeGraph_impl(snd,neighbors)
+    elseif (neighbors != nothing)
+        ExchangeGraph_impl_with_neighbors(snd,neighbors)
+    else 
+        ExchangeGraph_impl_with_find_rcv_ids(snd,find_rcv_ids)
     end
 end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
-function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
+function ExchangeGraph_impl_with_neighbors(snd_ids,neighbors::ExchangeGraph)
     function _is_included(snd_ids_a,snd_ids_b)
         is_included_all=map(snd_ids_a, snd_ids_b) do snd_ids_a, snd_ids_b
             all(i->i in snd_ids_b,snd_ids_a)
@@ -617,9 +630,13 @@ function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
-# If neighbors not provided, we can gather them in main
-# This implementation is fine for debugging purposes
-function ExchangeGraph_impl(snd_ids::AbstractArray,neighbors::Nothing)
+function ExchangeGraph_impl_with_find_rcv_ids(snd_ids::AbstractArray,find_rcv_ids)
+    find_rcv_ids(snd_ids)
+end
+
+# This strategy gathers the communication graph into one process
+# and then scatters back the receivers
+function find_rcv_ids_gather_scatter(snd_ids::AbstractArray)
     snd_ids_main = gather(snd_ids)
     rcv_ids_main = map(snd_ids_main) do snd_ids_main
         snd = JaggedArray(snd_ids_main)
@@ -652,7 +669,7 @@ function ExchangeGraph_impl(snd_ids::AbstractArray,neighbors::Nothing)
     end
     rcv_ids = scatter(rcv_ids_main)
     ExchangeGraph(snd_ids,rcv_ids)
-end
+end 
 
 function is_consistent(graph::ExchangeGraph)
     snd = graph.snd
