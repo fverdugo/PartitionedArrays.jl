@@ -323,7 +323,6 @@ function fem_example(distribute)
     dof_partition = map(setup_dofs,space,grid,tentative_dof_partition)
     # Some optimizations when building A
     try
-        PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :error
         cell_partition = uniform_partition(rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
         I_owner = find_owner(tentative_dof_partition,I)
         row_partition = map(union_ghost,tentative_dof_partition,I,I_owner)
@@ -331,9 +330,7 @@ function fem_example(distribute)
         assembly_graph(row_partition;neighbors)
         t = psparse!(I,J,V,row_partition,tentative_dof_partition,discover_rows=false)
         A = fetch(t)
-        PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :allow
     catch e
-        PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :allow
         rethrow(e)
     end
 end

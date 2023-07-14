@@ -45,6 +45,7 @@ export ExchangeGraph
 export exchange
 export exchange!
 export allocate_exchange
+export find_rcv_ids_gather_scatter
 include("primitives.jl")
 
 export DebugArray
@@ -54,6 +55,7 @@ include("debug_array.jl")
 export MPIArray
 export distribute_with_mpi
 export with_mpi
+export find_rcv_ids_ibarrier
 include("mpi_array.jl")
 
 export PRange

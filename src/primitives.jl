@@ -564,27 +564,52 @@ function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
     println(io,typeof(data)," with $(length(data.snd)) nodes")
 end
 
+function default_find_rcv_ids(::AbstractArray)
+    find_rcv_ids_gather_scatter
+end 
+
 """
-    ExchangeGraph(snd; symmetric=false [,neighbors])
+    ExchangeGraph(snd; symmetric=false [,neighbors,find_rcv_ids])
 
 Create an `ExchangeGraph` object only from the lists of outgoing 
 neighbors in `snd`. If `symmetric==true`, then the incoming neighbors
-are set to `snd`. Otherwise, the optional `neighbors` is considered.
- `neighbors` is also an `ExchangeGraph`
+are set to `snd`. Otherwise, either the optional `neighbors` or 
+`find_rcv_ids` are considered, in that order. `neighbors` is also an `ExchangeGraph`
 that contains a super set of the outgoing and incoming neighbors
 associated with `snd`. It is used to find the incoming neighbors `rcv`
-efficiently.
+efficiently. If `neighbors` are not provided, then `find_rcv_ids` 
+is used (either the user-provided or a default one).
+`find_rcv_ids` is a function that implements an algorithm to find the 
+rcv side of the exchange graph out of the snd side information.
 """
-function ExchangeGraph(snd;neighbors=nothing,symmetric=false)
+function ExchangeGraph(snd;
+                       neighbors=nothing,
+                       symmetric=false,
+                       find_rcv_ids=default_find_rcv_ids(snd))
     if symmetric
         ExchangeGraph(snd,snd)
-    else
-        ExchangeGraph_impl(snd,neighbors)
+    elseif (neighbors != nothing)
+        ExchangeGraph_impl_with_neighbors(snd,neighbors)
+    else 
+        ExchangeGraph_impl_with_find_rcv_ids(snd,find_rcv_ids)
     end
 end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
-function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
+function ExchangeGraph_impl_with_neighbors(snd_ids,neighbors::ExchangeGraph)
+    function is_included(snd_ids_a,snd_ids_b)
+        is_included_all=map(snd_ids_a, snd_ids_b) do snd_ids_a, snd_ids_b
+            all(i->i in snd_ids_b,snd_ids_a)
+        end
+        result=false
+        and(a,b)=a && b
+        is_included_all=reduction(and,is_included_all,destination=:all,init=one(eltype(is_included_all)))
+        map(is_included_all) do is_included_all
+            result = is_included_all
+        end
+        result
+    end 
+    @boundscheck is_included(snd_ids,neighbors.snd) || error("snd_ids must be a subset of neighbors.snd")
     rank = linear_indices(snd_ids)
     # Tell the neighbors whether I want to send to them
     data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors_snd, snd_ids
@@ -604,9 +629,14 @@ function ExchangeGraph_impl(snd_ids,neighbors::ExchangeGraph)
     ExchangeGraph(snd_ids,rcv_ids)
 end
 
-# If neighbors not provided, we need to gather in main
-function ExchangeGraph_impl(snd_ids,neighbors::Nothing)
-    discover_neighbors_action()
+function ExchangeGraph_impl_with_find_rcv_ids(snd_ids::AbstractArray,find_rcv_ids)
+    rcv_ids = find_rcv_ids(snd_ids)
+    ExchangeGraph(snd_ids,rcv_ids)
+end
+
+# This strategy gathers the communication graph into one process
+# and then scatters back the receivers
+function find_rcv_ids_gather_scatter(snd_ids::AbstractArray)
     snd_ids_main = gather(snd_ids)
     rcv_ids_main = map(snd_ids_main) do snd_ids_main
         snd = JaggedArray(snd_ids_main)
@@ -638,28 +668,8 @@ function ExchangeGraph_impl(snd_ids,neighbors::Nothing)
         rcv = JaggedArray(data,ptrs)
     end
     rcv_ids = scatter(rcv_ids_main)
-    ExchangeGraph(snd_ids,rcv_ids)
-end
-
-const DISCOVER_NEIGHBORS_ACTION = Ref(:allow)
-
-function discover_neighbors_action()
-    DISCOVER_NEIGHBORS_ACTION[] === :allow && return nothing
-    msg =
-    """
-    [PartitionedArrays.jl] Using a non-scalable implementation
-    to discover the incoming neighbours of a ExchangeGraph instance.
-    This might cause trouble when running the code at medium/large scales.
-    You can avoid this using the key-word arguments in the ExchangeGraph constructor.
-    See the documetation of ExchangeGraph for further help.
-    """
-    if DISCOVER_NEIGHBORS_ACTION[] === :error
-        error(msg)
-    elseif DISCOVER_NEIGHBORS_ACTION[] === :warn
-        @warn msg
-    end
-    nothing
-end
+    rcv_ids
+end 
 
 function is_consistent(graph::ExchangeGraph)
     snd = graph.snd

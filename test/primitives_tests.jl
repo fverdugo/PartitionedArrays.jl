@@ -174,6 +174,14 @@ function primitives_tests(distribute)
    graph2 = ExchangeGraph(snd_ids,neighbors=graph)
    map(==,graph2.rcv,graph.rcv)
 
+   graph2 = ExchangeGraph(snd_ids;find_rcv_ids=find_rcv_ids_gather_scatter)
+   map(==,graph2.rcv,graph.rcv)
+
+   if (isa(snd_ids,MPIArray))
+    graph2 = ExchangeGraph(snd_ids;find_rcv_ids=find_rcv_ids_ibarrier)
+    map(==,graph2.rcv,graph.rcv)
+   end 
+
    snd = map(i->map(j->collect(1:j),i),snd_ids)
    rcv = exchange(snd,graph) |> fetch
 
@@ -334,9 +342,4 @@ function primitives_tests(distribute)
    map(parts_snd,parts_snd_2) do parts_snd, parts_snd_2
        @test parts_snd == parts_snd_2
    end
-
-   PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :error
-   @test_throws ErrorException graph2 = ExchangeGraph(parts_rcv)
-   PartitionedArrays.DISCOVER_NEIGHBORS_ACTION[] = :allow
-
 end

@@ -1,4 +1,21 @@
 
+const EXCHANGE_IMPL_TAG  = 0 
+const EXCHANGE_GRAPH_IMPL_TAG = Ref(Int64(1))
+
+function new_exchange_graph_impl_tag()
+    function new_tag()
+      EXCHANGE_GRAPH_IMPL_TAG[] = 
+           (EXCHANGE_GRAPH_IMPL_TAG[] + 1)%(MPI.tag_ub()+1)
+      return EXCHANGE_GRAPH_IMPL_TAG[]     
+    end 
+   new_tag()
+   if EXCHANGE_GRAPH_IMPL_TAG[] == EXCHANGE_IMPL_TAG
+      return new_tag()
+   else 
+      return EXCHANGE_GRAPH_IMPL_TAG[]
+   end
+end 
+
 function ptrs_to_counts(ptrs)
     counts = similar(ptrs,eltype(ptrs),length(ptrs)-1)
     @inbounds for i in 1:length(counts)
@@ -8,7 +25,7 @@ function ptrs_to_counts(ptrs)
 end
 
 """
-    distribute_with_mpi(a;comm=MPI.COMM_WORLD,duplicate_comm=true)
+    distribute_with_mpi(a;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true)
 
 Create an [`MPIArray`](@ref) instance by distributing
 the items in the collection `a` over the ranks of the given MPI
@@ -144,8 +161,8 @@ function Base.setindex!(a::MPIArray,v,i::Int)
     end
     v
 end
-linear_indices(a::MPIArray) = distribute_with_mpi(LinearIndices(a),comm=a.comm,duplicate_comm=false)
-cartesian_indices(a::MPIArray) = distribute_with_mpi(CartesianIndices(a),comm=a.comm,duplicate_comm=false)
+linear_indices(a::MPIArray) = distribute_with_mpi(LinearIndices(a);comm=a.comm,duplicate_comm=false)
+cartesian_indices(a::MPIArray) = distribute_with_mpi(CartesianIndices(a);comm=a.comm,duplicate_comm=false)
 function Base.show(io::IO,k::MIME"text/plain",data::MPIArray)
     header = ""
     if ndims(data) == 1
@@ -458,15 +475,13 @@ function exchange_impl!(
     for (i,id_rcv) in enumerate(graph.rcv.item)
         rank_rcv = id_rcv-1
         buff_rcv = view(rcv.item,i:i)
-        tag_rcv = rank_rcv
-        reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+        reqr = MPI.Irecv!(buff_rcv,rank_rcv,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqr)
     end
     for (i,id_snd) in enumerate(graph.snd.item)
         rank_snd = id_snd-1
         buff_snd = view(snd.item,i:i)
-        tag_snd = MPI.Comm_rank(comm)
-        reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+        reqs = MPI.Isend(buff_snd,rank_snd,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqs)
     end
     @async begin
@@ -501,16 +516,14 @@ function exchange_impl!(
         rank_rcv = id_rcv-1
         ptrs_rcv = data_rcv.ptrs
         buff_rcv = view(data_rcv.data,ptrs_rcv[i]:(ptrs_rcv[i+1]-1))
-        tag_rcv = rank_rcv
-        reqr = MPI.Irecv!(buff_rcv,rank_rcv,tag_rcv,comm)
+        reqr = MPI.Irecv!(buff_rcv,rank_rcv,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqr)
     end
     for (i,id_snd) in enumerate(graph.snd.item)
         rank_snd = id_snd-1
         ptrs_snd = data_snd.ptrs
         buff_snd = view(data_snd.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))
-        tag_snd = MPI.Comm_rank(comm)
-        reqs = MPI.Isend(buff_snd,rank_snd,tag_snd,comm)
+        reqs = MPI.Isend(buff_snd,rank_snd,EXCHANGE_IMPL_TAG,comm)
         push!(req_all,reqs)
     end
     @async begin
@@ -527,3 +540,68 @@ function exchange_impl!(
     end
 end
 
+# This should go eventually into MPI.jl! 
+Issend(data, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request(); dest::Integer, tag::Integer=0) =
+    Issend(data, dest, tag, comm, req)
+
+function Issend(buf::MPI.Buffer, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request())
+    @assert MPI.isnull(req)
+    # int MPI_Issend(const void* buf, int count, MPI_Datatype datatype, int dest,
+    #               int tag, MPI_Comm comm, MPI_Request *request)
+    MPI.API.MPI_Issend(buf.data, buf.count, buf.datatype, dest, tag, comm, req)
+    MPI.setbuffer!(req, buf)
+    return req
+end
+Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request()) =
+    Issend(MPI.Buffer_send(data), dest, tag, comm, req)
+
+
+function default_find_rcv_ids(::MPIArray)
+    find_rcv_ids_gather_scatter
+end
+
+"""
+ Implements Alg. 2 in https://dl.acm.org/doi/10.1145/1837853.1693476
+ The algorithm's complexity is claimed to be O(log(p))
+"""
+function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
+    comm = snd_ids.comm
+    map(snd_ids) do snd_ids 
+        requests=MPI.Request[]
+        tag=new_exchange_graph_impl_tag()
+        for snd_part in snd_ids
+          snd_rank = snd_part-1
+          push!(requests,Issend(T(0),snd_rank,tag,comm))
+        end
+        rcv_ids=T[]
+        done=false
+        barrier_emitted=false
+        all_sends_done=false
+        barrier_req=nothing
+        status = Ref(MPI.STATUS_ZERO)
+        while (!done)
+            # Check whether any message has arrived
+            ismsg = MPI.Iprobe(comm, status; tag=tag)
+            
+            # If message has arrived ...
+            if (ismsg)
+                push!(rcv_ids, status[].source+1)
+                tag_rcv = status[].tag
+                dummy=T[0]
+                MPI.Recv!(dummy, comm; source=rcv_ids[end]-1, tag=tag_rcv)
+                @boundscheck @assert tag_rcv == tag "Inconsistent tag in ExchangeGraph_impl()!" 
+            end     
+    
+            if (barrier_emitted)
+                done=MPI.Test(barrier_req)
+            else
+                all_sends_done = MPI.Testall(requests)
+                if (all_sends_done)
+                    barrier_req=MPI.Ibarrier(comm)
+                    barrier_emitted=true
+                end
+            end
+        end
+        sort(rcv_ids)
+    end
+end
