@@ -564,7 +564,7 @@ function Base.show(io::IO,k::MIME"text/plain",data::ExchangeGraph)
     println(io,typeof(data)," with $(length(data.snd)) nodes")
 end
 
-function _default_rcv_ids(::AbstractArray)
+function default_find_rcv_ids(::AbstractArray)
     find_rcv_ids_gather_scatter
 end 
 
@@ -585,7 +585,7 @@ rcv side of the exchange graph out of the snd side information.
 function ExchangeGraph(snd;
                        neighbors=nothing,
                        symmetric=false,
-                       find_rcv_ids=_default_rcv_ids(snd))
+                       find_rcv_ids=default_find_rcv_ids(snd))
     if symmetric
         ExchangeGraph(snd,snd)
     elseif (neighbors != nothing)
@@ -597,7 +597,7 @@ end
 
 # Discover snd parts from rcv assuming that snd is a subset of neighbors
 function ExchangeGraph_impl_with_neighbors(snd_ids,neighbors::ExchangeGraph)
-    function _is_included(snd_ids_a,snd_ids_b)
+    function is_included(snd_ids_a,snd_ids_b)
         is_included_all=map(snd_ids_a, snd_ids_b) do snd_ids_a, snd_ids_b
             all(i->i in snd_ids_b,snd_ids_a)
         end
@@ -609,7 +609,7 @@ function ExchangeGraph_impl_with_neighbors(snd_ids,neighbors::ExchangeGraph)
         end
         result
     end 
-    @boundscheck _is_included(snd_ids,neighbors.snd) || error("snd_ids must be a subset of neighbors.snd")
+    @boundscheck is_included(snd_ids,neighbors.snd) || error("snd_ids must be a subset of neighbors.snd")
     rank = linear_indices(snd_ids)
     # Tell the neighbors whether I want to send to them
     data_snd = map(rank,neighbors.snd,snd_ids) do rank, neighbors_snd, snd_ids
@@ -630,7 +630,8 @@ function ExchangeGraph_impl_with_neighbors(snd_ids,neighbors::ExchangeGraph)
 end
 
 function ExchangeGraph_impl_with_find_rcv_ids(snd_ids::AbstractArray,find_rcv_ids)
-    find_rcv_ids(snd_ids)
+    rcv_ids = find_rcv_ids(snd_ids)
+    ExchangeGraph(snd_ids,rcv_ids)
 end
 
 # This strategy gathers the communication graph into one process
@@ -667,7 +668,7 @@ function find_rcv_ids_gather_scatter(snd_ids::AbstractArray)
         rcv = JaggedArray(data,ptrs)
     end
     rcv_ids = scatter(rcv_ids_main)
-    ExchangeGraph(snd_ids,rcv_ids)
+    rcv_ids
 end 
 
 function is_consistent(graph::ExchangeGraph)

@@ -2,16 +2,15 @@
 const EXCHANGE_IMPL_TAG  = 0 
 const EXCHANGE_GRAPH_IMPL_TAG = Ref(Int64(1))
 
-function _new_exchange_graph_impl_tag()
-  EXCHANGE_GRAPH_IMPL_TAG[] = 
-       (EXCHANGE_GRAPH_IMPL_TAG[] + 1)%(MPI.tag_ub()+1)
-  return EXCHANGE_GRAPH_IMPL_TAG[]     
-end 
-
 function new_exchange_graph_impl_tag()
-   _new_exchange_graph_impl_tag()
+    function new_tag()
+      EXCHANGE_GRAPH_IMPL_TAG[] = 
+           (EXCHANGE_GRAPH_IMPL_TAG[] + 1)%(MPI.tag_ub()+1)
+      return EXCHANGE_GRAPH_IMPL_TAG[]     
+    end 
+   new_tag()
    if EXCHANGE_GRAPH_IMPL_TAG[] == EXCHANGE_IMPL_TAG
-      return _new_exchange_graph_impl_tag()
+      return new_tag()
    else 
       return EXCHANGE_GRAPH_IMPL_TAG[]
    end
@@ -557,7 +556,7 @@ Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractReque
     Issend(MPI.Buffer_send(data), dest, tag, comm, req)
 
 
-function _default_rcv_ids(::MPIArray)
+function default_find_rcv_ids(::MPIArray)
     find_rcv_ids_gather_scatter
 end
 
@@ -567,7 +566,7 @@ end
 """
 function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
     comm = snd_ids.comm
-    rcv_ids=map(snd_ids) do snd_ids 
+    map(snd_ids) do snd_ids 
         requests=MPI.Request[]
         tag=new_exchange_graph_impl_tag()
         for snd_part in snd_ids
@@ -605,5 +604,4 @@ function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
         end
         sort(rcv_ids)
     end
-    ExchangeGraph(snd_ids,rcv_ids)
 end
