@@ -641,6 +641,22 @@ function Base.minimum(f::Function,x::PVector)
     reduce(min,partials,init=typemax(eltype(x)))
 end
 
+function Base.collect(v::PVector)
+    own_values_v = own_values(v)
+    own_to_global_v = map(own_to_global,partition(axes(v,1)))
+    vals = gather(own_values_v,destination=:all)
+    ids = gather(own_to_global_v,destination=:all)
+    n = length(v)
+    T = eltype(v)
+    map(vals,ids) do myvals,myids
+        u = Vector{T}(undef,n)
+        for (a,b) in zip(myvals,myids)
+            u[b] = a
+        end
+        u
+    end |> getany
+end
+
 function Base.:*(a::Number,b::PVector)
     values = map(partition(b)) do values
         a*values

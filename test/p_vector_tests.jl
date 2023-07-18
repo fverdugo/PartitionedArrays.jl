@@ -116,6 +116,7 @@ function p_vector_tests(distribute)
             @test values == [0.0, 0.0, 0.0, 10.0, 30.0]
         end
     end
+    @test collect(v) == [20.0, 20.0, 20.0, 20.0, 30.0, 10.0, 30.0, 20.0, 10.0, 30.0]
 
     n = 10
 
