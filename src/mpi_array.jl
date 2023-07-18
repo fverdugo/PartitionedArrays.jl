@@ -543,10 +543,10 @@ function exchange_impl!(
 end
 
 # This should go eventually into MPI.jl! 
-Issend(data, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request(); dest::Integer, tag::Integer=0) =
+Issend(data, comm::MPI.Comm, req=MPI.Request(); dest::Integer, tag::Integer=0) =
     Issend(data, dest, tag, comm, req)
 
-function Issend(buf::MPI.Buffer, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request())
+function Issend(buf::MPI.Buffer, dest::Integer, tag::Integer, comm::MPI.Comm, req=MPI.Request())
     @assert MPI.isnull(req)
     # int MPI_Issend(const void* buf, int count, MPI_Datatype datatype, int dest,
     #               int tag, MPI_Comm comm, MPI_Request *request)
@@ -554,7 +554,7 @@ function Issend(buf::MPI.Buffer, dest::Integer, tag::Integer, comm::MPI.Comm, re
     MPI.setbuffer!(req, buf)
     return req
 end
-Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req::MPI.AbstractRequest=MPI.Request()) =
+Issend(data, dest::Integer, tag::Integer, comm::MPI.Comm, req=MPI.Request()) =
     Issend(MPI.Buffer_send(data), dest, tag, comm, req)
 
 
