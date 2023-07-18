@@ -296,8 +296,10 @@ end
 function gather_impl!(
     rcv::MPIArray, snd::MPIArray,
     destination, ::Type{T}) where T <: AbstractVector
+    Tv = eltype(snd.item)
     @assert rcv.comm === snd.comm
     @assert isa(rcv.item,JaggedArray)
+    @assert eltype(eltype(rcv.item)) == Tv
     comm = snd.comm
     if isa(destination,Integer)
         root = destination-1
@@ -308,14 +310,14 @@ function gather_impl!(
             rcv_buffer = MPI.VBuffer(rcv.item.data,counts)
             MPI.Gatherv!(MPI.IN_PLACE,rcv_buffer,root,comm)
         else
-            MPI.Gatherv!(snd.item,nothing,root,comm)
+            MPI.Gatherv!(convert(Vector{Tv},snd.item),nothing,root,comm)
         end
     else
         @assert destination === :all
         @assert length(rcv.item) == MPI.Comm_size(comm)
         counts = ptrs_to_counts(rcv.item.ptrs)
         rcv_buffer = MPI.VBuffer(rcv.item.data,counts)
-        MPI.Allgatherv!(snd.item,rcv_buffer,comm)
+        MPI.Allgatherv!(convert(Vector{Tv},snd.item),rcv_buffer,comm)
     end
     rcv
 end
