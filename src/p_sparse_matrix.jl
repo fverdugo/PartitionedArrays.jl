@@ -111,6 +111,11 @@ Base.axes(a::PSparseMatrix) = (PRange(a.row_partition),PRange(a.col_partition))
 
 Get a vector of matrices containing the local rows and columns
 in each part of `a`.
+
+The row and column indices of the returned matrices can be mapped to global
+indices, own indices, ghost indices, and owner by using
+[`local_to_global`](@ref), [`local_to_own`](@ref), [`local_to_ghost`](@ref),
+and [`local_to_owner`](@ref), respectively.
 """
 function local_values(a::PSparseMatrix)
     partition(a)
@@ -121,6 +126,10 @@ end
 
 Get a vector of matrices containing the own rows and columns
 in each part of `a`.
+
+The row and column indices of the returned matrices can be mapped to global
+indices, local indices, and owner by using [`own_to_global`](@ref),
+[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
 """
 function own_values(a::PSparseMatrix)
     map(own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
@@ -131,6 +140,10 @@ end
 
 Get a vector of matrices containing the ghost rows and columns
 in each part of `a`.
+
+The row and column indices of the returned matrices can be mapped to global
+indices, local indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
 """
 function ghost_values(a::PSparseMatrix)
     map(ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
@@ -141,6 +154,14 @@ end
 
 Get a vector of matrices containing the own rows and ghost columns
 in each part of `a`.
+
+The *row* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`own_to_global`](@ref),
+[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
+
+The *column* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
 """
 function own_ghost_values(a::PSparseMatrix)
     map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
@@ -151,6 +172,14 @@ end
 
 Get a vector of matrices containing the ghost rows and own columns
 in each part of `a`.
+
+The *row* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
+
+The *column* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`own_to_global`](@ref),
+[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
 """
 function ghost_own_values(a::PSparseMatrix)
     map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
