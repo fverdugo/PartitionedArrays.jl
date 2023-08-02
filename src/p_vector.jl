@@ -175,6 +175,11 @@ Base.axes(a::PVector) = (PRange(a.index_partition),)
 
 Get a vector of vectors containing the local values
 in each part of `a`.
+
+The indices of the returned vectors can be mapped to global indices, own
+indices, ghost indices, and owner by using [`local_to_global`](@ref),
+[`local_to_own`](@ref), [`local_to_ghost`](@ref), and [`local_to_owner`](@ref),
+respectively.
 """
 function local_values(a::PVector)
     partition(a)
@@ -185,6 +190,10 @@ end
 
 Get a vector of vectors containing the own values
 in each part of `a`.
+
+The indices of the returned vectors can be mapped to global indices, local
+indices, and owner by using [`own_to_global`](@ref), [`own_to_local`](@ref),
+and [`own_to_owner`](@ref), respectively.
 """
 function own_values(a::PVector)
     map(own_values,partition(a),partition(axes(a,1)))
@@ -195,6 +204,10 @@ end
 
 Get a vector of vectors containing the ghost values
 in each part of `a`.
+
+The indices of the returned matrices can be mapped to global indices, local
+indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
 """
 function ghost_values(a::PVector)
     map(ghost_values,partition(a),partition(axes(a,1)))
