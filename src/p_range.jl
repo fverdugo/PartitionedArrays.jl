@@ -1642,7 +1642,7 @@ end
 
 ##prange(f,args...) = PRange(f(args...))
 
-global_length(pr::PRange) = map(local_length,partition(pr))
+global_length(pr::PRange) = map(global_length,partition(pr))
 local_length(pr::PRange) = map(local_length,partition(pr))
 own_length(pr::PRange) = map(own_length,partition(pr))
 local_to_global(pr::PRange) = map(local_to_global,partition(pr))
