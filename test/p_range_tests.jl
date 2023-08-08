@@ -190,6 +190,7 @@ function p_range_tests(distribute)
 
    ids4 = uniform_partition(parts,(2,2),(5,4))
    @test length(PRange(ids4)) == 4*5
+   @test PartitionedArrays.getany(global_length(PRange(ids4))) == 4*5
    map(parts,ids4) do part, lid_to_gid
        if part == 1
            @test lid_to_gid == [1, 2, 6, 7]
