@@ -471,14 +471,14 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
 end
 
 """
-    psparse!([f,]I,J,V,row_partition,col_partition;discover_rows=true) -> Task
+    psparse!([f,]I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true) -> Task
 
 Crate an instance of [`PSparseMatrix`](@ref) by setting arbitrary entries
 from each of the underlying parts. It returns a task that produces the
 instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
-function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true)
+function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true)
     if discover_rows
         I_owner = find_owner(row_partition,I)
         row_partition = map(union_ghost,row_partition,I,I_owner)
@@ -486,8 +486,10 @@ function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true)
     t = assemble_coo!(I,J,V,row_partition)
     @async begin
         wait(t)
-        J_owner = find_owner(col_partition,J)
-        col_partition = map(union_ghost,col_partition,J,J_owner)
+        if discover_cols
+            J_owner = find_owner(col_partition,J)
+            col_partition = map(union_ghost,col_partition,J,J_owner)
+        end
         map(to_local!,I,row_partition)
         map(to_local!,J,col_partition)
         matrix_partition = map(f,I,J,V,row_partition,col_partition)
