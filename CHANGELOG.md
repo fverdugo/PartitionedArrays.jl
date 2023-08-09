@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added 
 
 - Added an MPI ibarrier-based (supposedly scalable) algorithm to find rcv neighbours in a sparse all-to-all communication graph given the snd neighbors. We left the previous non-scalable algorithm as default (based on gather-scatter) until we have experimental evidence on the relative performance and scalability of the former with respect to the latter and for which core ranges.
+- Added a new kwarg `discover_cols=true` to the `psparse!` constructor, which allows the user to skip column index discovery.
 
 ### Fixed
 
