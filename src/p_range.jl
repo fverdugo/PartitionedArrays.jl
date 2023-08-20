@@ -1143,10 +1143,13 @@ Local indices are defined by concatenating own and ghost ones.
 
 - `own::OwnIndices`: Container for the own indices.
 - `ghost::GhostIndices`: Container for the ghost indices.
+- `global_to_owner`: [optional: it can be `nothing`] Vector containing the owner of each global id.
 
 # Supertype hierarchy
 
-    OwnAndGhostIndices <: AbstractLocalIndices
+    OwnAndGhostIndices{A} <: AbstractLocalIndices
+
+where `A=typeof(global_to_owner)`.
 
 """
 struct OwnAndGhostIndices{A} <: AbstractLocalIndices
@@ -1155,9 +1158,9 @@ struct OwnAndGhostIndices{A} <: AbstractLocalIndices
     global_to_owner::A
     assembly_cache::AssemblyCache
     @doc """
-        OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
+        OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices,global_to_owner=nothing)
 
-    Build an instance of [`OwnAndGhostIndices`](@ref) from the underlying properties `own` and `ghost`.
+    Build an instance of [`OwnAndGhostIndices`](@ref) from the underlying properties `own`, `ghost`, and `global_to_owner`.
     """
     function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices,global_to_owner=nothing)
         A = typeof(global_to_owner)

@@ -5,6 +5,7 @@
 ```@docs
 uniform_partition
 variable_partition
+partition_from_color
 ```
 
 ## AbstractLocalIndices
