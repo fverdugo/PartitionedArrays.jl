@@ -707,7 +707,7 @@ interface.
 # Arguments
 
 - `ranks`: Array containing the distribution of ranks.
-- `global_to_color`: If `multicast==false`,  `global_to_color[gid]` contains the part id that own the global id `gid`. If `multicast==true`, then   `global_to_color[source][gid]` contains the part id that own the global id `gid`.
+- `global_to_color`: If `multicast==false`,  `global_to_color[gid]` contains the part id that own the global id `gid`. If `multicast==true`, then   `global_to_color[source][gid]` contains the part id that owns the global id `gid`.
 
 # Key-word arguments
 - `multicast=false`
