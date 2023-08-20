@@ -245,4 +245,47 @@ function p_range_tests(distribute)
 
    display(PRange(ids4))
 
+   n = 21
+   np = 4
+   rank = distribute(LinearIndices((4,)))
+   global_to_color = zeros(Int,n)
+   for p in 1:np
+       global_to_color[local_range(p,np,n)] .= p
+   end
+   ids_color = partition_from_color(rank,global_to_color)
+   ids_uniform = uniform_partition(rank,n)
+   map(ids_color,ids_uniform) do ids1,ids2
+       @test ids1 == ids2
+   end
+
+   global_to_color = map_main(rank) do rank
+       my_global_to_color = zeros(Int,n)
+       for p in 1:np
+           my_global_to_color[local_range(p,np,n)] .= p
+       end
+       my_global_to_color
+   end
+   ids_color = partition_from_color(rank,global_to_color;multicast=true)
+   ids_color = partition_from_color(rank,global_to_color;multicast=true,source=MAIN)
+   map(ids_color,ids_uniform) do ids1,ids2
+       @test ids1 == ids2
+   end
+
+   gids = map(rank) do part
+       if part == 1
+           [1,4,6]
+       elseif part == 2
+           [3,1,2,8]
+       elseif part == 3
+           [1,9,6]
+       else
+           [3,2,8,10]
+       end
+   end
+   owners1 = find_owner(ids_color,gids)
+   owners2 = find_owner(ids_uniform,gids)
+   map(owners1,owners2) do ids1,ids2
+       @test ids1 == ids2
+   end
+
 end

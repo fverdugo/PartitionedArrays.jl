@@ -61,6 +61,7 @@ include("mpi_array.jl")
 export PRange
 export uniform_partition
 export variable_partition
+export partition_from_color
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices
