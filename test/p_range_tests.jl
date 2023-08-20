@@ -258,10 +258,14 @@ function p_range_tests(distribute)
        @test ids1 == ids2
    end
 
-   global_to_color = map_main(rank) do rank
-       my_global_to_color = zeros(Int,n)
-       for p in 1:np
-           my_global_to_color[local_range(p,np,n)] .= p
+   global_to_color = map(rank) do rank
+       if rank == MAIN
+           my_global_to_color = zeros(Int,n)
+           for p in 1:np
+               my_global_to_color[local_range(p,np,n)] .= p
+           end
+       else
+           my_global_to_color = Int[]
        end
        my_global_to_color
    end
