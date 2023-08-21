@@ -5,12 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added 
+
+- Function `partition_from_color`.
+
 ## [0.3.3] - 2023-08-09
 
 ### Added 
 
-- Added an MPI ibarrier-based (supposedly scalable) algorithm to find rcv neighbours in a sparse all-to-all communication graph given the snd neighbors. We left the previous non-scalable algorithm as default (based on gather-scatter) until we have experimental evidence on the relative performance and scalability of the former with respect to the latter and for which core ranges.
-- Added a new kwarg `discover_cols=true` to the `psparse!` constructor, which allows the user to skip column index discovery.
+- MPI ibarrier-based (supposedly scalable) algorithm to find rcv neighbours in a sparse all-to-all communication graph given the snd neighbors. We left the previous non-scalable algorithm as default (based on gather-scatter) until we have experimental evidence on the relative performance and scalability of the former with respect to the latter and for which core ranges.
+- New kwarg `discover_cols=true` to the `psparse!` constructor, which allows the user to skip column index discovery.
 
 ### Fixed
 
