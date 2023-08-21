@@ -699,7 +699,7 @@ end
 """
     partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
 
-Build an arbitrary 1d partition by defining the parts via the argument `global_to_color`.
+Build an arbitrary 1d partition by defining the parts via the argument `global_to_color` (see below).
 The output is a vector of vectors containing the indices in each component of
 the partition. The `eltype` of the result implements the [`AbstractLocalIndices`](@ref)
 interface.
@@ -707,7 +707,7 @@ interface.
 # Arguments
 
 - `ranks`: Array containing the distribution of ranks.
-- `global_to_color`: If `multicast==false`,  `global_to_color[gid]` contains the part id that own the global id `gid`. If `multicast==true`, then   `global_to_color[source][gid]` contains the part id that owns the global id `gid`.
+- `global_to_color`: If `multicast==false`,  `global_to_color[gid]` contains the part id that owns the global id `gid`. If `multicast==true`, then   `global_to_color[source][gid]` contains the part id that owns the global id `gid`.
 
 # Key-word arguments
 - `multicast=false`
@@ -725,7 +725,7 @@ function partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
     map(ranks) do rank
         nglobal = length(global_to_owner)
         own_to_global = findall(owner->owner==rank,global_to_owner)
-        ghost_to_global = Int[]
+            ghost_to_global = Int[]
         ghost_to_owner = Int32[]
         own = OwnIndices(nglobal,rank,own_to_global)
         ghost = GhostIndices(nglobal,ghost_to_global,ghost_to_owner)
