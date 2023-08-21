@@ -696,6 +696,43 @@ function variable_partition(
     indices
 end
 
+"""
+    partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
+
+Build an arbitrary 1d partition by defining the parts via the argument `global_to_color` (see below).
+The output is a vector of vectors containing the indices in each component of
+the partition. The `eltype` of the result implements the [`AbstractLocalIndices`](@ref)
+interface.
+
+# Arguments
+
+- `ranks`: Array containing the distribution of ranks.
+- `global_to_color`: If `multicast==false`,  `global_to_color[gid]` contains the part id that owns the global id `gid`. If `multicast==true`, then   `global_to_color[source][gid]` contains the part id that owns the global id `gid`.
+
+# Key-word arguments
+- `multicast=false`
+- `source=MAIN`
+
+This function is useful when generating a partition using a graph partitioner such as METIS.
+The argument `global_to_color` is the usual output of such tools.
+"""
+function partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
+    if multicast == true
+        global_to_owner = getany(emit(global_to_color;source))
+    else
+        global_to_owner = global_to_color
+    end
+    map(ranks) do rank
+        nglobal = length(global_to_owner)
+        own_to_global = findall(owner->owner==rank,global_to_owner)
+            ghost_to_global = Int[]
+        ghost_to_owner = Int32[]
+        own = OwnIndices(nglobal,rank,own_to_global)
+        ghost = GhostIndices(nglobal,ghost_to_global,ghost_to_owner)
+        OwnAndGhostIndices(own,ghost,global_to_owner)
+    end
+end
+
 function local_range(p,np,n,ghost=false,periodic=false)
     l = n ÷ np
     offset = l * (p-1)
@@ -1119,23 +1156,28 @@ Local indices are defined by concatenating own and ghost ones.
 
 - `own::OwnIndices`: Container for the own indices.
 - `ghost::GhostIndices`: Container for the ghost indices.
+- `global_to_owner`: [optional: it can be `nothing`] Vector containing the owner of each global id.
 
 # Supertype hierarchy
 
-    OwnAndGhostIndices <: AbstractLocalIndices
+    OwnAndGhostIndices{A} <: AbstractLocalIndices
+
+where `A=typeof(global_to_owner)`.
 
 """
-struct OwnAndGhostIndices <: AbstractLocalIndices
+struct OwnAndGhostIndices{A} <: AbstractLocalIndices
     own::OwnIndices
     ghost::GhostIndices
+    global_to_owner::A
     assembly_cache::AssemblyCache
     @doc """
-        OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
+        OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices,global_to_owner=nothing)
 
-    Build an instance of [`OwnAndGhostIndices`](@ref) from the underlying properties `own` and `ghost`.
+    Build an instance of [`OwnAndGhostIndices`](@ref) from the underlying properties `own`, `ghost`, and `global_to_owner`.
     """
-    function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices)
-        new(own,ghost,AssemblyCache())
+    function OwnAndGhostIndices(own::OwnIndices,ghost::GhostIndices,global_to_owner=nothing)
+        A = typeof(global_to_owner)
+        new{A}(own,ghost,global_to_owner,AssemblyCache())
     end
 end
 assembly_cache(a::OwnAndGhostIndices) = a.assembly_cache
@@ -1144,6 +1186,15 @@ local_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(local_length(a))
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
     OwnAndGhostIndices(a.own,ghost)
+end
+
+function find_owner(indices,global_ids,::Type{<:OwnAndGhostIndices{T}}) where T
+    if T == Nothing
+        error("Not enough data to perform this operation without communciation")
+    end
+    map(indices,global_ids) do indices,global_ids
+        indices.global_to_owner[global_ids]
+    end
 end
 
 part_id(a::OwnAndGhostIndices) = a.own.owner
