@@ -402,7 +402,7 @@ end
 
 function Base.similar(::Type{<:PSparseMatrix{V}},inds::Tuple{<:PRange,<:PRange}) where V
     rows,cols = inds
-    matrix_partition = map(partition(a),partition(rows),partition(cols)) do values, row_indices, col_indices
+    matrix_partition = map(partition(rows),partition(cols)) do row_indices, col_indices
         allocate_local_values(V,row_indices,col_indices)
     end
     PSparseMatrix(matrix_partition,partition(rows),partition(cols))
