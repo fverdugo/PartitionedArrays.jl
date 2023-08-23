@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Function `partition_from_color`.
 
+### Fixed
+
+- Bugfix: `Base.similar` methods for `PSparseMatrix` not working.
+
 ## [0.3.3] - 2023-08-09
 
 ### Added 
