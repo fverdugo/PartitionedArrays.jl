@@ -397,7 +397,7 @@ function Base.similar(a::PSparseMatrix,::Type{T},inds::Tuple{<:PRange,<:PRange})
     matrix_partition = map(partition(a),partition(rows),partition(cols)) do values, row_indices, col_indices
         allocate_local_values(values,T,row_indices,col_indices)
     end
-    PSparseMatrix(values,row_partition,col_partition)
+    PSparseMatrix(matrix_partition,partition(rows),partition(cols))
 end
 
 function Base.similar(::Type{<:PSparseMatrix{V}},inds::Tuple{<:PRange,<:PRange}) where V
@@ -405,7 +405,7 @@ function Base.similar(::Type{<:PSparseMatrix{V}},inds::Tuple{<:PRange,<:PRange})
     matrix_partition = map(partition(a),partition(rows),partition(cols)) do values, row_indices, col_indices
         allocate_local_values(V,row_indices,col_indices)
     end
-    PSparseMatrix(matrix_partition,row_partition,col_partition)
+    PSparseMatrix(matrix_partition,partition(rows),partition(cols))
 end
 
 function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
