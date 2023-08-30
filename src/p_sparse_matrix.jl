@@ -408,6 +408,22 @@ function Base.similar(::Type{<:PSparseMatrix{V}},inds::Tuple{<:PRange,<:PRange})
     PSparseMatrix(matrix_partition,partition(rows),partition(cols))
 end
 
+function Base.copy!(a::PSparseMatrix,b::PSparseMatrix)
+    @assert size(a) == size(b)
+    copyto!(a,b)
+end
+
+function Base.copyto!(a::PSparseMatrix,b::PSparseMatrix)
+    if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
+        map(copy!,partition(a),partition(b))
+    elseif matching_own_indices(axes(a,1),axes(b,1)) && matching_own_indices(axes(a,2),axes(b,2))
+        map(copy!,own_values(a),own_values(b))
+    else
+        error("Trying to copy a PSparseMatrix into another one with a different data layout. This case is not implemented yet. It would require communications.")
+    end
+    a
+end
+
 function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
     map(partition(a)) do values
         LinearAlgebra.fillstored!(values,v)
