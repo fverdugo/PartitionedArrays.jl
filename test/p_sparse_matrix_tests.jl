@@ -60,6 +60,11 @@ function p_sparse_matrix_tests(distribute)
       @test all( values .== 6 )
     end
 
+    _A = similar(A)
+    _A = similar(A,eltype(A),axes(A))
+    #_A = similar(typeof(A),axes(A)) # This should work, but fails down the line in SparseArrays.jl
+    copy!(_A,A)
+
     LinearAlgebra.fillstored!(A,1.0)
     fill!(x,3.0)
     mul!(b,A,x)
