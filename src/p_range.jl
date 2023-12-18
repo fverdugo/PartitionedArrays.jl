@@ -274,6 +274,24 @@ function to_global!(I,indices)
     I
 end
 
+map_global_to_local!(I,indices) = map_x_to_y!(global_to_local,I,indices)
+map_global_to_ghost!(I,indices) = map_x_to_y!(global_to_ghost,I,indices)
+map_global_to_own!(I,indices) = map_x_to_y!(global_to_own,I,indices)
+map_local_to_global!(I,indices) = map_x_to_y!(local_to_global,I,indices)
+map_local_to_ghost!(I,indices) = map_x_to_y!(local_to_ghost,I,indices)
+map_local_to_own!(I,indices) = map_x_to_y!(local_to_own,I,indices)
+map_ghost_to_global!(I,indices) = map_x_to_y!(ghost_to_global,I,indices)
+map_ghost_to_local!(I,indices) = map_x_to_y!(ghost_to_local,I,indices)
+map_ghost_to_own!(I,indices) = map_x_to_y!(ghost_to_own,I,indices)
+
+function map_x_to_y!(x_to_y,I,indices)
+    local_to_global_indices = x_to_y(indices)
+    for k in 1:length(I)
+        I[k] = local_to_global_indices[I[k]]
+    end
+    I
+end
+
 """
     find_owner(index_partition,global_ids)
 
