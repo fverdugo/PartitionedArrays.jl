@@ -332,3 +332,43 @@ Base.@propagate_inbounds Base.getindex(v::EltypeVector{T},i::Integer) where T = 
 Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.parent[i] = w)
 Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
 
+struct SparseMatrixCOO{A,B,C,T} <: AbstractMatrix{T}
+    I::A
+    J::B
+    V::C
+    m::Int
+    n::Int
+    function SparseMatrixCOO(I,J,V,m,n)
+        T = eltype(V)
+        A = typeof(I)
+        B = typeof(J)
+        C = typeof(V)
+        new{A,B,C,T}(I,J,V,m,n)
+    end
+end
+Base.size(a::SparseMatrixCOO) = (a.m,a.n)
+Base.IndexStyle(::Type{<:SparseMatrixCOO}) = IndexCartesian()
+function Base.getindex(a::SparseMatrixCOO,i::Int,j::Int)
+    v = zero(eltype(a))
+    for p in 1:nnz(a)
+        if a.I[p] == i && a.J[p] == j
+            v += a.V[p]
+        end
+    end
+    v
+end
+SparseArrays.nnz(a::SparseMatrixCOO) = length(a.V)
+SparseArrays.findnz(a::SparseMatrixCOO) = (a.I,a.J,a.V)
+
+function spzeros_coo(::Type{Tv},m,n,nnz=0) where Tv
+    I = zeros(Int,nnz)
+    J = zeros(Int,nnz)
+    V = zeros(Tv,nnz)
+    SparseMatrixCOO(I,J,V,m,n)
+end
+
+indextype(a::SparseMatrixCOO) = eltype(a.I)
+nziterator(a::SparseMatrixCOO) = zip(a.I,a.J,a.V)
+
+
+
