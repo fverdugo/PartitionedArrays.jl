@@ -122,5 +122,24 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
+    n = 10
+    parts = rank
+    row_partition = uniform_partition(parts,n)
+    col_partition = row_partition
+
+    I,J,V = map(parts) do part
+        if part == 1
+            [1,2,1,2,2], [2,6,1,2,1], [1.0,2.0,30.0,10.0,1.0]
+        elseif part == 2
+            [3,3,4,6], [3,9,4,2], [10.0,2.0,30.0,2.0]
+        elseif part == 3
+            [5,5,6,7], [5,6,6,7], [10.0,2.0,30.0,1.0]
+        else
+            [9,9,8,10,6], [9,3,8,10,5], [10.0,2.0,30.0,50.0,2.0]
+        end
+    end |> tuple_of_arrays
+
+    A = psparse_split_format!(I,J,V,row_partition,col_partition) |> fetch
+
 end
 

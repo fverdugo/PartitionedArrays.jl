@@ -117,6 +117,7 @@ include("p_vector.jl")
 export PSparseMatrix
 export psparse
 export psparse!
+export psparse_split_format!
 export own_ghost_values
 export ghost_own_values
 include("p_sparse_matrix.jl")
