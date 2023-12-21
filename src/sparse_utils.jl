@@ -332,6 +332,9 @@ Base.@propagate_inbounds Base.getindex(v::EltypeVector{T},i::Integer) where T = 
 Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.parent[i] = w)
 Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
 
+function sparse_coo(I,J,V,m,n)
+    SparseMatrixCOO(I,J,V,m,n)
+end
 struct SparseMatrixCOO{A,B,C,T} <: AbstractMatrix{T}
     I::A
     J::B
@@ -359,16 +362,41 @@ function Base.getindex(a::SparseMatrixCOO,i::Int,j::Int)
 end
 SparseArrays.nnz(a::SparseMatrixCOO) = length(a.V)
 SparseArrays.findnz(a::SparseMatrixCOO) = (a.I,a.J,a.V)
-
-function spzeros_coo(::Type{Tv},m,n,nnz=0) where Tv
-    I = zeros(Int,nnz)
-    J = zeros(Int,nnz)
-    V = zeros(Tv,nnz)
-    SparseMatrixCOO(I,J,V,m,n)
-end
-
 indextype(a::SparseMatrixCOO) = eltype(a.I)
 nziterator(a::SparseMatrixCOO) = zip(a.I,a.J,a.V)
 
+function similar_coo(
+        coo,
+        ::Type{Tv},
+        ::Type{Ti},
+        _size=size(coo),
+        _nnz=nnz(coo)
+    ) where {Ti,Tv}
 
+    I,J,V = findnz(coo)
+    m,n = _size
+    sparse_coo(
+               similar(I,Ti,_nnz),
+               similar(J,Ti,_nnz),
+               similar(V,Tv,_nnz),
+               m,
+               n)
+end
+
+function similar_coo(coo,_size=size(coo),_nnz=nnz(coo))
+    I,J,V = findnz(coo)
+    m,n = _size
+    sparse_coo(
+               similar(I,_nnz),
+               similar(J,_nnz),
+               similar(V,_nnz),
+               m,
+               n)
+end
+
+function to_csc(A)
+    I,J,V = findnz(A)
+    m,n = size(A)
+    sparse(I,J,V,m,n)
+end
 

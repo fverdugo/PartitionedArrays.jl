@@ -687,160 +687,315 @@ function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
     return x
 end
 
-struct MatrixSplit{A,B,C,D}
+
+# New stuff
+
+function split_matrix(
+        own_own,
+        own_ghost,
+        ghost_own,
+        ghost_ghost,
+        rows,
+        cols)
+    blocks = SplitMatrixBlocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    SplitMatrix(blocks,permutation(rows),permutation(cols))
+end
+
+struct SplitMatrixBlocks{A,B,C,D}
     own_own::A
     own_ghost::B
     ghost_own::C
     ghost_ghost::D
 end
 
-struct PSparseMatrixCacheSplit{A,B}
-    V_snd::A
-    V_rcv::A
-    k_snd::B
-    k_rcv::B
+struct SplitMatrix{A,B,C,T} <: AbstractMatrix{T}
+    blocks::A
+    row_permutation::B
+    col_permutation::C
+    function SplitMatrix(blocks,row_permutation,col_permutation)
+        T = eltype(blocks.own_own)
+        A = typeof(blocks)
+        B = typeof(row_permutation)
+        C = typeof(col_permutation)
+        new{A,B,C,T}(blocks,row_permutation,col_permutation)
+    end
 end
 
-struct PSparseMatrixNew{A,B,C,D,E}
-    matrix_partition::A
-    row_partition::B
-    col_partition_for_own_rows::C
-    col_partition_for_ghost_rows::D
+Base.size(a::SplitMatrix) = (length(a.row_permutation),length(a.col_permutation))
+Base.IndexStyle(::Type{<:SplitMatrix}) = IndexCartesian()
+function Base.getindex(a::SplitMatrix,i::Int,j::Int)
+    n_own_rows, n_own_cols = size(a.data.blocks.own_own)
+    ip = a.row_permutation[i]
+    jp = a.col_permutation[j]
+    T = eltype(a)
+    if ip <= n_own_rows && jp <= n_own_cols
+        v::T = a.blocks.own_own[ip,jp]
+    elseif ip <= n_own_rows
+        v::T = a.blocks.own_own[ip,jp-n_own_cols]
+    elseif jp <= n_own_cols
+        v::T = a.blocks.own_own[ip-n_own_rows,jp]
+    else
+        v::T = a.blocks.own_own[ip-n_own_rows,jp-n_own_cols]
+    end
+    v
+end
+
+function split(A,rows,cols)
+    own_to_local_rows = own_to_local(rows)
+    own_to_local_cols = own_to_local(cols)
+    ghost_to_local_rows = ghost_to_local(rows)
+    ghost_to_local_cols = ghost_to_local(cols)
+    own_own = A[own_to_local_rows,own_to_local_cols]
+    own_ghost = A[own_to_local_rows,ghost_to_local_cols]
+    ghost_own = A[ghost_to_local_rows,own_to_local_cols]
+    ghost_ghost = A[ghost_to_local_rows,ghost_to_local_cols]
+    split_matrix(
+        own_own,
+        own_ghost,
+        ghost_own,
+        ghost_ghost,
+        rows,
+        cols)
+end
+
+function split(coo::SparseMatrixCOO,rows,cols)
+    I,J,V = findnz(coo)
+    n_own_rows = own_length(rows)
+    n_own_cols = own_length(cols)
+    n_ghost_rows = ghost_length(rows)
+    n_ghost_cols = ghost_length(cols)
+    rows_perm = permutation(rows)
+    cols_perm = permutation(rows)
+    n_own_own = 0
+    n_own_ghost = 0
+    n_ghost_own = 0
+    n_ghost_ghost = 0
+    for p in 1:nnz(coo)
+        i = I[p]
+        j = J[p]
+        ip = rows_perm[i]
+        jp = cols_perm[j]
+        if ip <= n_own_rows && jp <= n_own_cols
+            n_own_own += 1
+        elseif ip <= n_own_rows
+            n_own_ghost += 1
+        elseif jp <= n_own_cols
+            n_ghost_own += 1
+        else
+            n_ghost_ghost += 1
+        end
+    end
+    own_own = similar_coo(coo,n_own_rows,n_own_cols,n_own_own)
+    own_ghost = similar_coo(coo,n_own_rows,n_ghost_cols,n_own_ghost)
+    ghost_own = similar_coo(coo,n_ghost_rows,n_own_cols,n_ghost_own)
+    ghost_ghost = similar_coo(coo,n_ghost_rows,n_ghost_cols,n_ghost_ghost)
+    n_own_own = 0
+    n_own_ghost = 0
+    n_ghost_own = 0
+    n_ghost_ghost = 0
+    for p in 1:nnz(coo)
+        i = I[p]
+        j = J[p]
+        v = V[p]
+        ip = rows_perm[i]
+        jp = cols_perm[j]
+        if ip <= n_own_rows && jp <= n_own_cols
+            n_own_own += 1
+            own_own.triplet.I[n_own_own] = ip
+            own_own.triplet.J[n_own_own] = jp
+            own_own.triplet.V[n_own_own] = v
+        elseif ip <= n_own_rows
+            n_own_ghost += 1
+            own_ghost.triplet.I[n_own_ghost] = ip
+            own_ghost.triplet.J[n_own_ghost] = jp-n_own_cols
+            own_ghost.triplet.V[n_own_ghost] = v
+        elseif jp <= n_own_cols
+            n_ghost_own += 1
+            ghost_own.triplet.I[n_ghost_own] = ip-n_own_cols
+            ghost_own.triplet.J[n_ghost_own] = jp
+            ghost_own.triplet.V[n_ghost_own] = v
+        else
+            n_ghost_ghost += 1
+            ghost_ghost.triplet.I[n_ghost_ghost] = i-n_own_rows
+            ghost_ghost.triplet.J[n_ghost_ghost] = j-n_own_cols
+            ghost_ghost.triplet.V[n_ghost_ghost] = v
+        end
+    split_matrix(
+        own_own,
+        own_ghost,
+        ghost_own,
+        ghost_ghost,
+        rows,
+        cols)
+end
+
+function to_scsc(A::SplitMatrix)
+    to_x(to_csc,A)
+end
+
+function to_x(f,A::SplitMatrix)
+    split_matrix(
+                 f(own_own),
+                 f(own_ghost),
+                 f(ghost_own),
+                 f(ghost_ghost),
+                 rows,
+                 cols)
+end
+
+struct Disassembled end
+struct Subassembled end
+struct Assembled end
+
+struct PSparseMatrixNew{A,V,B,C,D,E,T} <: AbstractMatrix{T}
+    style::A
+    matrix_partition::B
+    row_partition::C
+    col_partition::D
     cache::E
+    function PSparseMatrixNew(style,matrix_partition,row_partition,col_partition,cache)
+        V = eltype(matrix_partition)
+        T = eltype(V)
+        A = typeof(style)
+        B = typeof(matrix_partition)
+        C = typeof(row_partition)
+        D = typeof(col_partition)
+        E = typeof(cache)
+        new{A,V,B,C,D,E,T}(style,matrix_partition,row_partition,col_partition,cache)
+    end
+end
+partition(a::PSparseMatrixNew) = a.matrix_partition
+Base.axes(a::PSparseMatrixNew) = (PRange(a.row_partition),PRange(a.col_partition))
+Base.size(a::PSparseMatrixNew) = map(length,axes(a))
+Base.IndexStyle(::Type{<:PSparseMatrixNew}) = IndexCartesian()
+function Base.getindex(a::PSparseMatrixNew,gi::Int,gj::Int)
+    scalar_indexing_action(a)
+end
+function Base.setindex!(a::PSparseMatrixNew,v,gi::Int,gj::Int)
+    scalar_indexing_action(a)
 end
 
-function scoo_from_coo(coo,rows,cols)
-    global_to_own_row = global_to_own(rows)
-    global_to_own_col = global_to_own(cols)
-    n_own_own = 0
-    n_own_ghost = 0
-    n_ghost_own = 0
-    n_ghost_ghost = 0
-    for p in 1:nnz(coo)
-        gi = coo.I[p]
-        gj = coo.J[p]
-        i = global_to_own_row[gi]
-        j = global_to_own_row[gj]
-        if i != 0 && j != 0
-            n_own_own += 1
-        elseif i != 0 && j==0
-            n_own_ghost += 1
-        elseif j == 0 && j!= 0
-            n_ghost_own += 1
-        else
-            n_ghost_ghost += 1
-        end
+function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrixNew)
+    T = eltype(partition(data))
+    m,n = size(data)
+    np = length(partition(data))
+    map_main(partition(data)) do values
+        println(io,"$(m)×$(n) PSparseMatrixNew{$T} partitioned into $np parts")
     end
-    Tv = eltype(coo)
-    m,n = size(coo)
-    own_own = spzeros_coo(Tv,m,n,n_own_own)
-    own_ghost = spzeros_coo(Tv,m,n,n_own_ghost)
-    ghost_own = spzeros_coo(Tv,m,n,n_ghost_own)
-    ghost_ghost = spzeros_coo(Tv,m,n,n_ghost_ghost)
-    scoo = MatrixSplit(own_own,own_ghost,ghost_own,ghost_ghost)
-    n_own_own = 0
-    n_own_ghost = 0
-    n_ghost_own = 0
-    n_ghost_ghost = 0
-    for p in 1:nnz(coo)
-        gi = coo.I[p]
-        gj = coo.J[p]
-        gv = coo.V[p]
-        i = global_to_own_row[gi]
-        j = global_to_own_row[gj]
-        if i != 0 && j != 0
-            n_own_own += 1
-            scoo.own_own.I[n_own_own] = gi
-            scoo.own_own.J[n_own_own] = gj
-            scoo.own_own.V[n_own_own] = gv
-        elseif i != 0 && j==0
-            n_own_ghost += 1
-            scoo.own_ghost.I[n_own_ghost] = gi
-            scoo.own_ghost.J[n_own_ghost] = gj
-            scoo.own_ghost.V[n_own_ghost] = gv
-        elseif j == 0 && j!= 0
-            n_ghost_own += 1
-            scoo.ghost_own.I[n_ghost_own] = gi
-            scoo.ghost_own.J[n_ghost_own] = gj
-            scoo.ghost_own.V[n_ghost_own] = gv
-        else
-            n_ghost_ghost += 1
-            scoo.ghost_ghost.I[n_ghost_ghost] = gi
-            scoo.ghost_ghost.J[n_ghost_ghost] = gj
-            scoo.ghost_ghost.V[n_ghost_ghost] = gv
-        end
-    end
-    scoo
 end
 
-function psparse_split_format!(I,J,V,row_partition,col_partition;kwargs...)
-    scoo = map(I,J,V,row_partition,col_partition) do I,J,V,rows,cols
+function assembly_style(A)
+    A.style
+end
+
+function assembly_style(::Type{<:PSparseMatrixNew{T}}) where T
+    T()
+end
+
+function replace_matrix_partition(A,values,cache=nothing)
+    rows = partition(axes(A,1))
+    cols = partition(axes(A,2))
+    style = assembly_style(A)
+    p_sparse_matrix(style,values,rows,cols,cache)
+end
+
+function p_sparse_matrix(style,values,rows,cols,cache=nothing)
+    PSparseMatrixNew(style,values,rows,cols,cache)
+end
+
+function psparse(::Disassembled,I,J,V,rows,cols)
+    function local_format(I,J,V,rows,cols)
         m = global_length(rows)
         n = global_length(cols)
-        coo = SparseMatrixCOO(I,J,V,m,n)
-        scoo_from_coo(coo,rows,cols)
+        sparse_coo(I,J,V,m,n)
     end
-    psparse_split_format_from_scoo!(scoo,row_partition,col_partition;kwargs...)
+    values = map(local_format,I,J,V,rows,cols)
+    rows_da = map(remove_ghost,rows) # TODO remove_ghost
+    cols_da = map(remove_ghost,cols)
+    @async p_sparse_matrix(Disassembled(),values,rows_da,cols_da)
 end
 
-function psparse_split_format_from_scoo!(scoo,rows,cols;exchange_graph_options=(;))
-    function find_ghost_rows(scoo,rows,cols)
-        I_ghost = vcat(scoo.ghost_own.I,scoo.ghost_ghost.I)
-        (;scoo,rows,cols,I_ghost)
+function psparse(::Subassembled,I,J,V,rows,cols)
+    A_coo_da =  psparse(Disassembled(),I,J,V,rows,cols)
+    t =  subassemble(A_coo_da) # TODO subassemble in coo format
+    @async begin
+        A_coo_sa = fetch(t)
+        A_csc_sa = compress(to_csc,A_scoo_fa)
+        A_csc_sa
     end
-    function expand_rows(state)
-        rows = map(i->i.rows,state)
-        cols = map(i->i.cols,state)
-        I_ghost = map(i->i.I_ghost,state)
-        J_ghost = map(i->i.scoo.ghost_ghost.J,state)
-        I_ghost_owner = find_owner(rows,I_ghost)
-        J_ghost_owner = find_owner(cols,J_ghost)
-        rows_with_ghost = map(union_ghost,rows,I_ghost,I_ghost_owner)
-        cols_for_ghost_rows = map(union_ghost,cols,J_ghost,J_ghost_owner)
-        parts_snd, parts_rcv = assembly_neighbors(
-                                                  rows_with_ghost;exchange_graph_options...)
-        function setup_state(
-                rows_with_ghost,cols_for_ghost_rows,parts_snd,parts_rcv,state)
-            (;rows_with_ghost,cols_for_ghost_rows,parts_snd,parts_rcv,state...)
-        end
-        map(setup_state,rows_with_ghost,cols_for_ghost_rows,parts_snd,parts_rcv,state)
+end
+
+function psparse(::FullyAssembled,I,J,V,rows,cols)
+    A_coo_da =  psparse(Disassembled(),I,J,V,rows,cols)
+    A_scoo_da = split(A_coo_da)
+    A_scoo_sa = subassemble(A_scoo_da;subassemble_options...) |> fetch #TODO subassemble in split format
+    t = assemble(A_scoo_sa;assemble_options...) # TODO assemble in split format
+    @async begin
+        A_scoo_fa = fetch(t)
+        A_scsc_fa = compress(to_scsc,A_scoo_fa)
+        A_scsc_fa
     end
-    function setup_scsc_ghost(state)
-        map_global_to_ghost!(state.scoo.ghost_own.I,state.rows_with_ghost)
-        map_global_to_ghost!(state.scoo.ghost_ghost.I,state.rows_with_ghost)
-        map_global_to_own!(state.scoo.ghost_own.J,state.cols_for_ghost_rows)
-        map_global_to_ghost!(state.scoo.ghost_ghost.J,state.cols_for_ghost_rows)
-        a = ghost_length(state.rows_with_ghost)
-        b = own_length(state.cols_for_ghost_rows)
-        c = ghost_length(state.cols_for_ghost_rows)
-        A_ghost_own = sparse(findnz(state.scoo.ghost_own)...,a,b)
-        A_ghost_ghost = sparse(findnz(state.scoo.ghost_ghost)...,a,c)
-        (;A_ghost_own,A_ghost_ghost,state...)
+end
+
+
+function split(A::PSparseMatrixNew)
+    values = map(split,partition(A),partition(axes(A,1)),partition(axes(A,2)))
+    replace_matrix_partition(A,values)
+end
+
+function sub_assemble(I,J,V,rows,cols;kwargs...)
+    sub_assemble(sparse,I,J,V,rows,cols;kwargs...)
+end
+
+function sub_assemble(f,I,J,V,rows,cols;exchange_graph_options=(;))
+    I_owner = find_owner(rows,I)
+    J_owner = find_owner(cols,J)
+    rows_sa = map(union_ghost,I,I_owner)
+    cols_sa = map(union_ghost,J,J_owner)
+    function setup_matrix_partition(I,J,V,rows_sa,cols_sa)
+        map_global_to_local!(I,rows_sa)
+        map_global_to_local!(J,cols_sa)
+        m = local_length(rows_sa)
+        n = local_length(cols_sa)
+        f(I,J,V,m,n)
     end
-    function setup_cache_snd(state)
-        owner_to_p = Dict(( owner=>i for (i,owner) in enumerate(state.parts_snd) ))
-        ptrs = zeros(Int32,length(state.parts_snd)+1)
-        ghost_to_owner_row = ghost_to_owner(state.rows_with_ghost)
-        ghost_to_global_row = ghost_to_global(state.rows_with_ghost)
-        own_to_global_col = own_to_global(state.cols_for_ghost_rows)
-        ghost_to_global_col = ghost_to_global(state.cols_for_ghost_rows)
-        for (i,_,_) in nziterator(state.A_ghost_own)
+    values = map(setup_matrix_partition,I,J,V,rows_sa,cols_sa)
+    assembly_neighbors(rows_sa;exchange_graph_options...)
+    p_sparse_matrix(Subassembled(),values,rows_sa,cols_sa)
+end
+
+function assemble(A::PSparseMatrixNew;exchange_graph_options=(;))
+    psparse_assemble_impl(A,typeof(partition(A)),exchange_graph_options)
+end
+
+function psparse_assemble_impl(A,::Type{<:SplitMatrix},exchange_graph_options)
+    function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
+        A_ghost_own   = to_csc(A.blocks.ghost_own)
+        A_ghost_ghost = to_csc(A.blocks.ghost_ghost)
+        gen = ( owner=>i for (i,owner) in enumerate(state.parts_snd) )
+        owner_to_p = Dict(gen)
+        ptrs = zeros(Int32,length(parts_snd)+1)
+        ghost_to_owner_row = ghost_to_owner(rows_sa)
+        ghost_to_global_row = ghost_to_global(rows_sa)
+        own_to_global_col = own_to_global(cols_sa)
+        ghost_to_global_col = ghost_to_global(cols_sa)
+        for (i,_,_) in nziterator(A_ghost_own)
             owner = ghost_to_owner_row[i]
             ptrs[owner_to_p[owner]+1] += 1
         end
-        for (i,_,_) in nziterator(state.A_ghost_ghost)
+        for (i,_,_) in nziterator(A_ghost_ghost)
             owner = ghost_to_owner_row[i]
             ptrs[owner_to_p[owner]+1] += 1
         end
         length_to_ptrs!(ptrs)
-        Tv = eltype(state.A_ghost_own)
+        Tv = eltype(A_ghost_own)
         ndata = ptrs[end]-1
         I_snd_data = zeros(Int,ndata)
         J_snd_data = zeros(Int,ndata)
         V_snd_data = zeros(Tv,ndata)
         k_snd_data = zeros(Int32,ndata)
         nnz_ghost_own = 0
-        for (k,(i,j,v)) in enumerate(nziterator(state.A_ghost_own))
+        for (k,(i,j,v)) in enumerate(nziterator(A_ghost_own))
             owner = ghost_to_owner_row[i]
             p = ptrs[owner_to_p[owner]]
             I_snd_data[p] = ghost_to_global_row[i]
@@ -850,7 +1005,7 @@ function psparse_split_format_from_scoo!(scoo,rows,cols;exchange_graph_options=(
             ptrs[owner_to_p[owner]] += 1
             nnz_ghost_own += 1
         end
-        for (k,(i,j,v)) in enumerate(nziterator(state.A_ghost_ghost))
+        for (k,(i,j,v)) in enumerate(nziterator(A_ghost_ghost))
             owner = ghost_to_owner_row[i]
             p = ptrs[owner_to_p[owner]]
             I_snd_data[p] = ghost_to_global_row[i]
@@ -864,113 +1019,383 @@ function psparse_split_format_from_scoo!(scoo,rows,cols;exchange_graph_options=(
         J_snd = JaggedArray(J_snd_data,ptrs)
         V_snd = JaggedArray(V_snd_data,ptrs)
         k_snd = JaggedArray(k_snd_data,ptrs)
-        (;I_snd,J_snd,V_snd,k_snd,state...)
+        (;I_snd,J_snd,V_snd,k_snd)
     end
-    function exchange_coo(state)
-        I_snd = map(i->i.I_snd,state)
-        J_snd = map(i->i.J_snd,state)
-        V_snd = map(i->i.V_snd,state)
-        parts_snd = map(i->i.parts_snd,state)
-        parts_rcv = map(i->i.parts_rcv,state)
-        graph = ExchangeGraph(parts_snd,parts_rcv)
-        t_I = exchange(I_snd,graph)
-        t_J = exchange(J_snd,graph)
-        t_V = exchange(V_snd,graph)
-        @async begin
-            I_rcv = fetch(t_I)
-            J_rcv = fetch(t_J)
-            V_rcv = fetch(t_V)
-            function setup_state(I_rcv,J_rcv,V_rcv,state)
-                (;I_rcv,J_rcv,V_rcv,state...)
-            end
-            map(setup_state,I_rcv,J_rcv,V_rcv,state)
-        end
+    function setup_cache_rcv(I_rcv,J_rcv,V_rcv)
+        k_rcv_data = zeros(Int32,length(I_rcv.data))
+        k_rcv = JaggedArray(k_rcv_data,I_rcv.ptrs)
+        (;I_rcv,J_rcv,V_rcv,k_rcv)
     end
-    function setup_scoo_own(state)
-        I_rcv_data = state.I_rcv.data
-        J_rcv_data = state.J_rcv.data
-        V_rcv_data = state.V_rcv.data
-        global_to_own_col = global_to_own(state.cols)
+    function setup_own_triplets(A,cache_rcv,rows_sa,cols_sa)
+        I_rcv_data = cache_rcv.I_rcv.data
+        J_rcv_data = cache_rcv.J_rcv.data
+        V_rcv_data = cache_rcv.V_rcv.data
+        global_to_own_col = global_to_own(cols_sa)
         is_ghost = map(j->global_to_own_col[j]==0,J_rcv_data)
         is_own = .! is_ghost
-        append!(state.scoo.own_own.I,I_rcv_data[is_own])
-        append!(state.scoo.own_own.J,J_rcv_data[is_own])
-        append!(state.scoo.own_own.V,V_rcv_data[is_own])
-        append!(state.scoo.own_ghost.I,I_rcv_data[is_ghost])
-        append!(state.scoo.own_ghost.J,J_rcv_data[is_ghost])
-        append!(state.scoo.own_ghost.V,V_rcv_data[is_ghost])
-        (;is_own,state...)
+        I_rcv_own = I_rcv_data[is_own]
+        J_rcv_own = J_rcv_data[is_own]
+        V_rcv_own = V_rcv_data[is_own]
+        I_rcv_ghost = I_rcv_data[is_ghost]
+        J_rcv_ghost = J_rcv_data[is_ghost]
+        V_rcv_ghost = V_rcv_data[is_ghost]
+        map_global_to_own!(I_rcv_own,rows_sa)
+        map_global_to_own!(J_rcv_own,cols_sa)
+        map_global_to_own!(I_rcv_ghost,rows_sa)
+        map_ghost_to_global!(A.blocks.own_ghost.triplet.J,cols_sa)
+        append!(A.blocks.own_own.I,I_rcv_own)
+        append!(A.blocks.own_own.J,J_rcv_own)
+        append!(A.blocks.own_own.V,V_rcv_own)
+        append!(A.blocks.own_ghost.I,I_rcv_ghost)
+        append!(A.blocks.own_ghost.J,J_rcv_ghost)
+        append!(A.blocks.own_ghost.V,V_rcv_ghost)
     end
-    function expand_cols(state)
-        cols = map(i->i.cols,state)
-        J_ghost = map(i->i.scoo.own_ghost.J,state)
-        J_ghost_owner = find_owner(cols,J_ghost)
-        cols_for_own_rows = map(union_ghost,cols,J_ghost,J_ghost_owner)
-        map(state,cols_for_own_rows) do state,cols_for_own_rows
-            (;cols_for_own_rows,state...)
-        end
+    function finalize_values(A,rows_fa,cols_fa)
+        own_own = A.blocks.own_ghost
+        own_ghost = A.blocks.own_ghost
+        map_global_to_ghost!(own_ghost.J,cols_fa)
+        ghost_own = similar_coo(own_own,(0,own_length(cols_fa)),0)
+        ghost_ghost = similar_coo(own_own,(0,own_length(cols_fa)),0)
+        split_matrix(own_own,own_ghost,ghost_own,ghost_ghost,rows_fa,cols_fa)
     end
-    function setup_scsc_own(state)
-        map_global_to_own!(state.scoo.own_own.I,state.rows)
-        map_global_to_own!(state.scoo.own_ghost.I,state.rows)
-        map_global_to_own!(state.scoo.own_own.J,state.cols_for_own_rows)
-        map_global_to_ghost!(state.scoo.own_ghost.J,state.cols_for_own_rows)
-        a = own_length(state.rows)
-        b = own_length(state.cols_for_own_rows)
-        c = ghost_length(state.cols_for_own_rows)
-        A_own_own = sparse(findnz(state.scoo.own_own)...,a,b)
-        A_own_ghost = sparse(findnz(state.scoo.own_ghost)...,a,c)
-        A = MatrixSplit(A_own_own,A_own_ghost,state.A_ghost_own,state.A_ghost_ghost)
-        I_rcv_data = state.I_rcv.data
-        J_rcv_data = state.J_rcv.data
-        V_rcv_data = state.V_rcv.data
-        ndata = length(I_rcv_data)
-        k_rcv_data = zeros(Int32,ndata)
-        n_own_nz = nnz(A_own_own)
-        global_to_own_row = global_to_own(state.rows)
-        global_to_own_col = global_to_own(state.cols_for_own_rows)
-        global_to_ghost_col = global_to_ghost(state.cols_for_own_rows)
-        for p in 1:ndata
-            gi = I_rcv_data[p]
-            gj = J_rcv_data[p]
-            i = global_to_own_row[gi]
-            k = if state.is_own[p]
-                j = global_to_own_col[gj]
-                nzindex(A_own_own,i,j)
-            else
-                j = global_to_ghost_col[gj]
-                nzindex(A_own_ghost,i,j)+n_own_nz
-            end
-            k_rcv_data[p] = k
-        end
-        k_rcv = JaggedArray(k_rcv_data,state.I_rcv.ptrs)
-        (;A,k_rcv,state...)
-    end
-    function finalize_psparse_scsc(state)
-        matrix_partition = map(i->i.A,state)
-        row_partition = map(i->i.rows_with_ghost,state)
-        col_partition_for_own_rows = map(i->i.cols_for_own_rows,state)
-        col_partition_for_ghost_rows = map(i->i.cols_for_ghost_rows,state)
-        cache = map(i->PSparseMatrixCacheSplit(i.V_snd,i.V_rcv,i.k_snd,i.k_rcv),state)
-        PSparseMatrixNew(
-                         matrix_partition,
-                         row_partition,
-                         col_partition_for_own_rows,
-                         col_partition_for_ghost_rows,
-                         cache)
-    end
-    state1 = map(find_ghost_rows,scoo,rows,cols)
-    state2 = expand_rows(state1)
-    state3 = map(setup_scsc_ghost,state2)
-    state4 = map(setup_cache_snd,state3)
-    t = exchange_coo(state4)
+    rows_sa = partition(axes(A,1))
+    cols_sa = partition(axes(A,2))
+    parts_snd, parts_rcv = assembly_neighbors(rows_sa)
+    cache_snd = map(setup_cache_snd,parition(A),parts_snd,rows_sa,cols_sa)
+    I_snd = map(i->i.I_snd,cache_snd)
+    J_snd = map(i->i.J_snd,cache_snd)
+    V_snd = map(i->i.V_snd,cache_snd)
+    graph = ExchangeGraph(parts_snd,parts_rcv)
+    t_I = exchange(I_snd,graph)
+    t_J = exchange(J_snd,graph)
+    t_V = exchange(V_snd,graph)
     @async begin
-        state5 = fetch(t)
-        state6 = map(setup_scoo_own,state5)
-        state7 = expand_cols(state6)
-        state8 = map(setup_scsc_own,state7)
-        finalize_psparse_scsc(state8)
+        I_rcv = fetch(t_I)
+        J_rcv = fetch(t_J)
+        V_rcv = fetch(t_V)
+        cache_rcv = map(setup_cache_rcv,I_rcv,J_rcv,V_rcv)
+        map(setup_own_triplets,partition(A),cache_rcv,rows_sa,cols_sa)
+        J = map(A->A.blocks.own_ghost.J,partition(A))
+        J_owner = find_owner(cols_sa,J)
+        rows = map(remove_ghost,rows_sa)
+        cols = map(remove_ghost,cols_sa)
+        rows_fa = rows
+        cols_fa = map(union_ghost,cols,J,J_owner)
+        assembly_neighbors(cols_fa;exchange_graph_options...)
+        vals_fa = map(finalize_values,partition(A),cols_fa)
+        p_sparse_matrix(FullyAssembled(),vals_fa,rows_fa,cols_fa)
     end
 end
+
+function compress(f,A::PSparseMatrixNew)
+    values = map(f,A.matrix_partition)
+    replace_matrix_partition(A,values)
+end
+
+function psparse(
+        I,J,V,rows,cols;
+        sub_assemble_options=(;),
+        assemble_options=(;))
+
+    values = map(local_sparse_builder(x),I,J,V,rows,cols)
+    A_coo_da = p_sparse_matrix(Disassembled(),values,rows,cols)
+    A_coo_sa = subassemble(A_coo_da;sub_assemble_options...)
+    A_scoo_sa = to_split_format(A_coo_sa)
+    t = assemble(A_scoo_sa;assemble_options...)
+    @async begin
+        A_scoo_fa = fetch(t)
+        A_scsc_fa = compress(to_scsc,A_scoo_fa)
+        A_scsc_fa
+    end
+end
+
+
+
+
+#struct MatrixSplit{A,B,C,D}
+#    own_own::A
+#    own_ghost::B
+#    ghost_own::C
+#    ghost_ghost::D
+#end
+#
+#struct PSparseMatrixCacheSplit{A,B}
+#    V_snd::A
+#    V_rcv::A
+#    k_snd::B
+#    k_rcv::B
+#end
+#
+#struct PSparseMatrixNew{A,B,C,D,E}
+#    matrix_partition::A
+#    row_partition::B
+#    col_partition_for_own_rows::C
+#    col_partition_for_ghost_rows::D
+#    cache::E
+#end
+#
+#function scoo_from_coo(coo,rows,cols)
+#    global_to_own_row = global_to_own(rows)
+#    global_to_own_col = global_to_own(cols)
+#    n_own_own = 0
+#    n_own_ghost = 0
+#    n_ghost_own = 0
+#    n_ghost_ghost = 0
+#    for p in 1:nnz(coo)
+#        gi = coo.I[p]
+#        gj = coo.J[p]
+#        i = global_to_own_row[gi]
+#        j = global_to_own_row[gj]
+#        if i != 0 && j != 0
+#            n_own_own += 1
+#        elseif i != 0 && j==0
+#            n_own_ghost += 1
+#        elseif j == 0 && j!= 0
+#            n_ghost_own += 1
+#        else
+#            n_ghost_ghost += 1
+#        end
+#    end
+#    Tv = eltype(coo)
+#    m,n = size(coo)
+#    own_own = spzeros_coo(Tv,m,n,n_own_own)
+#    own_ghost = spzeros_coo(Tv,m,n,n_own_ghost)
+#    ghost_own = spzeros_coo(Tv,m,n,n_ghost_own)
+#    ghost_ghost = spzeros_coo(Tv,m,n,n_ghost_ghost)
+#    scoo = MatrixSplit(own_own,own_ghost,ghost_own,ghost_ghost)
+#    n_own_own = 0
+#    n_own_ghost = 0
+#    n_ghost_own = 0
+#    n_ghost_ghost = 0
+#    for p in 1:nnz(coo)
+#        gi = coo.I[p]
+#        gj = coo.J[p]
+#        gv = coo.V[p]
+#        i = global_to_own_row[gi]
+#        j = global_to_own_row[gj]
+#        if i != 0 && j != 0
+#            n_own_own += 1
+#            scoo.own_own.I[n_own_own] = gi
+#            scoo.own_own.J[n_own_own] = gj
+#            scoo.own_own.V[n_own_own] = gv
+#        elseif i != 0 && j==0
+#            n_own_ghost += 1
+#            scoo.own_ghost.I[n_own_ghost] = gi
+#            scoo.own_ghost.J[n_own_ghost] = gj
+#            scoo.own_ghost.V[n_own_ghost] = gv
+#        elseif j == 0 && j!= 0
+#            n_ghost_own += 1
+#            scoo.ghost_own.I[n_ghost_own] = gi
+#            scoo.ghost_own.J[n_ghost_own] = gj
+#            scoo.ghost_own.V[n_ghost_own] = gv
+#        else
+#            n_ghost_ghost += 1
+#            scoo.ghost_ghost.I[n_ghost_ghost] = gi
+#            scoo.ghost_ghost.J[n_ghost_ghost] = gj
+#            scoo.ghost_ghost.V[n_ghost_ghost] = gv
+#        end
+#    end
+#    scoo
+#end
+#
+#function psparse_split_format!(I,J,V,row_partition,col_partition;kwargs...)
+#    scoo = map(I,J,V,row_partition,col_partition) do I,J,V,rows,cols
+#        m = global_length(rows)
+#        n = global_length(cols)
+#        coo = SparseMatrixCOO(I,J,V,m,n)
+#        scoo_from_coo(coo,rows,cols)
+#    end
+#    psparse_split_format_from_scoo!(scoo,row_partition,col_partition;kwargs...)
+#end
+#
+#function psparse_split_format_from_scoo!(scoo,rows,cols;exchange_graph_options=(;))
+#    function find_ghost_rows(scoo,rows,cols)
+#        I_ghost = vcat(scoo.ghost_own.I,scoo.ghost_ghost.I)
+#        (;scoo,rows,cols,I_ghost)
+#    end
+#    function expand_rows(state)
+#        rows = map(i->i.rows,state)
+#        cols = map(i->i.cols,state)
+#        I_ghost = map(i->i.I_ghost,state)
+#        J_ghost = map(i->i.scoo.ghost_ghost.J,state)
+#        I_ghost_owner = find_owner(rows,I_ghost)
+#        J_ghost_owner = find_owner(cols,J_ghost)
+#        rows_with_ghost = map(union_ghost,rows,I_ghost,I_ghost_owner)
+#        cols_for_ghost_rows = map(union_ghost,cols,J_ghost,J_ghost_owner)
+#        parts_snd, parts_rcv = assembly_neighbors(
+#                                                  rows_with_ghost;exchange_graph_options...)
+#        function setup_state(
+#                rows_with_ghost,cols_for_ghost_rows,parts_snd,parts_rcv,state)
+#            (;rows_with_ghost,cols_for_ghost_rows,parts_snd,parts_rcv,state...)
+#        end
+#        map(setup_state,rows_with_ghost,cols_for_ghost_rows,parts_snd,parts_rcv,state)
+#    end
+#    function setup_scsc_ghost(state)
+#        map_global_to_ghost!(state.scoo.ghost_own.I,state.rows_with_ghost)
+#        map_global_to_ghost!(state.scoo.ghost_ghost.I,state.rows_with_ghost)
+#        map_global_to_own!(state.scoo.ghost_own.J,state.cols_for_ghost_rows)
+#        map_global_to_ghost!(state.scoo.ghost_ghost.J,state.cols_for_ghost_rows)
+#        a = ghost_length(state.rows_with_ghost)
+#        b = own_length(state.cols_for_ghost_rows)
+#        c = ghost_length(state.cols_for_ghost_rows)
+#        A_ghost_own = sparse(findnz(state.scoo.ghost_own)...,a,b)
+#        A_ghost_ghost = sparse(findnz(state.scoo.ghost_ghost)...,a,c)
+#        (;A_ghost_own,A_ghost_ghost,state...)
+#    end
+#    function setup_cache_snd(state)
+#        owner_to_p = Dict(( owner=>i for (i,owner) in enumerate(state.parts_snd) ))
+#        ptrs = zeros(Int32,length(state.parts_snd)+1)
+#        ghost_to_owner_row = ghost_to_owner(state.rows_with_ghost)
+#        ghost_to_global_row = ghost_to_global(state.rows_with_ghost)
+#        own_to_global_col = own_to_global(state.cols_for_ghost_rows)
+#        ghost_to_global_col = ghost_to_global(state.cols_for_ghost_rows)
+#        for (i,_,_) in nziterator(state.A_ghost_own)
+#            owner = ghost_to_owner_row[i]
+#            ptrs[owner_to_p[owner]+1] += 1
+#        end
+#        for (i,_,_) in nziterator(state.A_ghost_ghost)
+#            owner = ghost_to_owner_row[i]
+#            ptrs[owner_to_p[owner]+1] += 1
+#        end
+#        length_to_ptrs!(ptrs)
+#        Tv = eltype(state.A_ghost_own)
+#        ndata = ptrs[end]-1
+#        I_snd_data = zeros(Int,ndata)
+#        J_snd_data = zeros(Int,ndata)
+#        V_snd_data = zeros(Tv,ndata)
+#        k_snd_data = zeros(Int32,ndata)
+#        nnz_ghost_own = 0
+#        for (k,(i,j,v)) in enumerate(nziterator(state.A_ghost_own))
+#            owner = ghost_to_owner_row[i]
+#            p = ptrs[owner_to_p[owner]]
+#            I_snd_data[p] = ghost_to_global_row[i]
+#            J_snd_data[p] = own_to_global_col[j]
+#            V_snd_data[p] = v
+#            k_snd_data[p] = k
+#            ptrs[owner_to_p[owner]] += 1
+#            nnz_ghost_own += 1
+#        end
+#        for (k,(i,j,v)) in enumerate(nziterator(state.A_ghost_ghost))
+#            owner = ghost_to_owner_row[i]
+#            p = ptrs[owner_to_p[owner]]
+#            I_snd_data[p] = ghost_to_global_row[i]
+#            J_snd_data[p] = ghost_to_global_col[j]
+#            V_snd_data[p] = v
+#            k_snd_data[p] = k+nnz_ghost_own
+#            ptrs[owner_to_p[owner]] += 1
+#        end
+#        rewind_ptrs!(ptrs)
+#        I_snd = JaggedArray(I_snd_data,ptrs)
+#        J_snd = JaggedArray(J_snd_data,ptrs)
+#        V_snd = JaggedArray(V_snd_data,ptrs)
+#        k_snd = JaggedArray(k_snd_data,ptrs)
+#        (;I_snd,J_snd,V_snd,k_snd,state...)
+#    end
+#    function exchange_coo(state)
+#        I_snd = map(i->i.I_snd,state)
+#        J_snd = map(i->i.J_snd,state)
+#        V_snd = map(i->i.V_snd,state)
+#        parts_snd = map(i->i.parts_snd,state)
+#        parts_rcv = map(i->i.parts_rcv,state)
+#        graph = ExchangeGraph(parts_snd,parts_rcv)
+#        t_I = exchange(I_snd,graph)
+#        t_J = exchange(J_snd,graph)
+#        t_V = exchange(V_snd,graph)
+#        @async begin
+#            I_rcv = fetch(t_I)
+#            J_rcv = fetch(t_J)
+#            V_rcv = fetch(t_V)
+#            function setup_state(I_rcv,J_rcv,V_rcv,state)
+#                (;I_rcv,J_rcv,V_rcv,state...)
+#            end
+#            map(setup_state,I_rcv,J_rcv,V_rcv,state)
+#        end
+#    end
+#    function setup_scoo_own(state)
+#        I_rcv_data = state.I_rcv.data
+#        J_rcv_data = state.J_rcv.data
+#        V_rcv_data = state.V_rcv.data
+#        global_to_own_col = global_to_own(state.cols)
+#        is_ghost = map(j->global_to_own_col[j]==0,J_rcv_data)
+#        is_own = .! is_ghost
+#        append!(state.scoo.own_own.I,I_rcv_data[is_own])
+#        append!(state.scoo.own_own.J,J_rcv_data[is_own])
+#        append!(state.scoo.own_own.V,V_rcv_data[is_own])
+#        append!(state.scoo.own_ghost.I,I_rcv_data[is_ghost])
+#        append!(state.scoo.own_ghost.J,J_rcv_data[is_ghost])
+#        append!(state.scoo.own_ghost.V,V_rcv_data[is_ghost])
+#        (;is_own,state...)
+#    end
+#    function expand_cols(state)
+#        cols = map(i->i.cols,state)
+#        J_ghost = map(i->i.scoo.own_ghost.J,state)
+#        J_ghost_owner = find_owner(cols,J_ghost)
+#        cols_for_own_rows = map(union_ghost,cols,J_ghost,J_ghost_owner)
+#        map(state,cols_for_own_rows) do state,cols_for_own_rows
+#            (;cols_for_own_rows,state...)
+#        end
+#    end
+#    function setup_scsc_own(state)
+#        map_global_to_own!(state.scoo.own_own.I,state.rows)
+#        map_global_to_own!(state.scoo.own_ghost.I,state.rows)
+#        map_global_to_own!(state.scoo.own_own.J,state.cols_for_own_rows)
+#        map_global_to_ghost!(state.scoo.own_ghost.J,state.cols_for_own_rows)
+#        a = own_length(state.rows)
+#        b = own_length(state.cols_for_own_rows)
+#        c = ghost_length(state.cols_for_own_rows)
+#        A_own_own = sparse(findnz(state.scoo.own_own)...,a,b)
+#        A_own_ghost = sparse(findnz(state.scoo.own_ghost)...,a,c)
+#        A = MatrixSplit(A_own_own,A_own_ghost,state.A_ghost_own,state.A_ghost_ghost)
+#        I_rcv_data = state.I_rcv.data
+#        J_rcv_data = state.J_rcv.data
+#        V_rcv_data = state.V_rcv.data
+#        ndata = length(I_rcv_data)
+#        k_rcv_data = zeros(Int32,ndata)
+#        n_own_nz = nnz(A_own_own)
+#        global_to_own_row = global_to_own(state.rows)
+#        global_to_own_col = global_to_own(state.cols_for_own_rows)
+#        global_to_ghost_col = global_to_ghost(state.cols_for_own_rows)
+#        for p in 1:ndata
+#            gi = I_rcv_data[p]
+#            gj = J_rcv_data[p]
+#            i = global_to_own_row[gi]
+#            k = if state.is_own[p]
+#                j = global_to_own_col[gj]
+#                nzindex(A_own_own,i,j)
+#            else
+#                j = global_to_ghost_col[gj]
+#                nzindex(A_own_ghost,i,j)+n_own_nz
+#            end
+#            k_rcv_data[p] = k
+#        end
+#        k_rcv = JaggedArray(k_rcv_data,state.I_rcv.ptrs)
+#        (;A,k_rcv,state...)
+#    end
+#    function finalize_psparse_scsc(state)
+#        matrix_partition = map(i->i.A,state)
+#        row_partition = map(i->i.rows_with_ghost,state)
+#        col_partition_for_own_rows = map(i->i.cols_for_own_rows,state)
+#        col_partition_for_ghost_rows = map(i->i.cols_for_ghost_rows,state)
+#        cache = map(i->PSparseMatrixCacheSplit(i.V_snd,i.V_rcv,i.k_snd,i.k_rcv),state)
+#        PSparseMatrixNew(
+#                         matrix_partition,
+#                         row_partition,
+#                         col_partition_for_own_rows,
+#                         col_partition_for_ghost_rows,
+#                         cache)
+#    end
+#    state1 = map(find_ghost_rows,scoo,rows,cols)
+#    state2 = expand_rows(state1)
+#    state3 = map(setup_scsc_ghost,state2)
+#    state4 = map(setup_cache_snd,state3)
+#    t = exchange_coo(state4)
+#    @async begin
+#        state5 = fetch(t)
+#        state6 = map(setup_scoo_own,state5)
+#        state7 = expand_cols(state6)
+#        state8 = map(setup_scsc_own,state7)
+#        finalize_psparse_scsc(state8)
+#    end
+#end
 
 
