@@ -88,6 +88,7 @@ export ghost_to_local
 export local_to_own
 export local_to_ghost
 export replace_ghost
+export remove_ghost
 export union_ghost
 export find_owner
 export assemble!
@@ -116,8 +117,12 @@ include("p_vector.jl")
 
 export PSparseMatrix
 export psparse
+export psparse_new
+export split_format
+export Disassembled
+export Subassembled
+export Assembled
 export psparse!
-export psparse_split_format!
 export own_ghost_values
 export ghost_own_values
 include("p_sparse_matrix.jl")

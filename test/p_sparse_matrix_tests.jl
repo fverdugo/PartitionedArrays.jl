@@ -139,7 +139,20 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse_split_format!(I,J,V,row_partition,col_partition) |> fetch
+    A_da = psparse_new(Disassembled(),I,J,V,row_partition,col_partition) |> fetch
+    display(A_da)
+
+    A_da_s = split_format(A_da)
+    display(A_da_s)
+
+    A_sa = psparse_new(Subassembled(),I,J,V,row_partition,col_partition) |> fetch
+    display(A_sa)
+
+
+
+    #A = psparse_new(Assembled(),I,J,V,row_partition,col_partition) |> fetch
+    #display(A)
+
 
 end
 

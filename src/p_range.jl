@@ -198,6 +198,10 @@ only makes sense if `indices` stores ghost ids in separate vectors like in
 """
 function replace_ghost end
 
+function remove_ghost(indices)
+    replace_ghost(indices,Int[],Int32[])
+end
+
 function filter_ghost(indices,gids,owners)
     set = Set{Int}()
     part_owner = part_id(indices)
