@@ -142,16 +142,26 @@ function p_sparse_matrix_tests(distribute)
     A_da = psparse_new(Disassembled(),I,J,V,row_partition,col_partition) |> fetch
     display(A_da)
 
-    A_da_s = split_format(A_da)
-    display(A_da_s)
-
     A_sa = psparse_new(Subassembled(),I,J,V,row_partition,col_partition) |> fetch
     display(A_sa)
 
+    A_da_s = split_format(A_da)
+    display(A_da_s)
+    A_sa_s = subassemble(A_da_s) |> fetch
+    display(A_sa_s)
+
+    A_fa_s = assemble(A_sa_s) |> fetch
+    display(A_fa_s)
+
+    A_fa = psparse_new(Assembled(),I,J,V,row_partition,col_partition) |> fetch
+    display(A_fa)
+
+    #TODO consistent
 
 
-    #A = psparse_new(Assembled(),I,J,V,row_partition,col_partition) |> fetch
-    #display(A)
+
+
+
 
 
 end

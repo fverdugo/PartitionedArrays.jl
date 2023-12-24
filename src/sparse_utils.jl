@@ -333,6 +333,10 @@ Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.paren
 Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
 
 function sparse_coo(I,J,V,m,n)
+    @boundscheck begin
+        @assert all(i->(i in 1:m),I)
+        @assert all(j->(j in 1:n),J)
+    end
     SparseMatrixCOO(I,J,V,m,n)
 end
 struct SparseMatrixCOO{A,B,C,T} <: AbstractMatrix{T}
@@ -375,7 +379,7 @@ function similar_coo(
 
     I,J,V = findnz(coo)
     m,n = _size
-    sparse_coo(
+    SparseMatrixCOO(
                similar(I,Ti,_nnz),
                similar(J,Ti,_nnz),
                similar(V,Tv,_nnz),
@@ -386,7 +390,7 @@ end
 function similar_coo(coo,_size=size(coo),_nnz=nnz(coo))
     I,J,V = findnz(coo)
     m,n = _size
-    sparse_coo(
+    SparseMatrixCOO(
                similar(I,_nnz),
                similar(J,_nnz),
                similar(V,_nnz),

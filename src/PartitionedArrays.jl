@@ -119,6 +119,8 @@ export PSparseMatrix
 export psparse
 export psparse_new
 export split_format
+export subassemble
+export assemble
 export Disassembled
 export Subassembled
 export Assembled
