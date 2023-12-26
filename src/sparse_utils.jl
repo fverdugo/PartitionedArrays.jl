@@ -332,13 +332,6 @@ Base.@propagate_inbounds Base.getindex(v::EltypeVector{T},i::Integer) where T = 
 Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.parent[i] = w)
 Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
 
-function sparse_coo(I,J,V,m,n)
-    @boundscheck begin
-        @assert all(i->(i in 1:m),I)
-        @assert all(j->(j in 1:n),J)
-    end
-    SparseMatrixCOO(I,J,V,m,n)
-end
 struct SparseMatrixCOO{A,B,C,T} <: AbstractMatrix{T}
     I::A
     J::B
@@ -368,6 +361,19 @@ SparseArrays.nnz(a::SparseMatrixCOO) = length(a.V)
 SparseArrays.findnz(a::SparseMatrixCOO) = (a.I,a.J,a.V)
 indextype(a::SparseMatrixCOO) = eltype(a.I)
 nziterator(a::SparseMatrixCOO) = zip(a.I,a.J,a.V)
+
+function sparse_coo(I,J,V,m,n)
+    @boundscheck begin
+        @assert all(i->(i in 1:m),I)
+        @assert all(j->(j in 1:n),J)
+    end
+    SparseMatrixCOO(I,J,V,m,n)
+end
+
+function sparse_coo!(A::SparseMatrixCOO,V)
+    copy!(A.V,V)
+    A
+end
 
 function similar_coo(
         coo,
@@ -402,5 +408,15 @@ function to_csc(A)
     I,J,V = findnz(A)
     m,n = size(A)
     sparse(I,J,V,m,n)
+end
+
+function to_csc!(B::SparseArrays.AbstractSparseMatrixCSC,A)
+    LinearAlgebra.fillstored!(B,0)
+    nzvals_B = nonzeros(B)
+    for (i,j,v) in nziterator(A)
+        k = nzindex(B,i,j)
+        nzvals_B[k] += v
+    end
+    B
 end
 

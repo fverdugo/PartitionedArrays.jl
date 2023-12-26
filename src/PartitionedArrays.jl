@@ -117,9 +117,20 @@ include("p_vector.jl")
 
 export PSparseMatrix
 export psparse
-export psparse_new
-export split_format
+export psparse_coo
+export psparse_coo!
+export psparse_csc
+export psparse_csc!
+export psparse_split_coo
+export psparse_split_coo!
+export psparse_csc
+export psparse_csc!
+export psparse_split_csc
+export psparse_split_csc!
+export split_values
+export split_values!
 export subassemble
+export subassemble!
 export assemble
 export Disassembled
 export Subassembled

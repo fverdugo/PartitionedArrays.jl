@@ -139,23 +139,25 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A_da = psparse_new(Disassembled(),I,J,V,row_partition,col_partition) |> fetch
-    display(A_da)
+    A_da = psparse_coo(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
+    psparse_coo!(A_da,V) |> wait
+    A_sa = subassemble(A_da) |> fetch
+    subassemble!(A_sa,A_da) |> wait
 
-    A_sa = psparse_new(Subassembled(),I,J,V,row_partition,col_partition) |> fetch
-    display(A_sa)
+    A_sa = psparse_csc(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
+    psparse_csc!(A_sa,V) |> wait
 
-    A_da_s = split_format(A_da)
-    display(A_da_s)
-    A_sa_s = subassemble(A_da_s) |> fetch
-    display(A_sa_s)
+    A = psparse_split_coo(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
+    psparse_split_coo!(A,V) |> wait
 
-    A_fa_s = assemble(A_sa_s) |> fetch
-    display(A_fa_s)
+    A = psparse_split_csc(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
+    psparse_split_csc!(A,V) |> wait
 
-    A_fa = psparse_new(Assembled(),I,J,V,row_partition,col_partition) |> fetch
-    display(A_fa)
+    A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    psparse_split_csc!(A,V) |> wait
 
+    display(A)
+    
     #TODO consistent
 
 
