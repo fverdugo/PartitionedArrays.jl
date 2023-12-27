@@ -132,6 +132,7 @@ export split_values!
 export subassemble
 export subassemble!
 export assemble
+export consistent
 export Disassembled
 export Subassembled
 export Assembled

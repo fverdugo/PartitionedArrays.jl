@@ -420,3 +420,24 @@ function to_csc!(B::SparseArrays.AbstractSparseMatrixCSC,A)
     B
 end
 
+function sparse_csc(I,J,V,m,n)
+    A = sparse(I,J,V,m,n)
+    K = zeros(eltype(I),length(I))
+    for q in 1:length(K)
+        i = I[q]
+        j = J[q]
+        k = nzindex(A,i,j)
+        K[q] = k
+    end
+    (A,K)
+end
+
+function sparse_csc!(A,K,V)
+    LinearAlgebra.fillstored!(A,0)
+    A_nz = nonzeros(A)
+    for (k,v) in zip(K,V)
+        A_nz[k] += v
+    end
+    A
+end
+

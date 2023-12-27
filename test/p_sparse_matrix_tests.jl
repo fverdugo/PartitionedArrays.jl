@@ -155,8 +155,19 @@ function p_sparse_matrix_tests(distribute)
 
     A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
     psparse_split_csc!(A,V) |> wait
-
     display(A)
+
+    A_da = psparse_split_coo(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
+    A_sa = subassemble(A_da) |> fetch
+    A_fa = assemble(A_sa) |> fetch
+    psparse_split_coo!(A_da,V) |> wait
+    subassemble!(A_sa,A_da) |> wait
+    assemble!(A_fa,A_sa) |> wait
+
+    A_fa = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    rows_co = partition(axes(A_fa,2))
+    A_co = consistent(A_fa,rows_co) |> fetch
+    consistent!(A_co,A_fa) |> wait
     
     #TODO consistent
 
