@@ -122,6 +122,8 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
+    # New stuff
+
     n = 10
     parts = rank
     row_partition = uniform_partition(parts,n)
@@ -139,6 +141,8 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
+    # TODO think about the naming of the new psparse constructors
+    # also in relation with pvector
     A_da = psparse_coo(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
     psparse_coo!(A_da,V) |> wait
     A_sa = subassemble(A_da) |> fetch
@@ -168,13 +172,88 @@ function p_sparse_matrix_tests(distribute)
     rows_co = partition(axes(A_fa,2))
     A_co = consistent(A_fa,rows_co) |> fetch
     consistent!(A_co,A_fa) |> wait
+
+    n = 10
+    parts = rank
+    row_partition = uniform_partition(parts,n)
+    col_partition = row_partition
+
+    I,J,V = map(row_partition,col_partition) do rows, cols
+        i = collect(own_to_global(rows))
+        j = i
+        v = fill(2.0,length(i))
+        i,j,v
+    end |> tuple_of_arrays
+
+    A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    x = pfill(3.0,axes(A,2))
+    b = similar(x,axes(A,1))
+    mul!(b,A,x)
+    map(own_values(b)) do values
+        @test all( values .== 6 )
+    end
+    consistent!(b) |> wait
+    map(partition(b)) do values
+      @test all( values .== 6 )
+    end
+
+    _A = similar(A)
+    _A = similar(A,eltype(A))
+    copy!(_A,A)
+
+    LinearAlgebra.fillstored!(A,1.0)
+    fill!(x,3.0)
+    mul!(b,A,x)
+    consistent!(b) |> wait
+    map(partition(b)) do values
+        @test all( values .== 3 )
+    end
     
-    #TODO consistent
+    I,J,V = map(parts) do part
+        if part == 1
+            [1,2,1,2,2], [2,6,1,2,1], [1.0,2.0,30.0,10.0,1.0]
+        elseif part == 2
+            [3,3,4,6], [3,9,4,2], [10.0,2.0,30.0,2.0]
+        elseif part == 3
+            [5,5,6,7], [5,6,6,7], [10.0,2.0,30.0,1.0]
+        else
+            [9,9,8,10,6], [9,3,8,10,5], [10.0,2.0,30.0,50.0,2.0]
+        end
+    end |> tuple_of_arrays
 
+    A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    x = pones(partition(axes(A,2)))
+    y = A*x
+    dy = y - y
 
+    x = IterativeSolvers.cg(A,y)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
 
+    x = pfill(0.0,partition(axes(A,2)))
+    IterativeSolvers.cg!(x,A,y)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
+    fill!(x,0.0)
 
+    ##x = A\y
+    ##@test isa(x,PVector)
+    ##r = A*x-y
+    ##@test norm(r) < 1.0e-9
 
+    ##factors = lu(A)
+    ##x .= 0
+    ##ldiv!(x,factors,y)
+    ##r = A*x-y
+    ##@test norm(r) < 1.0e-9
+
+    ##lu!(factors,A)
+    ##x .= 0
+    ##ldiv!(x,factors,y)
+    ##r = A*x-y
+    ##map(i->fill!(i,100),ghost_values(r))
+    ##@test norm(r) < 1.0e-9
+    ##display(A)
 
 
 end

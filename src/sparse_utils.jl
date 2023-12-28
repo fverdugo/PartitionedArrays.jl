@@ -362,6 +362,12 @@ SparseArrays.findnz(a::SparseMatrixCOO) = (a.I,a.J,a.V)
 indextype(a::SparseMatrixCOO) = eltype(a.I)
 nziterator(a::SparseMatrixCOO) = zip(a.I,a.J,a.V)
 
+Base.similar(a::SparseMatrixCOO) = similar(a,eltype(a))
+function Base.similar(a::SparseMatrixCOO,::Type{T}) where T
+    V = similar(a.V,T)
+    SparseMatrixCOO(a.I,a.J,V,size(a)...)
+end
+
 function sparse_coo(I,J,V,m,n)
     @boundscheck begin
         @assert all(i->(i in 1:m),I)

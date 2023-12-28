@@ -20,14 +20,18 @@ function local_values(values,indices_rows,indices_cols)
 end
 
 function own_values(values,indices_rows,indices_cols)
-    subindices = (own_to_local(indices_rows),own_to_local(indices_cols))
-    subindices_inv = (local_to_own(indices_rows),local_to_own(indices_cols))
-    SubSparseMatrix(values,subindices,subindices_inv)
+    # TODO deprecate this one
+    own_own_values(values,indices_rows,indices_cols)
 end
 
 function ghost_values(values,indices_rows,indices_cols)
-    subindices = (ghost_to_local(indices_rows),ghost_to_local(indices_cols))
-    subindices_inv = (local_to_ghost(indices_rows),local_to_ghost(indices_cols))
+    # TODO deprecate this one
+    ghost_ghost_values(values,indices_rows,indices_cols)
+end
+
+function own_own_values(values,indices_rows,indices_cols)
+    subindices = (own_to_local(indices_rows),own_to_local(indices_cols))
+    subindices_inv = (local_to_own(indices_rows),local_to_own(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
@@ -40,6 +44,12 @@ end
 function ghost_own_values(values,indices_rows,indices_cols)
     subindices = (ghost_to_local(indices_rows),own_to_local(indices_cols))
     subindices_inv = (local_to_ghost(indices_rows),local_to_own(indices_cols))
+    SubSparseMatrix(values,subindices,subindices_inv)
+end
+
+function ghost_ghost_values(values,indices_rows,indices_cols)
+    subindices = (ghost_to_local(indices_rows),ghost_to_local(indices_cols))
+    subindices_inv = (local_to_ghost(indices_rows),local_to_ghost(indices_cols))
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
@@ -741,6 +751,44 @@ function replace_blocks(A::SplitMatrixGlobal,blocks)
     SplitMatrixGlobal(blocks)
 end
 
+function own_own_values(values::SplitMatrixGlobal,indices_rows,indices_cols)
+    values.blocks.own_own
+end
+function own_ghost_values(values::SplitMatrixGlobal,indices_rows,indices_cols)
+    values.blocks.own_ghost
+end
+function ghost_own_values(values::SplitMatrixGlobal,indices_rows,indices_cols)
+    values.blocks.ghost_own
+end
+function ghost_ghost_values(values::SplitMatrixGlobal,indices_rows,indices_cols)
+    values.blocks.ghost_ghost
+end
+
+Base.similar(a::SplitMatrixGlobal) = similar(a,eltype(a))
+function Base.similar(a::SplitMatrixGlobal,::Type{T}) where T
+    own_own = similar(a.blocks.own_own,T)
+    own_ghost = similar(a.blocks.own_ghost,T)
+    ghost_own = similar(a.blocks.ghost_own,T)
+    ghost_ghost = similar(a.blocks.ghost_ghost,T)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    SplitMatrixLocal(blocks,a.row_permutation,a.col_permutation)
+end
+
+function Base.copy!(a::SplitMatrixGlobal,b::SplitMatrixGlobal)
+    copy!(a.blocks.own_own,b.blocks.own_own)
+    copy!(a.blocks.own_ghost,b.blocks.own_ghost)
+    copy!(a.blocks.ghost_own,b.blocks.ghost_own)
+    copy!(a.blocks.ghost_ghost,b.blocks.ghost_ghost)
+    a
+end
+function Base.copyto!(a::SplitMatrixGlobal,b::SplitMatrixGlobal)
+    copyto!(a.blocks.own_own,b.blokcs.own_own)
+    copyto!(a.blocks.own_ghost,b.blokcs.own_ghost)
+    copyto!(a.blocks.ghost_own,b.blokcs.ghost_own)
+    copyto!(a.blocks.ghost_ghost,b.blokcs.ghost_ghost)
+    a
+end
+
 function split_globally(coo::SparseMatrixCOO,rows,cols)
     global_to_own_row = global_to_own(rows)
     global_to_own_col = global_to_own(cols)
@@ -875,6 +923,52 @@ function Base.getindex(a::SplitMatrixLocal,i::Int,j::Int)
 end
 function replace_blocks(A::SplitMatrixLocal,blocks)
     SplitMatrixLocal(blocks,A.row_permutation,A.col_permutation)
+end
+
+function own_own_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+    values.blocks.own_own
+end
+function own_ghost_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+    values.blocks.own_ghost
+end
+function ghost_own_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+    values.blocks.ghost_own
+end
+function ghost_ghost_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+    values.blocks.ghost_ghost
+end
+
+Base.similar(a::SplitMatrixLocal) = similar(a,eltype(a))
+function Base.similar(a::SplitMatrixLocal,::Type{T}) where T
+    own_own = similar(a.blocks.own_own,T)
+    own_ghost = similar(a.blocks.own_ghost,T)
+    ghost_own = similar(a.blocks.ghost_own,T)
+    ghost_ghost = similar(a.blocks.ghost_ghost,T)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    SplitMatrixLocal(blocks,a.row_permutation,a.col_permutation)
+end
+
+function Base.copy!(a::SplitMatrixLocal,b::SplitMatrixLocal)
+    copy!(a.blocks.own_own,b.blocks.own_own)
+    copy!(a.blocks.own_ghost,b.blocks.own_ghost)
+    copy!(a.blocks.ghost_own,b.blocks.ghost_own)
+    copy!(a.blocks.ghost_ghost,b.blocks.ghost_ghost)
+    a
+end
+function Base.copyto!(a::SplitMatrixLocal,b::SplitMatrixLocal)
+    copyto!(a.blocks.own_own,b.blokcs.own_own)
+    copyto!(a.blocks.own_ghost,b.blokcs.own_ghost)
+    copyto!(a.blocks.ghost_own,b.blokcs.ghost_own)
+    copyto!(a.blocks.ghost_ghost,b.blokcs.ghost_ghost)
+    a
+end
+
+function LinearAlgebra.fillstored!(a::SplitMatrixLocal,v)
+    LinearAlgebra.fillstored!(a.blocks.own_own,v)
+    LinearAlgebra.fillstored!(a.blocks.own_ghost,v)
+    LinearAlgebra.fillstored!(a.blocks.ghost_own,v)
+    LinearAlgebra.fillstored!(a.blocks.ghost_ghost,v)
+    a
 end
 
 function to_split_csc(A::SplitMatrixLocal)
@@ -1066,6 +1160,19 @@ function replace_cache(A,cache)
     cols = partition(axes(A,2))
     style = assembly_style(A)
     PSparseMatrixNew(style,values,rows,cols,cache)
+end
+
+function own_own_values(a::PSparseMatrixNew)
+    map(own_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+end
+function own_ghost_values(a::PSparseMatrixNew)
+    map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+end
+function ghost_own_values(a::PSparseMatrixNew)
+    map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
+end
+function ghost_ghost_values(a::PSparseMatrixNew)
+    map(ghost_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
 function split_values(A::PSparseMatrixNew{Disassembled})
@@ -1815,4 +1922,72 @@ function psparse_consitent_impl!(B,A::PSparseMatrixNew,::Type{<:SplitMatrixLocal
     end
 end
 
+function LinearAlgebra.mul!(c::PVector,a::PSparseMatrixNew{Assembled},b::PVector,α::Number,β::Number)
+    @boundscheck @assert matching_own_indices(axes(c,1),axes(a,1))
+    @boundscheck @assert matching_own_indices(axes(a,2),axes(b,1))
+    @boundscheck @assert matching_ghost_indices(axes(a,2),axes(b,1))
+    # Start the exchange
+    t = consistent!(b)
+    # Meanwhile, process the owned blocks
+    map(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
+        if β != 1
+            β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
+        end
+        mul!(co,aoo,bo,α,1)
+    end
+    # Wait for the exchange to finish
+    wait(t)
+    # process the ghost block
+    map(own_values(c),own_ghost_values(a),ghost_values(b)) do co,aoh,bh
+        mul!(co,aoh,bh,α,1)
+    end
+    c
+end
 
+function LinearAlgebra.mul!(c::PVector,a::PSparseMatrixNew{Subassembled},b::PVector,α::Number,β::Number)
+    @boundscheck @assert matching_own_indices(axes(c,1),axes(a,1))
+    @boundscheck @assert matching_ghost_indices(axes(c,1),axes(a,1))
+    @boundscheck @assert matching_own_indices(axes(a,2),axes(b,1))
+    @boundscheck @assert matching_ghost_indices(axes(a,2),axes(b,1))
+    error("Not implemented yet")
+end
+
+Base.similar(a::PSparseMatrixNew) = similar(a,eltype(a))
+function Base.similar(a::PSparseMatrixNew,::Type{T}) where T
+    matrix_partition = map(partition(a)) do values
+        similar(values,T)
+    end
+    style = assembly_style(a)
+    rows, cols = axes(a)
+    PSparseMatrixNew(style,matrix_partition,partition(rows),partition(cols))
+end
+
+function Base.copy!(a::PSparseMatrixNew,b::PSparseMatrixNew)
+    @assert size(a) == size(b)
+    copyto!(a,b)
+end
+
+function Base.copyto!(a::PSparseMatrixNew,b::PSparseMatrixNew)
+    if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
+        map(copy!,partition(a),partition(b))
+    else
+        error("Trying to copy a PSparseMatrix into another one with a different data layout. This case is not implemented yet. It would require communications.")
+    end
+    a
+end
+
+function LinearAlgebra.fillstored!(a::PSparseMatrixNew,v)
+    map(partition(a)) do values
+        LinearAlgebra.fillstored!(values,v)
+    end
+    a
+end
+
+# Misc functions that could be removed if IterativeSolvers was implemented in terms
+# of axes(A,d) instead of size(A,d)
+function IterativeSolvers.zerox(A::PSparseMatrixNew,b::PVector)
+    T = IterativeSolvers.Adivtype(A, b)
+    x = similar(b, T, axes(A, 2))
+    fill!(x, zero(T))
+    return x
+end

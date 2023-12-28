@@ -535,6 +535,7 @@ Equivalent to
     vector_partition = map(f,index_partition)
     PVector(vector_partition,index_partition)
 end
+pvector(f,r::PRange) = pvector(f,partition(r))
 
 """
     pvector!([f,]I,V,index_partition;discover_rows=true) -> Task
