@@ -1236,6 +1236,34 @@ function psparse_new!(B::PSparseMatrixNew{Disassembled},V)
     @async B
 end
 
+function psparse_new(style::Subassembled,I,J,V,rows,cols;
+    compress_block = sparse_to_csc,
+    compress_blocks =(A)->compress_split_matrix(compress_block,A)
+    )
+    A_scoo_da = psparse_new(I,J,V,rows,cols;style=Disassembled()) |> fetch
+    t = subassemble(A_scoo_da)
+    @async begin
+        A_scoo_sa = fetch(t)
+        A_scsc_sa = compress_values(compress_blocks,A_scoo_sa)
+        cache = Ref{Any}((A_scoo_da,A_scoo_sa,A_scsc_sa))
+        B = replace_cache(A_scsc_sa,cache)
+        B
+    end
+end
+function psparse_new!(B::PSparseMatrixNew{Subassembled},V;
+    compress_block! = sparse_to_csc!,
+    compress_blocks! =(B,cache,A)->compress_split_matrix!(compress_block!,B,cache,A)
+    )
+    A_scoo_da,A_scoo_sa,A_scsc_sa = B.cache[]
+    psparse_new!(A_scoo_da,V) |> wait
+    t = subassemble!(A_scoo_sa,A_scoo_da)
+    @async begin
+        wait(t)
+        compress_values!(compress_blocks!,A_scsc_sa,A_scoo_sa)
+        B
+    end
+end
+
 function psparse_new(style::Assembled,I,J,V,rows,cols;
     compress_block = sparse_to_csc,
     compress_blocks =(A)->compress_split_matrix(compress_block,A)

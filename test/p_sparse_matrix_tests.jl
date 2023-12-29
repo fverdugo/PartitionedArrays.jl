@@ -141,34 +141,22 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    # TODO think about the naming of the new psparse constructors
-    # also in relation with pvector
-    A_da = psparse_coo(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
-    psparse_coo!(A_da,V) |> wait
-    A_sa = subassemble(A_da) |> fetch
-    subassemble!(A_sa,A_da) |> wait
-
-    A_sa = psparse_csc(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
-    psparse_csc!(A_sa,V) |> wait
-
-    A = psparse_split_coo(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
-    psparse_split_coo!(A,V) |> wait
-
-    A = psparse_split_csc(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
-    psparse_split_csc!(A,V) |> wait
-
-    A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
-    psparse_split_csc!(A,V) |> wait
-    display(A)
-
-    A_da = psparse_split_coo(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
+    A_da = psparse_new(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
     A_sa = subassemble(A_da) |> fetch
     A_fa = assemble(A_sa) |> fetch
-    psparse_split_coo!(A_da,V) |> wait
+    psparse_new!(A_da,V) |> wait
     subassemble!(A_sa,A_da) |> wait
     assemble!(A_fa,A_sa) |> wait
 
-    A_fa = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    A_sa = psparse_new(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
+    #A_fa = assemble(A_sa) |> fetch # TODO assembly on compressed format not yet implemented
+    #psparse_new!(A_sa,V) |> wait
+    #assemble!(A_fa,A_sa) |> wait
+
+    A_fa = psparse_new(I,J,V,row_partition,col_partition,style=Assembled()) |> fetch
+    psparse_new!(A_fa,V) |> wait
+
+    A_fa = psparse_new(I,J,V,row_partition,col_partition) |> fetch
     rows_co = partition(axes(A_fa,2))
     A_co = consistent(A_fa,rows_co) |> fetch
     consistent!(A_co,A_fa) |> wait
@@ -222,7 +210,7 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    A = psparse_new(I,J,V,row_partition,col_partition) |> fetch
     x = pones(partition(axes(A,2)))
     y = A*x
     dy = y - y

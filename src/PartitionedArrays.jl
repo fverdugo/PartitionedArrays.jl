@@ -119,18 +119,10 @@ export PSparseMatrix
 export psparse
 export psparse_new
 export psparse_new!
-export psparse_coo
-export psparse_coo!
-export psparse_csc
-export psparse_csc!
-export psparse_split_coo
-export psparse_split_coo!
-export psparse_csc
-export psparse_csc!
-export psparse_split_csc
-export psparse_split_csc!
 export split_values
 export split_values!
+export compress_values
+export compress_values!
 export subassemble
 export subassemble!
 export assemble
@@ -141,6 +133,8 @@ export Assembled
 export psparse!
 export own_ghost_values
 export ghost_own_values
+export own_own_values
+export ghost_ghost_values
 include("p_sparse_matrix.jl")
 
 export PTimer
