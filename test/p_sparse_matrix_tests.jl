@@ -185,7 +185,8 @@ function p_sparse_matrix_tests(distribute)
         i,j,v
     end |> tuple_of_arrays
 
-    A = psparse_split_csc(I,J,V,row_partition,col_partition) |> fetch
+    A = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    psparse_new!(A,V) |> wait
     x = pfill(3.0,axes(A,2))
     b = similar(x,axes(A,1))
     mul!(b,A,x)

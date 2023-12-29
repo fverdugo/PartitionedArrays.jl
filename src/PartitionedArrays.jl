@@ -117,6 +117,8 @@ include("p_vector.jl")
 
 export PSparseMatrix
 export psparse
+export psparse_new
+export psparse_new!
 export psparse_coo
 export psparse_coo!
 export psparse_csc

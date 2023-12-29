@@ -1199,6 +1199,110 @@ function split_values!(B,A::PSparseMatrixNew)
     B
 end
 
+function compress_values(compress,A::PSparseMatrixNew)
+    values,cache = map(compress,partition(A)) |> tuple_of_arrays
+    replace_matrix_partition(A,values,cache)
+end
+
+function compress_values!(compress!,B::PSparseMatrixNew,A::PSparseMatrixNew)
+    map(compress!,partition(B),B.cache,partition(A))
+    B
+end
+
+function psparse_new(I,J,V,rows,cols;kwargs...)
+    psparse_new(sparse_to_csc,I,J,V,rows,cols;kwargs...)
+end
+function psparse_new(f,I,J,V,rows,cols;
+    style=Assembled(),
+    compress=(A)->compress_split_matrix(f,A))
+    function local_format(I,J,V,rows,cols)
+        m = global_length(rows)
+        n = global_length(cols)
+        sparse_coo(I,J,V,m,n)
+    end
+    values = map(local_format,I,J,V,rows,cols)
+    rows_da = map(remove_ghost,rows)
+    cols_da = map(remove_ghost,cols)
+    A_coo_da = PSparseMatrixNew(Disassembled(),values,rows_da,cols_da)
+    psparse_new_impl(A_coo_da,style,compress)
+end
+
+function psparse_new!(B,V;kwargs...)
+    psparse_new!(sparse_to_csc!,B,V;kwargs...)
+end
+function psparse_new!(f,B,V;
+    compress=(B,cache,A)->compress_split_matrix!(f,B,cache,A))
+    psparse_new_impl!(B,V,compress)
+end
+
+function psparse_new_impl(A_coo_da,style::Assembled,compress)
+    A_scoo_da = split_values(A_coo_da)
+    A_scoo_sa = subassemble(A_scoo_da) |> fetch
+    t = assemble(A_scoo_sa)
+    @async begin
+        A_scoo_fa = fetch(t)
+        A_scsc_fa = compress_values(compress,A_scoo_fa)
+        cache = Ref{Any}((A_coo_da,A_scoo_da,A_scoo_sa,A_scoo_fa,A_scsc_fa))
+        B = replace_cache(A_scsc_fa,cache)
+    end
+end
+function psparse_new_impl!(B::PSparseMatrixNew{Assembled},V,compress)
+    A_coo_da,A_scoo_da,A_scoo_sa,A_scoo_fa,A_scsc_fa = B.cache[]
+    map(sparse_coo!,partition(A_coo_da),V)
+    split_values!(A_scoo_da,A_coo_da)
+    A_scoo_sa = subassemble!(A_scoo_sa,A_scoo_da) |> fetch
+    t = assemble!(A_scoo_fa,A_scoo_sa)
+    @async begin
+        wait(t)
+        compress_values!(compress,A_scsc_fa,A_scoo_fa)
+        B
+    end
+end
+
+function sparse_to_csc(A)
+    I,J,V = findnz(A)
+    m,n = size(A)
+    B = sparse(I,J,V,m,n)
+    K = zeros(eltype(I),length(I))
+    for q in 1:length(K)
+        i = I[q]
+        j = J[q]
+        k = nzindex(B,i,j)
+        K[q] = k
+    end
+    (B,K)
+end
+
+function sparse_to_csc!(B,K,A)
+    V = nonzeros(A)
+    LinearAlgebra.fillstored!(B,0)
+    B_nz = nonzeros(B)
+    for (k,v) in zip(K,V)
+        B_nz[k] += v
+    end
+    (B,K)
+end
+
+function compress_split_matrix(f,A::SplitMatrixLocal)
+    own_own,    c1 = f(A.blocks.own_own    )
+    own_ghost,  c2 = f(A.blocks.own_ghost  )
+    ghost_own,  c3 = f(A.blocks.ghost_own  )
+    ghost_ghost,c4 = f(A.blocks.ghost_ghost)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    B = SplitMatrixLocal(blocks,A.row_permutation,A.col_permutation)
+    cache = (c1,c2,c3,c4)
+    B,cache
+end
+
+function compress_split_matrix!(f!,B::SplitMatrixLocal,cache,A::SplitMatrixLocal)
+    (c1,c2,c3,c4) = cache
+    f!(B.blocks.own_own    ,c1,A.blocks.own_own    )
+    f!(B.blocks.own_ghost  ,c2,A.blocks.own_ghost  )
+    f!(B.blocks.ghost_own  ,c3,A.blocks.ghost_own  )
+    f!(B.blocks.ghost_ghost,c4,A.blocks.ghost_ghost)
+    B,cache
+end
+
 """
 """
 function psparse_coo(args...;style=Assembled())
@@ -1990,4 +2094,48 @@ function IterativeSolvers.zerox(A::PSparseMatrixNew,b::PVector)
     x = similar(b, T, axes(A, 2))
     fill!(x, zero(T))
     return x
+end
+
+#function to_trivial_partition(
+#        a::PSparseMatrixNew{Assembled},
+#        row_partition_in_main=trivial_partition(partition(axes(a,1))),
+#        col_partition_in_main=trivial_partition(partition(axes(a,2)))) where M
+#    destination = 1
+#    Ta = eltype(a)
+#    I,J,V = map(partition(a),partition(axes(a,1)),partition(axes(a,2))) do a,row_indices,col_indices
+#        n = 0
+#        local_row_to_owner = local_to_owner(row_indices)
+#        owner = part_id(row_indices)
+#        local_to_global_row = local_to_global(row_indices)
+#        local_to_global_col = local_to_global(col_indices)
+#        for (i,j,v) in nziterator(a)
+#            n += 1
+#        end
+#        myI = zeros(Int,n)
+#        myJ = zeros(Int,n)
+#        myV = zeros(Ta,n)
+#        n = 0
+#        for (i,j,v) in nziterator(a)
+#            n += 1
+#            myI[n] = local_to_global_row[i]
+#            myJ[n] = local_to_global_col[j]
+#            myV[n] = v
+#        end
+#        myI,myJ,myV
+#    end |> tuple_of_arrays
+#    # TODO hard-coded csc
+#    A = psparse_split_csc(I,J,V,row_partition_in_main,col_partition_in_main) |> fetch
+#    A
+#end
+
+# Not efficient, just for convenience and debugging purposes
+function LinearAlgebra.lu(a::PSparseMatrixNew)
+    a_in_main = to_trivial_partition(a)
+    lu_in_main = map_main(lu,own_own_values(a_in_main))
+    PLU(lu_in_main,axes(a_in_main,1),axes(a_in_main,2))
+end
+function LinearAlgebra.lu!(b::PLU,a::PSparseMatrixNew)
+    a_in_main = to_trivial_partition(a,partition(b.rows),partition(b.cols))
+    map_main(lu!,b.lu_in_main,own_own_values(a_in_main))
+    b
 end

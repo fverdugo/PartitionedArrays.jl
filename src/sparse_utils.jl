@@ -359,6 +359,7 @@ function Base.getindex(a::SparseMatrixCOO,i::Int,j::Int)
 end
 SparseArrays.nnz(a::SparseMatrixCOO) = length(a.V)
 SparseArrays.findnz(a::SparseMatrixCOO) = (a.I,a.J,a.V)
+SparseArrays.nonzeros(a::SparseMatrixCOO) = a.V
 indextype(a::SparseMatrixCOO) = eltype(a.I)
 nziterator(a::SparseMatrixCOO) = zip(a.I,a.J,a.V)
 
