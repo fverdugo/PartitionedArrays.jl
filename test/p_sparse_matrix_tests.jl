@@ -225,24 +225,24 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     fill!(x,0.0)
 
-    ##x = A\y
-    ##@test isa(x,PVector)
-    ##r = A*x-y
-    ##@test norm(r) < 1.0e-9
+    x = A\y
+    @test isa(x,PVector)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
 
-    ##factors = lu(A)
-    ##x .= 0
-    ##ldiv!(x,factors,y)
-    ##r = A*x-y
-    ##@test norm(r) < 1.0e-9
+    factors = lu(A)
+    x .= 0
+    ldiv!(x,factors,y)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
 
-    ##lu!(factors,A)
-    ##x .= 0
-    ##ldiv!(x,factors,y)
-    ##r = A*x-y
-    ##map(i->fill!(i,100),ghost_values(r))
-    ##@test norm(r) < 1.0e-9
-    ##display(A)
+    lu!(factors,A)
+    x .= 0
+    ldiv!(x,factors,y)
+    r = A*x-y
+    map(i->fill!(i,100),ghost_values(r))
+    @test norm(r) < 1.0e-9
+    display(A)
 
 
 end

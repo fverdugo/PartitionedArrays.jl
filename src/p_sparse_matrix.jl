@@ -2125,7 +2125,7 @@ function LinearAlgebra.fillstored!(a::PSparseMatrixNew,v)
     a
 end
 
-# Misc functions that could be removed if IterativeSolvers was implemented in terms
+# This function could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
 function IterativeSolvers.zerox(A::PSparseMatrixNew,b::PVector)
     T = IterativeSolvers.Adivtype(A, b)
@@ -2134,46 +2134,111 @@ function IterativeSolvers.zerox(A::PSparseMatrixNew,b::PVector)
     return x
 end
 
-#function to_trivial_partition(
-#        a::PSparseMatrixNew{Assembled},
-#        row_partition_in_main=trivial_partition(partition(axes(a,1))),
-#        col_partition_in_main=trivial_partition(partition(axes(a,2)))) where M
-#    destination = 1
-#    Ta = eltype(a)
-#    I,J,V = map(partition(a),partition(axes(a,1)),partition(axes(a,2))) do a,row_indices,col_indices
-#        n = 0
-#        local_row_to_owner = local_to_owner(row_indices)
-#        owner = part_id(row_indices)
-#        local_to_global_row = local_to_global(row_indices)
-#        local_to_global_col = local_to_global(col_indices)
-#        for (i,j,v) in nziterator(a)
-#            n += 1
-#        end
-#        myI = zeros(Int,n)
-#        myJ = zeros(Int,n)
-#        myV = zeros(Ta,n)
-#        n = 0
-#        for (i,j,v) in nziterator(a)
-#            n += 1
-#            myI[n] = local_to_global_row[i]
-#            myJ[n] = local_to_global_col[j]
-#            myV[n] = v
-#        end
-#        myI,myJ,myV
-#    end |> tuple_of_arrays
-#    # TODO hard-coded csc
-#    A = psparse_split_csc(I,J,V,row_partition_in_main,col_partition_in_main) |> fetch
-#    A
-#end
+function trivial_partition_new(ranks,n;destination=MAIN)
+    n_own = map(ranks) do rank
+        rank == destination ? Int(n) : 0
+    end
+    partition_in_main = variable_partition(n_own,n)
+    partition_in_main
+end
+
+function repartition(v::PVector,new_partition)
+    # TODO this can be simplified a lot by using a new constructor pvector_new
+    w = similar(v,PRange(new_partition))
+    rows_da = map(remove_ghost,new_partition)
+    row_partition = partition(axes(v,1))
+    I = map(collect∘own_to_global,row_partition)
+    V = own_values(v)
+    I_owner = find_owner(rows_da,I)
+    rows_sa = map(union_ghost,rows_da,I,I_owner)
+    map(map_global_to_local!,I,rows_sa)
+    values = map(default_local_values,I,V,rows_sa)
+    v_sa = PVector(values,rows_sa)
+    t = assemble!(v_sa)
+    @async begin
+        wait(t)
+        w .= v_sa
+        w
+    end
+end
+
+function repartition(A::PSparseMatrixNew,new_rows,new_cols)
+    function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
+        I1,J1,V1 = findnz(A_own_own)
+        I2,J2,V2 = findnz(A_own_ghost)
+        map_own_to_global!(I1,A_rows)
+        map_own_to_global!(I2,A_rows)
+        map_own_to_global!(J1,A_cols)
+        map_ghost_to_global!(J2,A_cols)
+        I = vcat(I1,I2)
+        J = vcat(J1,J2)
+        V = vcat(V1,V2)
+        (I,J,V)
+    end
+    A_own_own = own_own_values(A)
+    A_own_ghost = own_ghost_values(A)
+    A_rows = partition(axes(A,1))
+    A_cols = partition(axes(A,2))
+    I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
+    # TODO this one does not preserve the local storage layout of A
+    A_in_main = psparse_new(I,J,V,new_rows,new_cols) |> fetch
+    A_in_main
+end
+
 
 # Not efficient, just for convenience and debugging purposes
-function LinearAlgebra.lu(a::PSparseMatrixNew)
-    a_in_main = to_trivial_partition(a)
-    lu_in_main = map_main(lu,own_own_values(a_in_main))
-    PLU(lu_in_main,axes(a_in_main,1),axes(a_in_main,2))
+function Base.:\(a::PSparseMatrixNew,b::PVector)
+    m,n = size(a)
+    ranks = linear_indices(partition(a))
+    rows_trivial = trivial_partition_new(ranks,m)
+    cols_trivial = trivial_partition_new(ranks,n)
+    a_in_main = repartition(a,rows_trivial,cols_trivial) |> fetch
+    b_in_main = repartition(b,partition(axes(a_in_main,1))) |> fetch
+    values = map(\,own_own_values(a_in_main),own_values(b_in_main))
+    c_in_main = PVector(values,cols_trivial)
+    cols = partition(axes(a,2))
+    c = repartition(c_in_main,cols) |> fetch
+    c
 end
-function LinearAlgebra.lu!(b::PLU,a::PSparseMatrixNew)
-    a_in_main = to_trivial_partition(a,partition(b.rows),partition(b.cols))
+
+# Not efficient, just for convenience and debugging purposes
+struct PLUNew{A,B,C}
+    lu_in_main::A
+    rows::B
+    cols::C
+end
+function LinearAlgebra.lu(a::PSparseMatrixNew)
+    m,n = size(a)
+    ranks = linear_indices(partition(a))
+    rows_trivial = trivial_partition_new(ranks,m)
+    cols_trivial = trivial_partition_new(ranks,n)
+    a_in_main = repartition(a,rows_trivial,cols_trivial) |> fetch
+    lu_in_main = map_main(lu,own_own_values(a_in_main))
+    PLUNew(lu_in_main,axes(a_in_main,1),axes(a_in_main,2))
+end
+function LinearAlgebra.lu!(b::PLUNew,a::PSparseMatrixNew)
+    rows_trivial = partition(b.rows)
+    cols_trivial = partition(b.cols)
+    a_in_main = repartition(a,rows_trivial,cols_trivial) |> fetch
     map_main(lu!,b.lu_in_main,own_own_values(a_in_main))
     b
 end
+function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
+    # TODO
+    # memory being allocated in this function
+    # we need some sort of in-place re-partition function
+    rows_trivial = partition(a.rows)
+    cols_trivial = partition(a.cols)
+    b_in_main = repartition(b,rows_trivial) |> fetch
+    values = map(partition(c),partition(b_in_main)) do c,b
+        similar(c,length(b))
+    end
+    map_main(ldiv!,values,a.lu_in_main,partition(b_in_main))
+    c_in_main = PVector(values,cols_trivial)
+    c_in_main = PVector(values,cols_trivial)
+    cols = partition(axes(c,1))
+    r = repartition(c_in_main,cols) |> fetch
+    c .= r
+    c
+end
+
