@@ -1341,258 +1341,258 @@ function compress_split_matrix!(f!,B::SplitMatrixLocal,cache,A::SplitMatrixLocal
     B,cache
 end
 
-"""
-"""
-function psparse_coo(args...;style=Assembled())
-    psparse_coo(style,args...)
-end
-
-"""
-"""
-function psparse_coo! end
-
-function psparse_coo(::Disassembled,I,J,V,rows,cols)
-    function local_format(I,J,V,rows,cols)
-        m = global_length(rows)
-        n = global_length(cols)
-        sparse_coo(I,J,V,m,n)
-    end
-    values = map(local_format,I,J,V,rows,cols)
-    rows_da = map(remove_ghost,rows)
-    cols_da = map(remove_ghost,cols)
-    B = PSparseMatrixNew(Disassembled(),values,rows_da,cols_da)
-    @async B
-end
-function psparse_coo!(B::PSparseMatrixNew{Disassembled},V)
-    map(sparse_coo!,partition(B),V)
-    @async B
-end
-
-function psparse_coo(::Subassembled,args...)
-    A_da = psparse_coo(Disassembled(),args...) |> fetch
-    t = subassemble(A_da)
-    @async begin
-        A_sa = fetch(t)
-        cache = Ref{Any}((A_da,A_sa))
-        B = replace_cache(A_sa,cache)
-        B
-    end
-end
-function psparse_coo!(B::PSparseMatrixNew{Subassembled},V)
-    (A_da,A_sa) = B.cache[]
-    psparse_coo!(A_da,V) |> wait
-    t = subassemble!(A_sa,A_da)
-    @async begin
-        wait(t)
-        B
-    end
-end
-
-function psparse_coo(::Assembled,args...)
-    A_sa = psparse_coo(Subassembled(),args...) |> fetch
-    t = assemble(A_sa)
-    @async begin
-        A_fa = fetch(t)
-        cache = Ref{Any}((A_sa,A_fa))
-        B = replace_cache(A_sa,cache)
-        B
-    end
-end
-function psparse_coo!(B::PSparseMatrixNew{Assembled},V)
-    (A_sa,A_fa) = B.cache[]
-    psparse_coo!(A_sa,V) |> wait
-    t = assemble!(A_fa,A_sa)
-    @async begin
-        wait(t)
-        B
-    end
-end
-
-"""
-"""
-function psparse_split_coo(args...;style=Assembled())
-    psparse_split_coo(style,args...)
-end
-
-"""
-"""
-function psparse_split_coo! end
-
-function psparse_split_coo(::Disassembled,I,J,V,rows,cols)
-    A_coo = psparse_coo(Disassembled(),I,J,V,rows,cols) |> fetch
-    A_split_coo = split_values(A_coo)
-    cache = Ref{Any}((A_coo,A_split_coo))
-    B = replace_cache(A_split_coo,cache)
-    @async B
-end
-function psparse_split_coo!(B::PSparseMatrixNew{Disassembled},V)
-    (A_coo,A_split_coo) = B.cache[]
-    psparse_coo!(A_coo,V) |> wait
-    split_values!(A_split_coo,A_coo)
-    @async B
-end
-
-function psparse_split_coo(::Subassembled,I,J,V,rows,cols)
-    A_da = psparse_split_coo(Disassembled(),I,J,V,rows,cols) |> fetch
-    t = subassemble(A_da)
-    @async begin
-        A_sa = fetch(t)
-        cache = Ref{Any}((A_da,A_sa))
-        B = replace_cache(A_sa,cache)
-        B
-    end
-end
-function psparse_split_coo!(B::PSparseMatrixNew{Subassembled},V)
-    (A_da,A_sa) = B.cache[]
-    psparse_split_coo!(A_da,V) |> wait
-    t = subassemble!(A_sa,A_da)
-    @async begin
-        wait(t)
-        B
-    end
-end
-
-function psparse_split_coo(::Assembled,I,J,V,rows,cols)
-    A_sa = psparse_split_coo(Subassembled(),I,J,V,rows,cols) |> fetch
-    t = assemble(A_sa)
-    @async begin
-        A_fa = fetch(t)
-        cache = Ref{Any}((A_sa,A_fa))
-        B = replace_cache(A_fa,cache)
-        B
-    end
-end
-function psparse_split_coo!(B::PSparseMatrixNew{Assembled},V)
-    (A_sa,A_fa) = B.cache[]
-    psparse_split_coo!(A_sa,V) |> wait
-    t = assemble!(A_fa,A_sa)
-    @async begin
-        wait(t)
-        B
-    end
-end
-
-"""
-"""
-function psparse_csc(args...;style=Assembled())
-    psparse_csc(style,args...)
-end
-
-"""
-"""
-function psparse_csc! end
-
-function psparse_csc(::Disassembled,I,J,V,rows,cols)
-    error("Not implemented since it makes little sense in practice")
-end
-function psparse_csc!(B::PSparseMatrixNew{Disassembled},V)
-    error("Not implemented since it makes little sense in practice")
-end
-
-function psparse_csc(::Subassembled,I,J,V,rows,cols)
-    t = psparse_coo(Subassembled(),I,J,V,rows,cols)
-    @async begin
-        A_sa = fetch(t)
-        values = map(to_csc,partition(A_sa))
-        cache = Ref{Any}(A_sa)
-        B = replace_matrix_partition(A_sa,values,cache)
-        B
-    end
-end
-function psparse_csc!(B::PSparseMatrixNew{Subassembled},V)
-    A_sa = B.cache[]
-    t = psparse_coo!(A_sa,V)
-    @async begin
-        wait(t)
-        map(to_csc!,partition(B),partition(A_sa))
-        B
-    end
-end
-
-function psparse_csc(::Assembled,I,J,V,rows,cols)
-    A_sa = psparse_coo(Subassembled(),I,J,V,rows,cols) |> fetch
-    # TODO we can save some communication by compressing
-    # ghost rows before assembling
-    t = assemble(A_sa)
-    @async begin
-        A_fa = fetch(t)
-        values = map(to_csc,partition(A_fa))
-        cache = Ref{Any}((A_sa,A_fa))
-        B = replace_matrix_partition(A_fa,values,cache)
-        B
-    end
-end
-function psparse_csc!(B::PSparseMatrixNew{Assembled},V)
-    (A_sa,A_fa) = B.cache[]
-    psparse_coo!(A_sa,V) |> wait
-    t = assemble!(A_fa,A_sa)
-    @async begin
-        wait(t)
-        map(to_csc!,partition(B),partition(A_fa))
-        B
-    end
-end
-
-"""
-"""
-function psparse_split_csc(args...;style=Assembled())
-    psparse_split_csc(style,args...)
-end
-
-"""
-"""
-function psparse_split_csc! end
-
-function psparse_split_csc(::Disassembled,I,J,V,rows,cols)
-    error("Not implemented since it makes little sense in practice")
-end
-function psparse_split_csc!(B::PSparseMatrixNew{Disassembled},V)
-    error("Not implemented since it makes little sense in practice")
-end
-
-function psparse_split_csc(::Subassembled,I,J,V,rows,cols)
-    t = psparse_split_coo(Subassembled(),I,J,V,rows,cols)
-    @async begin
-        A_sa = fetch(t)
-        values = map(to_split_csc,partition(A_sa))
-        cache = Ref{Any}(A_sa)
-        B = replace_matrix_partition(A_sa,values,cache)
-        B
-    end
-end
-function psparse_split_csc!(B::PSparseMatrixNew{Subassembled},V)
-    A_sa = B.cache[]
-    t = psparse_split_coo!(A_sa,V)
-    @async begin
-        wait(t)
-        map(to_split_csc!,partition(B),partition(A_sa))
-        B
-    end
-end
-
-function psparse_split_csc(::Assembled,I,J,V,rows,cols)
-    A_sa = psparse_split_coo(Subassembled(),I,J,V,rows,cols) |> fetch
-    # TODO we can save some communication by compressing
-    # ghost rows before assembling
-    t = assemble(A_sa)
-    @async begin
-        A_fa = fetch(t)
-        values = map(to_split_csc,partition(A_fa))
-        cache = Ref{Any}((A_sa,A_fa))
-        B = replace_matrix_partition(A_fa,values,cache)
-        B
-    end
-end
-function psparse_split_csc!(B::PSparseMatrixNew{Assembled},V)
-    (A_sa,A_fa) = B.cache[]
-    psparse_split_coo!(A_sa,V) |> wait
-    t = assemble!(A_fa,A_sa)
-    @async begin
-        wait(t)
-        map(to_split_csc!,partition(B),partition(A_fa))
-        B
-    end
-end
+#"""
+#"""
+#function psparse_coo(args...;style=Assembled())
+#    psparse_coo(style,args...)
+#end
+#
+#"""
+#"""
+#function psparse_coo! end
+#
+#function psparse_coo(::Disassembled,I,J,V,rows,cols)
+#    function local_format(I,J,V,rows,cols)
+#        m = global_length(rows)
+#        n = global_length(cols)
+#        sparse_coo(I,J,V,m,n)
+#    end
+#    values = map(local_format,I,J,V,rows,cols)
+#    rows_da = map(remove_ghost,rows)
+#    cols_da = map(remove_ghost,cols)
+#    B = PSparseMatrixNew(Disassembled(),values,rows_da,cols_da)
+#    @async B
+#end
+#function psparse_coo!(B::PSparseMatrixNew{Disassembled},V)
+#    map(sparse_coo!,partition(B),V)
+#    @async B
+#end
+#
+#function psparse_coo(::Subassembled,args...)
+#    A_da = psparse_coo(Disassembled(),args...) |> fetch
+#    t = subassemble(A_da)
+#    @async begin
+#        A_sa = fetch(t)
+#        cache = Ref{Any}((A_da,A_sa))
+#        B = replace_cache(A_sa,cache)
+#        B
+#    end
+#end
+#function psparse_coo!(B::PSparseMatrixNew{Subassembled},V)
+#    (A_da,A_sa) = B.cache[]
+#    psparse_coo!(A_da,V) |> wait
+#    t = subassemble!(A_sa,A_da)
+#    @async begin
+#        wait(t)
+#        B
+#    end
+#end
+#
+#function psparse_coo(::Assembled,args...)
+#    A_sa = psparse_coo(Subassembled(),args...) |> fetch
+#    t = assemble(A_sa)
+#    @async begin
+#        A_fa = fetch(t)
+#        cache = Ref{Any}((A_sa,A_fa))
+#        B = replace_cache(A_sa,cache)
+#        B
+#    end
+#end
+#function psparse_coo!(B::PSparseMatrixNew{Assembled},V)
+#    (A_sa,A_fa) = B.cache[]
+#    psparse_coo!(A_sa,V) |> wait
+#    t = assemble!(A_fa,A_sa)
+#    @async begin
+#        wait(t)
+#        B
+#    end
+#end
+#
+#"""
+#"""
+#function psparse_split_coo(args...;style=Assembled())
+#    psparse_split_coo(style,args...)
+#end
+#
+#"""
+#"""
+#function psparse_split_coo! end
+#
+#function psparse_split_coo(::Disassembled,I,J,V,rows,cols)
+#    A_coo = psparse_coo(Disassembled(),I,J,V,rows,cols) |> fetch
+#    A_split_coo = split_values(A_coo)
+#    cache = Ref{Any}((A_coo,A_split_coo))
+#    B = replace_cache(A_split_coo,cache)
+#    @async B
+#end
+#function psparse_split_coo!(B::PSparseMatrixNew{Disassembled},V)
+#    (A_coo,A_split_coo) = B.cache[]
+#    psparse_coo!(A_coo,V) |> wait
+#    split_values!(A_split_coo,A_coo)
+#    @async B
+#end
+#
+#function psparse_split_coo(::Subassembled,I,J,V,rows,cols)
+#    A_da = psparse_split_coo(Disassembled(),I,J,V,rows,cols) |> fetch
+#    t = subassemble(A_da)
+#    @async begin
+#        A_sa = fetch(t)
+#        cache = Ref{Any}((A_da,A_sa))
+#        B = replace_cache(A_sa,cache)
+#        B
+#    end
+#end
+#function psparse_split_coo!(B::PSparseMatrixNew{Subassembled},V)
+#    (A_da,A_sa) = B.cache[]
+#    psparse_split_coo!(A_da,V) |> wait
+#    t = subassemble!(A_sa,A_da)
+#    @async begin
+#        wait(t)
+#        B
+#    end
+#end
+#
+#function psparse_split_coo(::Assembled,I,J,V,rows,cols)
+#    A_sa = psparse_split_coo(Subassembled(),I,J,V,rows,cols) |> fetch
+#    t = assemble(A_sa)
+#    @async begin
+#        A_fa = fetch(t)
+#        cache = Ref{Any}((A_sa,A_fa))
+#        B = replace_cache(A_fa,cache)
+#        B
+#    end
+#end
+#function psparse_split_coo!(B::PSparseMatrixNew{Assembled},V)
+#    (A_sa,A_fa) = B.cache[]
+#    psparse_split_coo!(A_sa,V) |> wait
+#    t = assemble!(A_fa,A_sa)
+#    @async begin
+#        wait(t)
+#        B
+#    end
+#end
+#
+#"""
+#"""
+#function psparse_csc(args...;style=Assembled())
+#    psparse_csc(style,args...)
+#end
+#
+#"""
+#"""
+#function psparse_csc! end
+#
+#function psparse_csc(::Disassembled,I,J,V,rows,cols)
+#    error("Not implemented since it makes little sense in practice")
+#end
+#function psparse_csc!(B::PSparseMatrixNew{Disassembled},V)
+#    error("Not implemented since it makes little sense in practice")
+#end
+#
+#function psparse_csc(::Subassembled,I,J,V,rows,cols)
+#    t = psparse_coo(Subassembled(),I,J,V,rows,cols)
+#    @async begin
+#        A_sa = fetch(t)
+#        values = map(to_csc,partition(A_sa))
+#        cache = Ref{Any}(A_sa)
+#        B = replace_matrix_partition(A_sa,values,cache)
+#        B
+#    end
+#end
+#function psparse_csc!(B::PSparseMatrixNew{Subassembled},V)
+#    A_sa = B.cache[]
+#    t = psparse_coo!(A_sa,V)
+#    @async begin
+#        wait(t)
+#        map(to_csc!,partition(B),partition(A_sa))
+#        B
+#    end
+#end
+#
+#function psparse_csc(::Assembled,I,J,V,rows,cols)
+#    A_sa = psparse_coo(Subassembled(),I,J,V,rows,cols) |> fetch
+#    # TODO we can save some communication by compressing
+#    # ghost rows before assembling
+#    t = assemble(A_sa)
+#    @async begin
+#        A_fa = fetch(t)
+#        values = map(to_csc,partition(A_fa))
+#        cache = Ref{Any}((A_sa,A_fa))
+#        B = replace_matrix_partition(A_fa,values,cache)
+#        B
+#    end
+#end
+#function psparse_csc!(B::PSparseMatrixNew{Assembled},V)
+#    (A_sa,A_fa) = B.cache[]
+#    psparse_coo!(A_sa,V) |> wait
+#    t = assemble!(A_fa,A_sa)
+#    @async begin
+#        wait(t)
+#        map(to_csc!,partition(B),partition(A_fa))
+#        B
+#    end
+#end
+#
+#"""
+#"""
+#function psparse_split_csc(args...;style=Assembled())
+#    psparse_split_csc(style,args...)
+#end
+#
+#"""
+#"""
+#function psparse_split_csc! end
+#
+#function psparse_split_csc(::Disassembled,I,J,V,rows,cols)
+#    error("Not implemented since it makes little sense in practice")
+#end
+#function psparse_split_csc!(B::PSparseMatrixNew{Disassembled},V)
+#    error("Not implemented since it makes little sense in practice")
+#end
+#
+#function psparse_split_csc(::Subassembled,I,J,V,rows,cols)
+#    t = psparse_split_coo(Subassembled(),I,J,V,rows,cols)
+#    @async begin
+#        A_sa = fetch(t)
+#        values = map(to_split_csc,partition(A_sa))
+#        cache = Ref{Any}(A_sa)
+#        B = replace_matrix_partition(A_sa,values,cache)
+#        B
+#    end
+#end
+#function psparse_split_csc!(B::PSparseMatrixNew{Subassembled},V)
+#    A_sa = B.cache[]
+#    t = psparse_split_coo!(A_sa,V)
+#    @async begin
+#        wait(t)
+#        map(to_split_csc!,partition(B),partition(A_sa))
+#        B
+#    end
+#end
+#
+#function psparse_split_csc(::Assembled,I,J,V,rows,cols)
+#    A_sa = psparse_split_coo(Subassembled(),I,J,V,rows,cols) |> fetch
+#    # TODO we can save some communication by compressing
+#    # ghost rows before assembling
+#    t = assemble(A_sa)
+#    @async begin
+#        A_fa = fetch(t)
+#        values = map(to_split_csc,partition(A_fa))
+#        cache = Ref{Any}((A_sa,A_fa))
+#        B = replace_matrix_partition(A_fa,values,cache)
+#        B
+#    end
+#end
+#function psparse_split_csc!(B::PSparseMatrixNew{Assembled},V)
+#    (A_sa,A_fa) = B.cache[]
+#    psparse_split_coo!(A_sa,V) |> wait
+#    t = assemble!(A_fa,A_sa)
+#    @async begin
+#        wait(t)
+#        map(to_split_csc!,partition(B),partition(A_fa))
+#        B
+#    end
+#end
 
 function subassemble(A::PSparseMatrixNew;exchange_graph_options=(;))
     @assert assembly_style(A) == Disassembled()
