@@ -455,7 +455,6 @@ julia> local_values(a)
 ```
 """
 function consistent!(a::PVector)
-    insert(a,b) = b
     cache = map(reverse,a.cache)
     t = assemble!(insert,partition(a),cache)
     @async begin
@@ -463,6 +462,7 @@ function consistent!(a::PVector)
         a
     end
 end
+insert(a,b) = b
 
 
 function Base.similar(a::PVector,::Type{T},inds::Tuple{<:PRange}) where T

@@ -2142,9 +2142,16 @@ function trivial_partition_new(ranks,n;destination=MAIN)
     partition_in_main
 end
 
-function repartition(v::PVector,new_partition)
-    # TODO this can be simplified a lot by using a new constructor pvector_new
-    w = similar(v,PRange(new_partition))
+struct RepartitionGlue{A,B}
+    I::A
+    v_sa::B
+end
+
+function Base.similar(a::RepartitionGlue)
+    RepartitionGlue(a.I,similar(v_sa))
+end
+
+function repartition_glue(v::PVector,new_partition)
     rows_da = map(remove_ghost,new_partition)
     row_partition = partition(axes(v,1))
     I = map(collect∘own_to_global,row_partition)
@@ -2152,9 +2159,22 @@ function repartition(v::PVector,new_partition)
     I_owner = find_owner(rows_da,I)
     rows_sa = map(union_ghost,rows_da,I,I_owner)
     map(map_global_to_local!,I,rows_sa)
-    values = map(default_local_values,I,V,rows_sa)
-    v_sa = PVector(values,rows_sa)
-    t = assemble!(v_sa)
+    v_sa = similar(v,PRange(rows_sa))
+    RepartitionGlue(I,v_sa)
+end
+
+function repartition(v::PVector,new_partition)
+    w = similar(v,PRange(new_partition))
+    glue = repartition_glue(v,new_partition)
+    repartition!(w,v,glue)
+end
+
+function repartition!(w::PVector,v::PVector,glue=repartition_glue(v,partition(axes(w,1))))
+    I = glue.I
+    v_sa = glue.v_sa
+    V = own_values(v)
+    map(setindex!,partition(v_sa),V,I)
+    t = assemble!(insert,v_sa)
     @async begin
         wait(t)
         w .= v_sa
@@ -2181,8 +2201,7 @@ function repartition(A::PSparseMatrixNew,new_rows,new_cols)
     A_cols = partition(axes(A,2))
     I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
     # TODO this one does not preserve the local storage layout of A
-    A_in_main = psparse_new(I,J,V,new_rows,new_cols) |> fetch
-    A_in_main
+    psparse_new(I,J,V,new_rows,new_cols) |> fetch
 end
 
 
@@ -2235,10 +2254,7 @@ function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
     end
     map_main(ldiv!,values,a.lu_in_main,partition(b_in_main))
     c_in_main = PVector(values,cols_trivial)
-    c_in_main = PVector(values,cols_trivial)
-    cols = partition(axes(c,1))
-    r = repartition(c_in_main,cols) |> fetch
-    c .= r
+    repartition!(c,c_in_main) |> wait
     c
 end
 
