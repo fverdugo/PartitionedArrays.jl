@@ -292,7 +292,8 @@ map_ghost_to_local!(I,indices) = map_x_to_y!(ghost_to_local,I,indices)
 function map_x_to_y!(x_to_y,I,indices)
     local_to_global_indices = x_to_y(indices)
     for k in 1:length(I)
-        I[k] = local_to_global_indices[I[k]]
+        Ik = I[k]
+        I[k] = local_to_global_indices[Ik]
     end
     I
 end

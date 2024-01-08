@@ -302,6 +302,7 @@ function compresscoo(
     m,n,combine)
 end
 
+
 function compresscoo(
   ::Type{SparseMatrixCSR{Bi,Tv,Ti}},
   I::AbstractVector,
@@ -447,4 +448,31 @@ function sparse_csc!(A,K,V)
     end
     A
 end
+
+function findnz!(I,J,V,A)
+    for (p,(i,j,v)) in enumerate(nziterator(A))
+        I[p] = i
+        J[p] = j
+        V[p] = v
+    end
+    (I,J,V)
+end
+
+function precompute_nzindex(A,I,J)
+    K = zeros(Int32,length(I))
+    for (p,(i,j)) in enumerate(zip(I,J))
+        K[p] = nzindex(A,i,j)
+    end
+    K
+end
+
+function setcoofast!(A,K,V)
+    LinearAlgebra.fillstored!(A,0)
+    A_nz = nonzeros(A)
+    for (k,v) in zip(K,V)
+        A_nz[k] += v
+    end
+    A
+end
+
 

@@ -110,6 +110,14 @@ function Base.map!(f,r::DebugArray,args::DebugArray...)
     r
 end
 
+function Base.all(a::DebugArray)
+    reduce(&,a;init=true)
+end
+function Base.all(p::Function,a::DebugArray)
+    b = map(p,a)
+    all(b)
+end
+
 function gather_impl!(
     rcv::DebugArray, snd::DebugArray,
     destination, ::Type{T}) where T

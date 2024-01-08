@@ -463,6 +463,14 @@ function Base.collect(a::MPIArray)
     c.item
 end
 
+function Base.all(a::MPIArray)
+    reduce(&,a;init=true)
+end
+function Base.all(p::Function,a::MPIArray)
+    b = map(p,a)
+    all(b)
+end
+
 function exchange_impl!(
     rcv::MPIArray,
     snd::MPIArray,
