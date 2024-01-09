@@ -142,22 +142,23 @@ function p_sparse_matrix_tests(distribute)
     end |> tuple_of_arrays
 
     A = psparse_new(I,J,V,row_partition,col_partition,split=false,assemble=false) |> fetch
-    display(A)
     B = split_values(A)
-    display(B)
-    split_values!(B,A)
+    B, cache = split_values(A,reuse=true)
+    split_values!(B,A,cache)
     C = assemble(B) |> fetch
-    assemble!(C,B) |> wait
+    C,cache = assemble(B,reuse=true) |> fetch
+    assemble!(C,B,cache) |> wait
     display(C)
 
     A = psparse_new(I,J,V,row_partition,col_partition,split=true,assemble=false) |> fetch
     A = psparse_new(I,J,V,row_partition,col_partition,split=true,assemble=true) |> fetch
     A = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    display(A)
+    # TODO Assembly in non-split format not yet implemented
     #A = psparse_new(I,J,V,row_partition,col_partition,split=false,assemble=true) |> fetch
     
-    A,cache = psparse_new(I,J,V,row_partition,col_partition,cache=Val(true)) |> fetch
-    psparse_new!(A,cache,V) |> wait
-
+    A,cache = psparse_new(I,J,V,row_partition,col_partition,reuse=true) |> fetch
+    psparse_new!(A,V,cache) |> wait
 
     #A_da = psparse_new(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
     #A_sa = subassemble(A_da) |> fetch
@@ -174,10 +175,11 @@ function p_sparse_matrix_tests(distribute)
     #A_fa = psparse_new(I,J,V,row_partition,col_partition,style=Assembled()) |> fetch
     #psparse_new!(A_fa,V) |> wait
 
-    #A_fa = psparse_new(I,J,V,row_partition,col_partition) |> fetch
-    #rows_co = partition(axes(A_fa,2))
-    #A_co = consistent(A_fa,rows_co) |> fetch
-    #consistent!(A_co,A_fa) |> wait
+    A_fa = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    rows_co = partition(axes(A_fa,2))
+    A_co = consistent(A_fa,rows_co) |> fetch
+    A_co,cache = consistent(A_fa,rows_co;reuse=true) |> fetch
+    consistent!(A_co,A_fa,cache) |> wait
 
     n = 10
     parts = rank

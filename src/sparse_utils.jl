@@ -466,7 +466,7 @@ function precompute_nzindex(A,I,J)
     K
 end
 
-function setcoofast!(A,K,V)
+function setcoofast!(A,V,K)
     LinearAlgebra.fillstored!(A,0)
     A_nz = nonzeros(A)
     for (k,v) in zip(K,V)
