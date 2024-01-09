@@ -135,6 +135,9 @@ export own_ghost_values
 export ghost_own_values
 export own_own_values
 export ghost_ghost_values
+export trivial_partition_new
+export repartition
+export repartition!
 include("p_sparse_matrix.jl")
 
 export PTimer

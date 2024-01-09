@@ -2523,16 +2523,7 @@ function trivial_partition_new(ranks,n;destination=MAIN)
     partition_in_main
 end
 
-struct RepartitionGlue{A,B}
-    I::A
-    v_sa::B
-end
-
-function Base.similar(a::RepartitionGlue)
-    RepartitionGlue(a.I,similar(v_sa))
-end
-
-function repartition_glue(v::PVector,new_partition)
+function repartition_cache(v::PVector,new_partition)
     rows_da = map(remove_ghost,new_partition)
     row_partition = partition(axes(v,1))
     I = map(collect∘own_to_global,row_partition)
@@ -2541,29 +2532,57 @@ function repartition_glue(v::PVector,new_partition)
     rows_sa = map(union_ghost,rows_da,I,I_owner)
     map(map_global_to_local!,I,rows_sa)
     v_sa = similar(v,PRange(rows_sa))
-    RepartitionGlue(I,v_sa)
+    (;I,v_sa)
 end
 
-function repartition(v::PVector,new_partition)
+function repartition(v::PVector,new_partition;reuse=Val(false))
     w = similar(v,PRange(new_partition))
-    glue = repartition_glue(v,new_partition)
-    repartition!(w,v,glue)
-end
-
-function repartition!(w::PVector,v::PVector,glue=repartition_glue(v,partition(axes(w,1))))
-    I = glue.I
-    v_sa = glue.v_sa
-    V = own_values(v)
-    map(setindex!,partition(v_sa),V,I)
-    t = assemble!(insert,v_sa)
+    cache = repartition_cache(v,new_partition)
+    t = repartition!(w,v,cache)
     @async begin
         wait(t)
-        w .= v_sa
-        w
+        if val_parameter(reuse) == true
+            w, cache
+        else
+            w
+        end
     end
 end
 
-function repartition(A::PSparseMatrixNew,new_rows,new_cols)
+function repartition!(
+    w::PVector,v::PVector,cache=repartition_cache(v,partition(axes(w,1)));
+    reversed=false
+    )
+    new_partition = partition(axes(w,1))
+    old_partition = partition(axes(v,1))
+    I = cache.I
+    v_sa = cache.v_sa
+    if ! reversed
+        V = own_values(v)
+        fill!(v_sa,0)
+        map(setindex!,partition(v_sa),V,I)
+        t = assemble!(v_sa)
+        return @async begin
+            wait(t)
+            w .= v_sa
+            w
+        end
+    else
+        v_sa .= v
+        t = consistent!(v_sa)
+        return @async begin
+            wait(t)
+            map(partition(v_sa),partition(w),I) do v_sa,w,I
+                for k in 1:length(I)
+                    w[k] = v_sa[I[k]]
+                end
+            end
+            w
+        end
+    end
+end
+
+function repartition(A::PSparseMatrixNew,new_rows,new_cols;reuse=Val(false))
     function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
         I1,J1,V1 = findnz(A_own_own)
         I2,J2,V2 = findnz(A_own_ghost)
@@ -2582,7 +2601,32 @@ function repartition(A::PSparseMatrixNew,new_rows,new_cols)
     A_cols = partition(axes(A,2))
     I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
     # TODO this one does not preserve the local storage layout of A
-    psparse_new(I,J,V,new_rows,new_cols) |> fetch
+    t = psparse_new(I,J,V,new_rows,new_cols;reuse=true)
+    @async begin
+        B,cacheB = fetch(t)
+        if val_parameter(reuse) == false
+            B
+        else
+            cache = (V,cacheB)
+            B, cache
+        end
+    end
+end
+
+function repartition!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache)
+    (V,cacheB) = cache
+    function fill_values!(V,A_own_own,A_own_ghost)
+        nz_own_own = nonzeros(A_own_own)
+        nz_own_ghost = nonzeros(A_own_ghost)
+        l1 = length(nz_own_own)
+        l2 = length(nz_own_ghost)
+        V[1:l1] = nz_own_own
+        V[(1:l2).+l1] = nz_own_ghost
+    end
+    A_own_own = own_own_values(A)
+    A_own_ghost = own_ghost_values(A)
+    map(fill_values!,V,A_own_own,A_own_ghost)
+    psparse_new!(B,V,cacheB)
 end
 
 

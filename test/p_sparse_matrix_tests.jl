@@ -263,6 +263,26 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
+    rows_trivial = trivial_partition_new(parts,n)
+    cols_trivial = rows_trivial
+    values = map(collect∘local_to_global,rows_trivial)
+    w0 = PVector(values,rows_trivial)
+    values = map(collect∘local_to_global,row_partition)
+    v = PVector(values,row_partition)
+    v0 = copy(v)
+    w = repartition(v,rows_trivial) |> fetch
+    @test w == w0
+    repartition!(w,v) |> wait
+    @test w == w0
+    w, cache = repartition(v,rows_trivial;reuse=true) |> fetch
+    repartition!(w,v,cache) |> wait
+    @test w == w0
+    repartition!(v,w,cache;reversed=true) |> wait
+    @test v == v0
+
+    B = repartition(A,rows_trivial,cols_trivial) |> fetch
+    B,cache = repartition(A,rows_trivial,cols_trivial;reuse=true) |> fetch
+    repartition!(B,A,cache)
 
 end
 
