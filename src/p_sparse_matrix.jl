@@ -1170,21 +1170,19 @@ end
 #struct Assembled end
 #struct Consistent end
 
-struct PSparseMatrixNew{V,B,C,D,E,T} <: AbstractMatrix{T}
+struct PSparseMatrixNew{V,B,C,D,T} <: AbstractMatrix{T}
     matrix_partition::B
     row_partition::C
     col_partition::D
     assembled::Bool
-    cache::E
     function PSparseMatrixNew(
-        matrix_partition,row_partition,col_partition,assembled,cache=nothing)
+        matrix_partition,row_partition,col_partition,assembled)
         V = eltype(matrix_partition)
         T = eltype(V)
         B = typeof(matrix_partition)
         C = typeof(row_partition)
         D = typeof(col_partition)
-        E = typeof(cache)
-        new{V,B,C,D,E,T}(matrix_partition,row_partition,col_partition,assembled,cache)
+        new{V,B,C,D,T}(matrix_partition,row_partition,col_partition,assembled)
     end
 end
 partition(a::PSparseMatrixNew) = a.matrix_partition
@@ -1215,10 +1213,10 @@ end
 #    T()
 #end
 
-function replace_matrix_partition(A,values,cache=nothing)
+function replace_matrix_partition(A,values)
     rows = partition(axes(A,1))
     cols = partition(axes(A,2))
-    PSparseMatrixNew(values,rows,cols,A.assembled,cache)
+    PSparseMatrixNew(values,rows,cols,A.assembled)
 end
 #
 #function replace_cache(A,cache)
@@ -1376,8 +1374,9 @@ function psparse_new(f,I,J,V,rows,cols;
     # TODO for some particular cases
     # this function allocates more
     # intermediate results than needed
-    # One can e.g. merge the split and assemble
-    # steps
+    # One can e.g. merge the split and assemble steps
+    # Even the matrix compression step could be
+    # merged with the assembly step
 
     map(I,J) do I,J
         @assert I !== J
@@ -2490,6 +2489,8 @@ function Base.copy!(a::PSparseMatrixNew,b::PSparseMatrixNew)
 end
 
 function Base.copyto!(a::PSparseMatrixNew,b::PSparseMatrixNew)
+    ## Think about the role
+    @assert a.assembled == b.assembled
     if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
         map(copy!,partition(a),partition(b))
     else
