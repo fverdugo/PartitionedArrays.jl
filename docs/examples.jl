@@ -145,7 +145,7 @@ IV = map(row_partition) do row_indices
     I,V
 end
 I,V = tuple_of_arrays(IV)
-b = pvector!(I,V,row_partition) |> fetch
+b = old_pvector!(I,V,row_partition) |> fetch
 
 
 # Compute the system matrix

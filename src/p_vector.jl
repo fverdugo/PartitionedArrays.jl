@@ -538,14 +538,14 @@ end
 pvector(f,r::PRange) = pvector(f,partition(r))
 
 """
-    pvector!([f,]I,V,index_partition;discover_rows=true) -> Task
+    old_pvector!([f,]I,V,index_partition;discover_rows=true) -> Task
 
 Crate an instance of [`PVector`](@ref) by setting arbitrary entries
 from each of the underlying parts. It returns a task that produces the
 instance of [`PVector`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
-function pvector!(f,I,V,index_partition;discover_rows=true)
+function old_pvector!(f,I,V,index_partition;discover_rows=true)
     if discover_rows
         I_owner = find_owner(index_partition,I)
         index_partition = map(union_ghost,index_partition,I,I_owner)
@@ -634,8 +634,8 @@ function pvector_new!(B,V,cache)
 end
 
 
-function pvector!(I,V,index_partition;kwargs...)
-    pvector!(default_local_values,I,V,index_partition;kwargs...)
+function old_pvector!(I,V,index_partition;kwargs...)
+    old_pvector!(default_local_values,I,V,index_partition;kwargs...)
 end
 
 function default_local_values(indices)

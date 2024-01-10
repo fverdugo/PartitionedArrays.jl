@@ -110,7 +110,7 @@ export ghost_values
 export OwnAndGhostVectors
 export PVector
 export pvector
-export pvector!
+export old_pvector!
 export pvector_new
 export pvector_new!
 export pfill

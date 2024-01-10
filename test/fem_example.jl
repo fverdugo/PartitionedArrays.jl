@@ -314,7 +314,7 @@ function fem_example(distribute)
     A = fetch(t)
     display(A)
     row_partition = partition(axes(A,1))
-    b = pvector!(I,V,row_partition,discover_rows=false) |> fetch
+    b = old_pvector!(I,V,row_partition,discover_rows=false) |> fetch
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
     x̂ = similar(x)
     col_partition = partition(axes(A,2))
