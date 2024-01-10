@@ -555,7 +555,7 @@ function default_local_values(I,J,V,row_indices,col_indices)
     sparse(I,J,V,m,n)
 end
 
-function trivial_partition(row_partition)
+function old_trivial_partition(row_partition)
     destination = 1
     n_own = map(row_partition) do indices
         owner = part_id(indices)
@@ -600,8 +600,8 @@ end
 
 function to_trivial_partition(
         a::PSparseMatrix{M},
-        row_partition_in_main=trivial_partition(partition(axes(a,1))),
-        col_partition_in_main=trivial_partition(partition(axes(a,2)))) where M
+        row_partition_in_main=old_trivial_partition(partition(axes(a,1))),
+        col_partition_in_main=old_trivial_partition(partition(axes(a,2)))) where M
     destination = 1
     Ta = eltype(a)
     I,J,V = map(partition(a),partition(axes(a,1)),partition(axes(a,2))) do a,row_indices,col_indices
@@ -1611,7 +1611,7 @@ function IterativeSolvers.zerox(A::PSparseMatrixNew,b::PVector)
     return x
 end
 
-function trivial_partition_new(ranks,n;destination=MAIN)
+function trivial_partition(ranks,n;destination=MAIN)
     n_own = map(ranks) do rank
         rank == destination ? Int(n) : 0
     end
@@ -1947,8 +1947,8 @@ end
 function Base.:\(a::PSparseMatrixNew,b::PVector)
     m,n = size(a)
     ranks = linear_indices(partition(a))
-    rows_trivial = trivial_partition_new(ranks,m)
-    cols_trivial = trivial_partition_new(ranks,n)
+    rows_trivial = trivial_partition(ranks,m)
+    cols_trivial = trivial_partition(ranks,n)
     a_in_main = repartition(a,rows_trivial,cols_trivial) |> fetch
     b_in_main = repartition(b,partition(axes(a_in_main,1))) |> fetch
     values = map(\,own_own_values(a_in_main),own_values(b_in_main))
@@ -1967,8 +1967,8 @@ end
 function LinearAlgebra.lu(a::PSparseMatrixNew)
     m,n = size(a)
     ranks = linear_indices(partition(a))
-    rows_trivial = trivial_partition_new(ranks,m)
-    cols_trivial = trivial_partition_new(ranks,n)
+    rows_trivial = trivial_partition(ranks,m)
+    cols_trivial = trivial_partition(ranks,n)
     a_in_main = repartition(a,rows_trivial,cols_trivial) |> fetch
     lu_in_main = map_main(lu,own_own_values(a_in_main))
     PLUNew(lu_in_main,axes(a_in_main,1),axes(a_in_main,2))

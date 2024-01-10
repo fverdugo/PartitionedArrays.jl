@@ -62,6 +62,7 @@ export PRange
 export uniform_partition
 export variable_partition
 export partition_from_color
+export trivial_partition
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices
@@ -135,7 +136,6 @@ export own_ghost_values
 export ghost_own_values
 export own_own_values
 export ghost_ghost_values
-export trivial_partition_new
 export repartition
 export repartition!
 export psystem

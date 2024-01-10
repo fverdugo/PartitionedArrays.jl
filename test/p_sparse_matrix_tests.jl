@@ -248,7 +248,7 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
-    rows_trivial = trivial_partition_new(parts,n)
+    rows_trivial = trivial_partition(parts,n)
     cols_trivial = rows_trivial
     values = map(collect∘local_to_global,rows_trivial)
     w0 = PVector(values,rows_trivial)
