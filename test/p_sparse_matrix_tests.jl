@@ -31,7 +31,7 @@ function p_sparse_matrix_tests(distribute)
 
     row_partition = uniform_partition(rank,n)
     col_partition = row_partition
-    A = old_psparse(I,J,V,row_partition,col_partition) |> fetch
+    A = old_psparse!(I,J,V,row_partition,col_partition) |> fetch
 
 
     n = 10
@@ -85,7 +85,7 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = old_psparse(I,J,V,row_partition,col_partition) |> fetch
+    A = old_psparse!(I,J,V,row_partition,col_partition) |> fetch
     assemble!(A) |> wait
     x = pfill(1.5,partition(axes(A,2)))
 

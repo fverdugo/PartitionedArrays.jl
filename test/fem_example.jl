@@ -309,7 +309,7 @@ function fem_example(distribute)
     consistent!(cell_to_global_dofs) |> wait
     map(finish_cell_dofs,grid,space,tentative_dof_partition)
     I,J,V = map(setup_IJV,space,grid) |> tuple_of_arrays
-    t = old_psparse(I,J,V,tentative_dof_partition,tentative_dof_partition)
+    t = old_psparse!(I,J,V,tentative_dof_partition,tentative_dof_partition)
     I,V = map(setup_b,space,grid) |> tuple_of_arrays
     A = fetch(t)
     display(A)
@@ -328,7 +328,7 @@ function fem_example(distribute)
         row_partition = map(union_ghost,tentative_dof_partition,I,I_owner)
         neighbors = assembly_graph(cell_partition)
         assembly_graph(row_partition;neighbors)
-        t = old_psparse(I,J,V,row_partition,tentative_dof_partition,discover_rows=false)
+        t = old_psparse!(I,J,V,row_partition,tentative_dof_partition,discover_rows=false)
         A = fetch(t)
     catch e
         rethrow(e)

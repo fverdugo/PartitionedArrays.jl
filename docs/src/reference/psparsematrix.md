@@ -20,7 +20,7 @@ ghost_own_values(::OldPSparseMatrix)
 ```@docs
 OldPSparseMatrix(a,b,c)
 psparse
-old_psparse
+old_psparse!
 ```
 ## Assembly
 
