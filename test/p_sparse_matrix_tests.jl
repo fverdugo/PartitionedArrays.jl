@@ -284,5 +284,34 @@ function p_sparse_matrix_tests(distribute)
     B,cache = repartition(A,rows_trivial,cols_trivial;reuse=true) |> fetch
     repartition!(B,A,cache)
 
+    I2 = map(copy,I)
+    V2 = map(copy,I)
+    rows = row_partition
+    cols = col_partition
+    v = pvector_new(I2,V2,rows) |> fetch
+    v,cache = pvector_new(I2,V2,rows;reuse=true) |> fetch
+    pvector_new!(v,V,cache) |> wait
+
+    v = pvector_new(I2,V2,rows;assemble=false) |> fetch
+    w = assemble(v) |> fetch
+    w = assemble(v,rows) |> fetch
+    w,cache = assemble(v,reuse=true) |> fetch
+    assemble!(w,v,cache) |> wait
+
+    A_cols = partition(axes(A,2))
+    u = consistent(w,A_cols) |> fetch
+    u,cache = consistent(w,A_cols;reuse=true) |> fetch
+    consistent!(u,w,cache) |> wait
+
+    A,b = psystem(I,J,V,I2,V2,rows,cols) |> fetch
+    A,b,cache = psystem(I,J,V,I2,V2,rows,cols,reuse=true) |> fetch
+    psystem!(A,b,V,V2,cache) |> wait
+    
+    # TODO
+    # 1. pvector_new and pvector_new
+    # 2. consistent and assemble for pvector
+    # 3. Cleanup and documentation
+    #  in particular: delete val_parameter
+
 end
 

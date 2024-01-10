@@ -138,6 +138,10 @@ export ghost_ghost_values
 export trivial_partition_new
 export repartition
 export repartition!
+export psystem
+export psystem!
+export pvector_new
+export pvector_new!
 include("p_sparse_matrix.jl")
 
 export PTimer

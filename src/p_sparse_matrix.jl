@@ -1835,7 +1835,8 @@ end
 #    @async B
 #end
 
-function assemble(A::PSparseMatrixNew,rows=partition(axes(A,1));reuse=Val(false),exchange_graph_options=(;))
+function assemble(A::PSparseMatrixNew,rows=map(remove_ghost,partition(axes(A,1)));reuse=Val(false),exchange_graph_options=(;))
+    @boundscheck @assert matching_own_indices(axes(A,1),PRange(rows))
     psparse_assemble_impl(A,eltype(partition(A)),rows,reuse,exchange_graph_options)
 end
 
@@ -2629,6 +2630,195 @@ function repartition!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache)
     psparse_new!(B,V,cacheB)
 end
 
+function dense_vector(I,V,n)
+    T = eltype(V)
+    a = zeros(T,n)
+    for (i,v) in zip(I,V)
+        a[i] += v
+    end
+    a
+end
+
+function pvector_new(I,V,rows;kwargs...)
+    pvector_new(dense_vector,I,V,rows;kwargs...)
+end
+
+function pvector_new(f,I,V,rows;
+        assembled=false,
+        assemble=true,
+        discover_rows=true,
+        restore_ids = true,
+        reuse=Val(false)
+    )
+
+    if assembled || assemble
+        @boundscheck @assert all(i->ghost_length(i)==0,rows)
+    end
+
+    if !assembled && discover_rows
+        I_owner = find_owner(rows,I)
+        rows_sa = map(union_ghost,rows,I,I_owner)
+    else
+        rows_sa = rows
+    end
+    map(map_global_to_local!,I,rows_sa)
+    values_sa = map(f,I,V,map(local_length,rows_sa))
+    if val_parameter(reuse)
+        K = map(copy,I)
+    end
+    if restore_ids
+        map(map_local_to_global!,I,rows_sa)
+    end
+    A = PVector(values_sa,rows_sa)
+    if assemble
+        t = PartitionedArrays.assemble(A,rows;reuse=true)
+    else
+        t = @async A,nothing
+    end
+    if val_parameter(reuse) == false
+        return @async begin
+            B, cacheB = fetch(t)
+            B
+        end
+    else
+        return @async begin
+            B, cacheB = fetch(t)
+            cache = (A,cacheB,assemble,assembled,K) 
+            (B, cache)
+        end
+    end
+end
+
+function pvector_new!(B,V,cache)
+    function update!(A,K,V)
+        fill!(A,0)
+        for (k,v) in zip(K,V)
+            A[k] += v
+        end
+    end
+    (A,cacheB,assemble,assembled,K) = cache
+    rows_sa = partition(axes(A,1))
+    values_sa = partition(A)
+    map(update!,values_sa,K,V)
+    if !assembled && assembled
+        t = PartitionedArrays.assemble!(B,A,cacheB)
+    else
+        t = @async B
+    end
+end
+
+function psystem(I,J,V,I2,V2,rows,cols;
+        split_matrix=true,
+        assembled=false,
+        assemble=true,
+        discover_rows=true,
+        discover_cols=true,
+        restore_ids = true,
+        reuse=Val(false))
+
+    # TODO this is just a reference implementation
+    # for the moment.
+    # It can be optimized to exploit the fact
+    # that we want to generate a matrix and a vector
+
+    t1 = psparse_new(I,J,V,rows,cols;
+            split=split_matrix,
+            assembled,
+            assemble,
+            discover_rows,
+            discover_cols,
+            restore_ids,
+            reuse=true)
+
+    t2 = pvector_new(I2,V2,rows;
+            assembled,
+            assemble,
+            discover_rows,
+            restore_ids,
+            reuse=true)
+
+    @async begin
+        A,cacheA = fetch(t1)
+        b,cacheb = fetch(t2)
+        if val_parameter(reuse)
+            cache = (cacheA,cacheb)
+            A,b,cache
+        else
+            A,b
+        end
+    end
+end
+
+function psystem!(A,b,V,V2,cache)
+    (cacheA,cacheb) = cache
+    t1 = psparse_new!(A,V,cacheA)
+    t2 = pvector_new!(b,V2,cacheb)
+    @async begin
+        wait(t1)
+        wait(t2)
+        (A,b)
+    end
+end
+
+function assemble(v::PVector,rows=map(remove_ghost,partition(axes(v,1)));reuse=Val(false))
+    @boundscheck @assert matching_own_indices(axes(v,1),PRange(rows))
+    # TODO this is just a reference implementation
+    # for the moment.
+    # The construction of v2 can (should) be avoided
+    w = similar(v,PRange(rows))
+    v2 = copy(v)
+    t = assemble!(v2)
+    @async begin
+        wait(t)
+        w .= v2
+        if val_parameter(reuse)
+            cache = v2
+            w,cache
+        else
+            w
+        end
+    end
+end
+
+function assemble!(w::PVector,v::PVector,cache)
+    # TODO this is just a reference implementation
+    # for the moment.
+    # The construction of v2 can (should) be avoided
+    v2 = cache
+    map(copy!,local_values(v2),local_values(v))
+    t = assemble!(v2)
+    @async begin
+        wait(t)
+        w .= v2
+        w
+    end
+end
+
+function consistent(v::PVector,rows;reuse=Val(false))
+    # TODO this is just a reference implementation
+    # for the moment. It can be optimized
+    @boundscheck @assert matching_own_indices(axes(v,1),PRange(rows))
+    w = similar(v,PRange(rows))
+    w .= v
+    t = consistent!(w)
+    @async begin
+        wait(t)
+        if val_parameter(reuse)
+            w,nothing
+        else
+            w
+        end
+    end
+end
+
+function consistent!(w::PVector,v::PVector,cache)
+    w .= v
+    t = consistent!(w)
+    @async begin
+        wait(t)
+        w
+    end
+end
 
 # Not efficient, just for convenience and debugging purposes
 function Base.:\(a::PSparseMatrixNew,b::PVector)
