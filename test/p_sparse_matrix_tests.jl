@@ -304,7 +304,10 @@ function p_sparse_matrix_tests(distribute)
     # TODO
     # 3. Cleanup and documentation
     #  better names for precompute_nzindex, setcoofast
+    #  better name for split_values, split_values!
+    #  how to avoind conflicts with existing functions
     #  in particular: delete val_parameter
+    #  renumber
 
 end
 

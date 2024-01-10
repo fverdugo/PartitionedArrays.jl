@@ -973,12 +973,6 @@ function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrixNew)
     end
 end
 
-function replace_matrix_partition(A,values)
-    rows = partition(axes(A,1))
-    cols = partition(axes(A,2))
-    PSparseMatrixNew(values,rows,cols,A.assembled)
-end
-
 function own_own_values(a::PSparseMatrixNew)
     map(own_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
@@ -999,7 +993,7 @@ function split_values(A::PSparseMatrixNew;reuse=Val(false))
     rows = partition(axes(A,1))
     cols = partition(axes(A,2))
     values, cache = map(split_locally,partition(A),rows,cols) |> tuple_of_arrays
-    B = replace_matrix_partition(A,values)
+    B = PSparseMatrixNew(values,rows,cols,A.assembled)
     if val_parameter(reuse) == false
         B
     else
@@ -1987,9 +1981,6 @@ function LinearAlgebra.lu!(b::PLUNew,a::PSparseMatrixNew)
     b
 end
 function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
-    # TODO
-    # memory being allocated in this function
-    # we need some sort of in-place re-partition function
     rows_trivial = partition(a.rows)
     cols_trivial = partition(a.cols)
     b_in_main = repartition(b,rows_trivial) |> fetch
