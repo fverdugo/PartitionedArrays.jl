@@ -1008,11 +1008,11 @@ function split_values!(B,A::PSparseMatrixNew,cache)
     B
 end
 
-function psparse_new(I,J,V,rows,cols;kwargs...)
-    psparse_new(sparse,I,J,V,rows,cols;kwargs...)
+function psparse(I,J,V,rows,cols;kwargs...)
+    psparse(sparse,I,J,V,rows,cols;kwargs...)
 end
 
-function psparse_new(f,I,J,V,rows,cols;
+function psparse(f,I,J,V,rows,cols;
         split=true,
         assembled=false,
         assemble=true,
@@ -1084,7 +1084,7 @@ function psparse_new(f,I,J,V,rows,cols;
     end
 end
 
-function psparse_new!(C,V,cache)
+function psparse!(C,V,cache)
     (A,B,K,cacheB,cacheC,split,assembled) = cache
     rows_sa = partition(axes(A,1))
     cols_sa = partition(axes(A,2))
@@ -1630,7 +1630,7 @@ function repartition(A::PSparseMatrixNew,new_rows,new_cols;reuse=Val(false))
     A_cols = partition(axes(A,2))
     I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
     # TODO this one does not preserve the local storage layout of A
-    t = psparse_new(I,J,V,new_rows,new_cols;reuse=true)
+    t = psparse(I,J,V,new_rows,new_cols;reuse=true)
     @async begin
         B,cacheB = fetch(t)
         if val_parameter(reuse) == false
@@ -1655,7 +1655,7 @@ function repartition!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache)
     A_own_own = own_own_values(A)
     A_own_ghost = own_ghost_values(A)
     map(fill_values!,V,A_own_own,A_own_ghost)
-    psparse_new!(B,V,cacheB)
+    psparse!(B,V,cacheB)
 end
 
 function repartition(A::PSparseMatrixNew,b::PVector,new_rows,new_cols;reuse=Val(false))
@@ -1700,7 +1700,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
     # It can be optimized to exploit the fact
     # that we want to generate a matrix and a vector
 
-    t1 = psparse_new(I,J,V,rows,cols;
+    t1 = psparse(I,J,V,rows,cols;
             split=split_matrix,
             assembled,
             assemble,
@@ -1730,7 +1730,7 @@ end
 
 function psystem!(A,b,V,V2,cache)
     (cacheA,cacheb) = cache
-    t1 = psparse_new!(A,V,cacheA)
+    t1 = psparse!(A,V,cacheA)
     t2 = pvector!(b,V2,cacheb)
     @async begin
         wait(t1)

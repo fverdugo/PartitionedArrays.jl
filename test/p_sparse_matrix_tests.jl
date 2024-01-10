@@ -141,7 +141,7 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse_new(I,J,V,row_partition,col_partition,split=false,assemble=false) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition,split=false,assemble=false) |> fetch
     B = split_values(A)
     B, cache = split_values(A,reuse=true)
     split_values!(B,A,cache)
@@ -150,17 +150,17 @@ function p_sparse_matrix_tests(distribute)
     assemble!(C,B,cache) |> wait
     display(C)
 
-    A = psparse_new(I,J,V,row_partition,col_partition,split=true,assemble=false) |> fetch
-    A = psparse_new(I,J,V,row_partition,col_partition,split=true,assemble=true) |> fetch
-    A = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition,split=true,assemble=false) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition,split=true,assemble=true) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
     display(A)
     # TODO Assembly in non-split format not yet implemented
-    #A = psparse_new(I,J,V,row_partition,col_partition,split=false,assemble=true) |> fetch
+    #A = psparse(I,J,V,row_partition,col_partition,split=false,assemble=true) |> fetch
     
-    A,cache = psparse_new(I,J,V,row_partition,col_partition,reuse=true) |> fetch
-    psparse_new!(A,V,cache) |> wait
+    A,cache = psparse(I,J,V,row_partition,col_partition,reuse=true) |> fetch
+    psparse!(A,V,cache) |> wait
 
-    A_fa = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    A_fa = psparse(I,J,V,row_partition,col_partition) |> fetch
     rows_co = partition(axes(A_fa,2))
     A_co = consistent(A_fa,rows_co) |> fetch
     A_co,cache = consistent(A_fa,rows_co;reuse=true) |> fetch
@@ -178,7 +178,7 @@ function p_sparse_matrix_tests(distribute)
         i,j,v
     end |> tuple_of_arrays
 
-    A = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
     x = pfill(3.0,axes(A,2))
     b = similar(x,axes(A,1))
     mul!(b,A,x)
@@ -214,7 +214,7 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse_new(I,J,V,row_partition,col_partition) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
     x = pones(partition(axes(A,2)))
     y = A*x
     dy = y - y

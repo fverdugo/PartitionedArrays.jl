@@ -128,8 +128,8 @@ include("p_vector.jl")
 export PSparseMatrix
 export PSparseMatrixNew
 export psparse
-export psparse_new
-export psparse_new!
+export psparse
+export psparse!
 export split_values
 export split_values!
 export old_psparse
