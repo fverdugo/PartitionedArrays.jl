@@ -1087,20 +1087,32 @@ function psparse_new!(C,V,cache)
     end
 end
 
-function assemble(A::PSparseMatrixNew,rows=map(remove_ghost,partition(axes(A,1)));reuse=Val(false),exchange_graph_options=(;))
+function assemble(
+    A::PSparseMatrixNew,
+    rows=map(remove_ghost,partition(axes(A,1)));
+    kwargs...)
+
     @boundscheck @assert matching_own_indices(axes(A,1),PRange(rows))
-    psparse_assemble_impl(A,eltype(partition(A)),rows,reuse,exchange_graph_options)
+    T = eltype(partition(A))
+    psparse_assemble_impl(A,T,rows;kwargs...)
 end
 
-function assemble!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache;exchange_graph_options=(;))
-    psparse_assemble_impl!(B,A,eltype(partition(A)),cache,exchange_graph_options)
+function assemble!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache)
+    T = eltype(partition(A))
+    psparse_assemble_impl!(B,A,T,cache)
 end
 
-function psparse_assemble_impl(A,::Type,rows,reuse,exchange_graph_options)
+function psparse_assemble_impl(A,::Type,rows)
     error("Case not implemented yet")
 end
 
-function psparse_assemble_impl(A,::Type{<:SplitMatrixLocal},rows,reuse,exchange_graph_options)
+function psparse_assemble_impl(
+        A,
+        ::Type{<:SplitMatrixLocal},
+        rows;
+        reuse=Val(false),
+        exchange_graph_options=(;))
+
     function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
         A_ghost_own   = A.blocks.ghost_own
         A_ghost_ghost = A.blocks.ghost_ghost
@@ -1270,11 +1282,11 @@ function psparse_assemble_impl(A,::Type{<:SplitMatrixLocal},rows,reuse,exchange_
     end
 end
 
-function psparse_assemble_impl!(B,A,::Type,cache,exchange_graph_options)
+function psparse_assemble_impl!(B,A,::Type,cache)
     error("case not implemented")
 end
 
-function psparse_assemble_impl!(B,A,::Type{<:SplitMatrixLocal},cache,exchange_graph_options)
+function psparse_assemble_impl!(B,A,::Type{<:SplitMatrixLocal},cache)
     function setup_snd(A,cache)
         A_ghost_own   = A.blocks.ghost_own
         A_ghost_ghost = A.blocks.ghost_ghost
@@ -1327,17 +1339,24 @@ function psparse_assemble_impl!(B,A,::Type{<:SplitMatrixLocal},cache,exchange_gr
     end
 end
 
-function consistent(A::PSparseMatrixNew,rows_co;reuse=Val(false))
+function consistent(A::PSparseMatrixNew,rows_co;kwargs...)
     @assert A.assembled
-    psparse_consitent_impl(A,eltype(partition(A)),reuse,rows_co)
+    T = eltype(partition(A))
+    psparse_consitent_impl(A,T,rows_co;kwargs...)
 end
 
 function consistent!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache)
     @assert A.assembled
-    psparse_consitent_impl!(B,A,eltype(partition(A)),cache)
+    T = eltype(partition(A))
+    psparse_consitent_impl!(B,A,T,cache)
 end
 
-function psparse_consitent_impl(A::PSparseMatrixNew,::Type{<:SplitMatrixLocal},reuse,rows_co)
+function psparse_consitent_impl(
+    A,
+    ::Type{<:SplitMatrixLocal},
+    rows_co;
+    reuse=Val(false))
+
     function setup_snd(A,parts_snd,lids_snd,rows_co,cols_fa)
         own_to_local_row = own_to_local(rows_co)
         own_to_global_row = own_to_global(rows_co)
@@ -1473,7 +1492,7 @@ function psparse_consitent_impl(A::PSparseMatrixNew,::Type{<:SplitMatrixLocal},r
     end
 end
 
-function psparse_consitent_impl!(B,A::PSparseMatrixNew,::Type{<:SplitMatrixLocal},cache)
+function psparse_consitent_impl!(B,A,::Type{<:SplitMatrixLocal},cache)
     function setup_snd(A,cache)
         k_snd_data = cache.k_snd.data
         V_snd_data = cache.V_snd.data

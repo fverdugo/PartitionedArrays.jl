@@ -302,9 +302,8 @@ function p_sparse_matrix_tests(distribute)
     #renumber!(c,cr)
     
     # TODO
-    # 1. pvector_new and pvector_new
-    # 2. consistent and assemble for pvector
     # 3. Cleanup and documentation
+    #  better names for precompute_nzindex, setcoofast
     #  in particular: delete val_parameter
 
 end
