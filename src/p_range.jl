@@ -1669,7 +1669,7 @@ end
 
 `PRange` (partitioned range) is a type representing a range of indices `1:n`
 partitioned into several parts. This type is used to represent the axes of instances
-of [`PVector`](@ref) and [`PSparseMatrix`](@ref).
+of [`PVector`](@ref) and [`OldPSparseMatrix`](@ref).
 
 # Properties
 - `partition::A`

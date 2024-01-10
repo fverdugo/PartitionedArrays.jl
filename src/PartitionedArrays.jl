@@ -125,8 +125,8 @@ export repartition
 export repartition!
 include("p_vector.jl")
 
+export OldPSparseMatrix
 export PSparseMatrix
-export PSparseMatrixNew
 export psparse
 export psparse
 export psparse!

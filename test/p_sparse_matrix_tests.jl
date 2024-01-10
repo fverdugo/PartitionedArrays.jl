@@ -47,7 +47,7 @@ function p_sparse_matrix_tests(distribute)
         a
     end
 
-    A = PSparseMatrix(values,row_partition,col_partition)
+    A = OldPSparseMatrix(values,row_partition,col_partition)
     x = pfill(3.0,col_partition)
     b = similar(x,axes(A,1))
     mul!(b,A,x)

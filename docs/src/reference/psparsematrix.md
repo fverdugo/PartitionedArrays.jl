@@ -1,29 +1,29 @@
-# PSparseMatrix
+# OldPSparseMatrix
 
 ## Type signature
 
 ```@docs
-PSparseMatrix
+OldPSparseMatrix
 ```
 
 ## Accessors
 
 ```@docs
-local_values(::PSparseMatrix)
-own_values(::PSparseMatrix)
-ghost_values(::PSparseMatrix)
-own_ghost_values(::PSparseMatrix)
-ghost_own_values(::PSparseMatrix)
+local_values(::OldPSparseMatrix)
+own_values(::OldPSparseMatrix)
+ghost_values(::OldPSparseMatrix)
+own_ghost_values(::OldPSparseMatrix)
+ghost_own_values(::OldPSparseMatrix)
 ```
 ## Constructors
 
 ```@docs
-PSparseMatrix(a,b,c)
+OldPSparseMatrix(a,b,c)
 psparse
 old_psparse
 ```
 ## Assembly
 
 ```@docs
-assemble!(o,::PSparseMatrix)
+assemble!(o,::OldPSparseMatrix)
 ```

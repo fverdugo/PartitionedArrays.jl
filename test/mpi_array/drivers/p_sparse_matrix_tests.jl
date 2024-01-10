@@ -1,4 +1,4 @@
-module MPIArrayPSparseMatrixTests
+module MPIArrayOldPSparseMatrixTests
 
 using PartitionedArrays
 
