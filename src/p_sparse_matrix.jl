@@ -1611,14 +1611,6 @@ function IterativeSolvers.zerox(A::PSparseMatrixNew,b::PVector)
     return x
 end
 
-function trivial_partition(ranks,n;destination=MAIN)
-    n_own = map(ranks) do rank
-        rank == destination ? Int(n) : 0
-    end
-    partition_in_main = variable_partition(n_own,n)
-    partition_in_main
-end
-
 function repartition_cache(v::PVector,new_partition)
     rows_da = map(remove_ghost,new_partition)
     row_partition = partition(axes(v,1))

@@ -757,6 +757,20 @@ function partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
     end
 end
 
+"""
+    trivial_partition(ranks,n;destination=MAIN)
+
+!!! warning
+    Document me!
+"""
+function trivial_partition(ranks,n;destination=MAIN)
+    n_own = map(ranks) do rank
+        rank == destination ? Int(n) : 0
+    end
+    partition_in_main = variable_partition(n_own,n)
+    partition_in_main
+end
+
 function local_range(p,np,n,ghost=false,periodic=false)
     l = n ÷ np
     offset = l * (p-1)
