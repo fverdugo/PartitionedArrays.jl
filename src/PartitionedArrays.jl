@@ -114,6 +114,10 @@ export pones
 export prand
 export prandn
 export consistent!
+export assemble
+export consistent
+export repartition
+export repartition!
 include("p_vector.jl")
 
 export PSparseMatrix
@@ -126,8 +130,6 @@ export compress_values
 export compress_values!
 export subassemble
 export subassemble!
-export assemble
-export consistent
 export Disassembled
 export Subassembled
 export Assembled
@@ -136,8 +138,6 @@ export own_ghost_values
 export ghost_own_values
 export own_own_values
 export ghost_ghost_values
-export repartition
-export repartition!
 export psystem
 export psystem!
 export pvector_new

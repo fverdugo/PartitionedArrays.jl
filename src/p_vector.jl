@@ -843,3 +843,126 @@ for M in Distances.metrics
     end
 end
 
+# New stuff
+
+function assemble(v::PVector,rows=map(remove_ghost,partition(axes(v,1)));reuse=Val(false))
+    @boundscheck @assert matching_own_indices(axes(v,1),PRange(rows))
+    # TODO this is just a reference implementation
+    # for the moment.
+    # The construction of v2 can (should) be avoided
+    w = similar(v,PRange(rows))
+    v2 = copy(v)
+    t = assemble!(v2)
+    @async begin
+        wait(t)
+        w .= v2
+        if val_parameter(reuse)
+            cache = v2
+            w,cache
+        else
+            w
+        end
+    end
+end
+
+function assemble!(w::PVector,v::PVector,cache)
+    # TODO this is just a reference implementation
+    # for the moment.
+    # The construction of v2 can (should) be avoided
+    v2 = cache
+    map(copy!,local_values(v2),local_values(v))
+    t = assemble!(v2)
+    @async begin
+        wait(t)
+        w .= v2
+        w
+    end
+end
+
+function consistent(v::PVector,rows;reuse=Val(false))
+    # TODO this is just a reference implementation
+    # for the moment. It can be optimized
+    @boundscheck @assert matching_own_indices(axes(v,1),PRange(rows))
+    w = similar(v,PRange(rows))
+    w .= v
+    t = consistent!(w)
+    @async begin
+        wait(t)
+        if val_parameter(reuse)
+            w,nothing
+        else
+            w
+        end
+    end
+end
+
+function consistent!(w::PVector,v::PVector,cache)
+    w .= v
+    t = consistent!(w)
+    @async begin
+        wait(t)
+        w
+    end
+end
+
+
+function repartition_cache(v::PVector,new_partition)
+    rows_da = map(remove_ghost,new_partition)
+    row_partition = partition(axes(v,1))
+    I = map(collect∘own_to_global,row_partition)
+    V = own_values(v)
+    I_owner = find_owner(rows_da,I)
+    rows_sa = map(union_ghost,rows_da,I,I_owner)
+    map(map_global_to_local!,I,rows_sa)
+    v_sa = similar(v,PRange(rows_sa))
+    (;I,v_sa)
+end
+
+function repartition(v::PVector,new_partition;reuse=Val(false))
+    w = similar(v,PRange(new_partition))
+    cache = repartition_cache(v,new_partition)
+    t = repartition!(w,v,cache)
+    @async begin
+        wait(t)
+        if val_parameter(reuse) == true
+            w, cache
+        else
+            w
+        end
+    end
+end
+
+function repartition!(
+    w::PVector,v::PVector,cache=repartition_cache(v,partition(axes(w,1)));
+    reversed=false
+    )
+    new_partition = partition(axes(w,1))
+    old_partition = partition(axes(v,1))
+    I = cache.I
+    v_sa = cache.v_sa
+    if ! reversed
+        V = own_values(v)
+        fill!(v_sa,0)
+        map(setindex!,partition(v_sa),V,I)
+        t = assemble!(v_sa)
+        return @async begin
+            wait(t)
+            w .= v_sa
+            w
+        end
+    else
+        v_sa .= v
+        t = consistent!(v_sa)
+        return @async begin
+            wait(t)
+            map(partition(v_sa),partition(w),I) do v_sa,w,I
+                for k in 1:length(I)
+                    w[k] = v_sa[I[k]]
+                end
+            end
+            w
+        end
+    end
+end
+
+
