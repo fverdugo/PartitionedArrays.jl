@@ -700,34 +700,32 @@ end
 
 # New stuff
 
-struct SplitMatrixBlocks{A,B,C,D}
+struct GenericSplitMatrixBlocks{A,B,C,D}
     own_own::A
     own_ghost::B
     ghost_own::C
     ghost_ghost::D
 end
-blocktype(::Type{SplitMatrixBlocks{A,B,C,D}}) where {A,B,C,D} = Union{A,B,C,D}
-blocktype(::SplitMatrixBlocks{A,B,C,D}) where {A,B,C,D} = Union{A,B,C,D}
-struct SplitMatrixUniformBlocks{A}
+struct SplitMatrixBlocks{A}
     own_own::A
     own_ghost::A
     ghost_own::A
     ghost_ghost::A
 end
-blocktype(::Type{SplitMatrixUniformBlocks{A}}) where A = A
-blocktype(::SplitMatrixUniformBlocks{A}) where A = A
 function split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-    SplitMatrixBlocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    GenericSplitMatrixBlocks(own_own,own_ghost,ghost_own,ghost_ghost)
 end
 function split_matrix_blocks(own_own::A,own_ghost::A,ghost_own::A,ghost_ghost::A) where A
-    SplitMatrixUniformBlocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    SplitMatrixBlocks(own_own,own_ghost,ghost_own,ghost_ghost)
 end
 
-struct SplitMatrixLocal{A,B,C,T} <: AbstractMatrix{T}
+abstract type AbstractSplitMatrix{T} <: AbstractMatrix{T} end
+
+struct GenericSplitMatrix{A,B,C,T} <: AbstractSplitMatrix{T}
     blocks::A
     row_permutation::B
     col_permutation::C
-    function SplitMatrixLocal(blocks,row_permutation,col_permutation)
+    function GenericSplitMatrix(blocks,row_permutation,col_permutation)
         T = eltype(blocks.own_own)
         A = typeof(blocks)
         B = typeof(row_permutation)
@@ -735,11 +733,35 @@ struct SplitMatrixLocal{A,B,C,T} <: AbstractMatrix{T}
         new{A,B,C,T}(blocks,row_permutation,col_permutation)
     end
 end
-blocktype(::Type{<:SplitMatrixLocal{A}}) where A = blocktype(A)
-blocktype(::SplitMatrixLocal{A}) where A = blocktype(A)
-Base.size(a::SplitMatrixLocal) = (length(a.row_permutation),length(a.col_permutation))
-Base.IndexStyle(::Type{<:SplitMatrixLocal}) = IndexCartesian()
-function Base.getindex(a::SplitMatrixLocal,i::Int,j::Int)
+
+struct SplitMatrix{A,T} <: AbstractSplitMatrix{T}
+    blocks::SplitMatrixBlocks{A}
+    row_permutation::UnitRange{Int32}
+    col_permutation::UnitRange{Int32}
+    function SplitMatrix(
+        blocks::SplitMatrixBlocks{A},row_permutation,col_permutation) where A
+        T = eltype(blocks.own_own)
+        row_perm = convert(UnitRange{Int32},row_permutation)
+        col_perm = convert(UnitRange{Int32},col_permutation)
+        new{A,T}(blocks,row_perm,col_perm)
+    end
+end
+
+function split_matrix(blocks,row_permutation,col_permutation)
+    GenericSplitMatrix(blocks,row_permutation,col_permutation)
+end
+
+function split_matrix(
+    blocks::SplitMatrixBlocks,
+    row_permutation::UnitRange,
+    col_permutation::UnitRange)
+    SplitMatrix(blocks,row_permutation,col_permutation)
+end
+
+
+Base.size(a::AbstractSplitMatrix) = (length(a.row_permutation),length(a.col_permutation))
+Base.IndexStyle(::Type{<:AbstractSplitMatrix}) = IndexCartesian()
+function Base.getindex(a::AbstractSplitMatrix,i::Int,j::Int)
     n_own_rows, n_own_cols = size(a.blocks.own_own)
     ip = a.row_permutation[i]
     jp = a.col_permutation[j]
@@ -755,41 +777,38 @@ function Base.getindex(a::SplitMatrixLocal,i::Int,j::Int)
     end
     convert(T,v)
 end
-function replace_blocks(A::SplitMatrixLocal,blocks)
-    SplitMatrixLocal(blocks,A.row_permutation,A.col_permutation)
-end
 
-function own_own_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+function own_own_values(values::AbstractSplitMatrix,indices_rows,indices_cols)
     values.blocks.own_own
 end
-function own_ghost_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+function own_ghost_values(values::AbstractSplitMatrix,indices_rows,indices_cols)
     values.blocks.own_ghost
 end
-function ghost_own_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+function ghost_own_values(values::AbstractSplitMatrix,indices_rows,indices_cols)
     values.blocks.ghost_own
 end
-function ghost_ghost_values(values::SplitMatrixLocal,indices_rows,indices_cols)
+function ghost_ghost_values(values::AbstractSplitMatrix,indices_rows,indices_cols)
     values.blocks.ghost_ghost
 end
 
-Base.similar(a::SplitMatrixLocal) = similar(a,eltype(a))
-function Base.similar(a::SplitMatrixLocal,::Type{T}) where T
+Base.similar(a::AbstractSplitMatrix) = similar(a,eltype(a))
+function Base.similar(a::AbstractSplitMatrix,::Type{T}) where T
     own_own = similar(a.blocks.own_own,T)
     own_ghost = similar(a.blocks.own_ghost,T)
     ghost_own = similar(a.blocks.ghost_own,T)
     ghost_ghost = similar(a.blocks.ghost_ghost,T)
     blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-    SplitMatrixLocal(blocks,a.row_permutation,a.col_permutation)
+    split_matrix(blocks,a.row_permutation,a.col_permutation)
 end
 
-function Base.copy!(a::SplitMatrixLocal,b::SplitMatrixLocal)
+function Base.copy!(a::AbstractSplitMatrix,b::AbstractSplitMatrix)
     copy!(a.blocks.own_own,b.blocks.own_own)
     copy!(a.blocks.own_ghost,b.blocks.own_ghost)
     copy!(a.blocks.ghost_own,b.blocks.ghost_own)
     copy!(a.blocks.ghost_ghost,b.blocks.ghost_ghost)
     a
 end
-function Base.copyto!(a::SplitMatrixLocal,b::SplitMatrixLocal)
+function Base.copyto!(a::AbstractSplitMatrix,b::AbstractSplitMatrix)
     copyto!(a.blocks.own_own,b.blokcs.own_own)
     copyto!(a.blocks.own_ghost,b.blokcs.own_ghost)
     copyto!(a.blocks.ghost_own,b.blokcs.ghost_own)
@@ -797,7 +816,7 @@ function Base.copyto!(a::SplitMatrixLocal,b::SplitMatrixLocal)
     a
 end
 
-function LinearAlgebra.fillstored!(a::SplitMatrixLocal,v)
+function LinearAlgebra.fillstored!(a::AbstractSplitMatrix,v)
     LinearAlgebra.fillstored!(a.blocks.own_own,v)
     LinearAlgebra.fillstored!(a.blocks.own_ghost,v)
     LinearAlgebra.fillstored!(a.blocks.ghost_own,v)
@@ -870,7 +889,7 @@ function split_locally(A,rows,cols)
     A3 = compresscoo(TA,ghost_own...,n_ghost_rows,n_own_cols)
     A4 = compresscoo(TA,ghost_ghost...,n_ghost_rows,n_ghost_cols)
     blocks = split_matrix_blocks(A1,A2,A3,A4)
-    B = SplitMatrixLocal(blocks,rows_perm,cols_perm)
+    B = split_matrix(blocks,rows_perm,cols_perm)
     c1 = precompute_nzindex(A1,own_own.I,own_own.J)
     c2 = precompute_nzindex(A2,own_ghost.I,own_ghost.J)
     c3 = precompute_nzindex(A3,ghost_own.I,ghost_own.J)
@@ -883,7 +902,7 @@ function split_locally(A,rows,cols)
     B, cache
 end
 
-function split_locally!(B::SplitMatrixLocal,A,rows,cols,cache)
+function split_locally!(B::AbstractSplitMatrix,A,rows,cols,cache)
     (;c1,c2,c3,c4,own_own_V,own_ghost_V,ghost_own_V,ghost_ghost_V) = cache
     n_own_rows = own_length(rows)
     n_own_cols = own_length(cols)
@@ -1108,7 +1127,7 @@ end
 
 function psparse_assemble_impl(
         A,
-        ::Type{<:SplitMatrixLocal},
+        ::Type{<:AbstractSplitMatrix},
         rows;
         reuse=Val(false),
         exchange_graph_options=(;))
@@ -1233,7 +1252,7 @@ function psparse_assemble_impl(
         ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
         ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = SplitMatrixLocal(blocks,local_permutation(rows_fa),local_permutation(rows_fa))
+        values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(rows_fa))
         map_global_to_ghost!(J_rcv_ghost,cols_fa)
         for p in 1:length(I_rcv_own)
             i = I_rcv_own[p]
@@ -1286,7 +1305,7 @@ function psparse_assemble_impl!(B,A,::Type,cache)
     error("case not implemented")
 end
 
-function psparse_assemble_impl!(B,A,::Type{<:SplitMatrixLocal},cache)
+function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     function setup_snd(A,cache)
         A_ghost_own   = A.blocks.ghost_own
         A_ghost_ghost = A.blocks.ghost_ghost
@@ -1353,7 +1372,7 @@ end
 
 function psparse_consitent_impl(
     A,
-    ::Type{<:SplitMatrixLocal},
+    ::Type{<:AbstractSplitMatrix},
     rows_co;
     reuse=Val(false))
 
@@ -1454,7 +1473,7 @@ function psparse_consitent_impl(
         K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
         K_ghost = precompute_nzindex(ghost_ghost,I_rcv_ghost,J_rcv_ghost)
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = SplitMatrixLocal(blocks,local_permutation(rows_co),local_permutation(cols_fa))
+        values = split_matrix(blocks,local_permutation(rows_co),local_permutation(cols_fa))
         k_snd = cache_snd.k_snd
         V_snd = cache_snd.V_snd
         V_rcv = cache_rcv.V_rcv
@@ -1492,7 +1511,7 @@ function psparse_consitent_impl(
     end
 end
 
-function psparse_consitent_impl!(B,A,::Type{<:SplitMatrixLocal},cache)
+function psparse_consitent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     function setup_snd(A,cache)
         k_snd_data = cache.k_snd.data
         V_snd_data = cache.V_snd.data
