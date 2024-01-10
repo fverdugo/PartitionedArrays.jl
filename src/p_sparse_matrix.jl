@@ -2630,6 +2630,34 @@ function repartition!(B::PSparseMatrixNew,A::PSparseMatrixNew,cache)
     psparse_new!(B,V,cacheB)
 end
 
+function repartition(A::PSparseMatrixNew,b::PVector,new_rows,new_cols;reuse=Val(false))
+    # TODO this is just a reference implementation
+    # for the moment. It can be optimized.
+    t1 = repartition(A,new_rows,new_cols;reuse=true)
+    t2 = repartition(b,new_rows;reuse=true)
+    @async begin
+        B,cacheB = fetch(t1)
+        c,cachec = fetch(t2)
+        if val_parameter(reuse)
+            cache = (cacheB,cachec)
+            B,c,cache
+        else
+            B,c
+        end
+    end
+end
+
+function repartition!(B::PSparseMatrixNew,c::PVector,A::PSparseMatrixNew,b::PVector,cache)
+    (cacheB,cachec) = cache
+    t1 = repartition!(B,A,cacheB)
+    t2 = repartition!(c,b,cachec)
+    @async begin
+        wait(t1)
+        wait(t2)
+        B,c
+    end
+end
+
 function dense_vector(I,V,n)
     T = eltype(V)
     a = zeros(T,n)

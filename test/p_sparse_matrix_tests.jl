@@ -284,6 +284,10 @@ function p_sparse_matrix_tests(distribute)
     B,cache = repartition(A,rows_trivial,cols_trivial;reuse=true) |> fetch
     repartition!(B,A,cache)
 
+    B,w = repartition(A,v,rows_trivial,cols_trivial) |> fetch
+    B,w,cache = repartition(A,v,rows_trivial,cols_trivial,reuse=true) |> fetch
+    repartition!(B,w,A,v,cache) |> wait
+
     I2 = map(copy,I)
     V2 = map(copy,I)
     rows = row_partition
@@ -306,6 +310,11 @@ function p_sparse_matrix_tests(distribute)
     A,b = psystem(I,J,V,I2,V2,rows,cols) |> fetch
     A,b,cache = psystem(I,J,V,I2,V2,rows,cols,reuse=true) |> fetch
     psystem!(A,b,V,V2,cache) |> wait
+
+    #Ar = renumber(A)
+    #br,cache = renumber(b,partition(axes(Ar,1)),reuse=true)
+    #cr = Ar\br
+    #renumber!(c,cr)
     
     # TODO
     # 1. pvector_new and pvector_new
