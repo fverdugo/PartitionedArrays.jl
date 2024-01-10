@@ -111,6 +111,8 @@ export OwnAndGhostVectors
 export PVector
 export pvector
 export pvector!
+export pvector_new
+export pvector_new!
 export pfill
 export pzeros
 export pones
@@ -124,18 +126,12 @@ export repartition!
 include("p_vector.jl")
 
 export PSparseMatrix
+export PSparseMatrixNew
 export psparse
 export psparse_new
 export psparse_new!
 export split_values
 export split_values!
-export compress_values
-export compress_values!
-export subassemble
-export subassemble!
-export Disassembled
-export Subassembled
-export Assembled
 export psparse!
 export own_ghost_values
 export ghost_own_values
@@ -143,8 +139,6 @@ export own_own_values
 export ghost_ghost_values
 export psystem
 export psystem!
-export pvector_new
-export pvector_new!
 include("p_sparse_matrix.jl")
 
 export PTimer

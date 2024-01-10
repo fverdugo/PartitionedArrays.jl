@@ -556,6 +556,84 @@ function pvector!(f,I,V,index_partition;discover_rows=true)
     assemble!(v)
 end
 
+function dense_vector(I,V,n)
+    T = eltype(V)
+    a = zeros(T,n)
+    for (i,v) in zip(I,V)
+        a[i] += v
+    end
+    a
+end
+
+function pvector_new(I,V,rows;kwargs...)
+    pvector_new(dense_vector,I,V,rows;kwargs...)
+end
+
+function pvector_new(f,I,V,rows;
+        assembled=false,
+        assemble=true,
+        discover_rows=true,
+        restore_ids = true,
+        reuse=Val(false)
+    )
+
+    if assembled || assemble
+        @boundscheck @assert all(i->ghost_length(i)==0,rows)
+    end
+
+    if !assembled && discover_rows
+        I_owner = find_owner(rows,I)
+        rows_sa = map(union_ghost,rows,I,I_owner)
+    else
+        rows_sa = rows
+    end
+    map(map_global_to_local!,I,rows_sa)
+    values_sa = map(f,I,V,map(local_length,rows_sa))
+    if val_parameter(reuse)
+        K = map(copy,I)
+    end
+    if restore_ids
+        map(map_local_to_global!,I,rows_sa)
+    end
+    A = PVector(values_sa,rows_sa)
+    if assemble
+        t = PartitionedArrays.assemble(A,rows;reuse=true)
+    else
+        t = @async A,nothing
+    end
+    if val_parameter(reuse) == false
+        return @async begin
+            B, cacheB = fetch(t)
+            B
+        end
+    else
+        return @async begin
+            B, cacheB = fetch(t)
+            cache = (A,cacheB,assemble,assembled,K) 
+            (B, cache)
+        end
+    end
+end
+
+function pvector_new!(B,V,cache)
+    function update!(A,K,V)
+        fill!(A,0)
+        for (k,v) in zip(K,V)
+            A[k] += v
+        end
+    end
+    (A,cacheB,assemble,assembled,K) = cache
+    rows_sa = partition(axes(A,1))
+    values_sa = partition(A)
+    map(update!,values_sa,K,V)
+    if !assembled && assembled
+        t = PartitionedArrays.assemble!(B,A,cacheB)
+    else
+        t = @async B
+    end
+end
+
+
 function pvector!(I,V,index_partition;kwargs...)
     pvector!(default_local_values,I,V,index_partition;kwargs...)
 end
