@@ -339,7 +339,7 @@ function scatter_impl!(rcv,snd,source,::Type{T}) where T
 end
 
 """
-    emit(snd;source=MAIN)
+    multicast(snd;source=MAIN)
 
 Copy `snd[source]` into a new array of the same size and type as `snd`.
 
@@ -355,7 +355,7 @@ julia> a = [0,0,2,0]
  2
  0
 
-julia> emit(a,source=3)
+julia> multicast(a,source=3)
 4-element Vector{Int64}:
  2
  2
@@ -363,37 +363,37 @@ julia> emit(a,source=3)
  2
 ```
 """
-function emit(snd;source=MAIN)
+function multicast(snd;source=MAIN)
     T = eltype(snd)
-    emit_impl(snd,source,T)
+    multicast_impl(snd,source,T)
 end
 
-function emit_impl(snd,source,::Type{T}) where T
+function multicast_impl(snd,source,::Type{T}) where T
     @assert source !== :all "All to all not implemented"
-    rcv = allocate_emit(snd;source)
-    emit!(rcv,snd;source)
+    rcv = allocate_multicast(snd;source)
+    multicast!(rcv,snd;source)
     rcv
 end
 
 """
-    allocate_emit(snd;source=1)
+    allocate_multicast(snd;source=1)
 
-Allocate an array to be used in the first argument of [`emit!`](@ref).
+Allocate an array to be used in the first argument of [`multicast!`](@ref).
 """
-function allocate_emit(snd;source=1)
+function allocate_multicast(snd;source=1)
     T = eltype(snd)
-    allocate_emit_impl(snd,source,T)
+    allocate_multicast_impl(snd,source,T)
 end
 
-function allocate_emit_impl(snd,source,::Type{T}) where T
+function allocate_multicast_impl(snd,source,::Type{T}) where T
     @assert source !== :all "Scatter all not implemented"
     similar(snd)
 end
 
-function allocate_emit_impl(snd,source,::Type{T}) where T<:AbstractVector
+function allocate_multicast_impl(snd,source,::Type{T}) where T<:AbstractVector
     @assert source !== :all "Scatter all not implemented"
     n = map(length,snd)
-    n_all = emit(n;source)
+    n_all = multicast(n;source)
     S = eltype(T)
     map(n_all) do n
         Vector{S}(undef,n)
@@ -401,18 +401,18 @@ function allocate_emit_impl(snd,source,::Type{T}) where T<:AbstractVector
 end
 
 """
-    emit!(rcv,snd;source=1)
+    multicast!(rcv,snd;source=1)
 
-In-place version of [`emit`](@ref). The destination array `rcv`
-can be generated with the helper function [`allocate_emit`](@ref).
+In-place version of [`multicast`](@ref). The destination array `rcv`
+can be generated with the helper function [`allocate_multicast`](@ref).
 It returns `rcv`.
 """
-function emit!(rcv,snd;source=1)
+function multicast!(rcv,snd;source=1)
     T = eltype(snd)
-    emit_impl!(rcv,snd,source,T)
+    multicast_impl!(rcv,snd,source,T)
 end
 
-function emit_impl!(rcv,snd,source,::Type{T}) where T
+function multicast_impl!(rcv,snd,source,::Type{T}) where T
     @assert source !== :all "Emit all not implemented"
     for i in eachindex(rcv)
         rcv[i] = snd[source]

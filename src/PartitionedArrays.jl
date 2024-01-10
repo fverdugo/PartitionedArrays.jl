@@ -34,9 +34,9 @@ export allocate_gather
 export scatter
 export scatter!
 export allocate_scatter
-export emit
-export emit!
-export allocate_emit
+export multicast
+export multicast!
+export allocate_multicast
 export scan
 export scan!
 export reduction

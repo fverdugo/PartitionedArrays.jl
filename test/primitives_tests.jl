@@ -61,12 +61,12 @@ function primitives_tests(distribute)
        @test rcv == [[1],[1,2],[1,2,3],[1,2,3,4]]
    end
 
-   rcv = emit(rank,source=2)
+   rcv = multicast(rank,source=2)
    map(rcv) do rcv
        @test rcv == 2
    end
 
-   rcv = emit(snd,source=2)
+   rcv = multicast(snd,source=2)
    map(rcv) do rcv
      @test rcv == [1,2]
    end

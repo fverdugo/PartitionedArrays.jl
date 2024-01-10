@@ -142,16 +142,16 @@ function scatter_impl!(
     scatter_impl!(rcv.items,snd.items,source,T)
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::DebugArray,snd::DebugArray,
     source,::Type{T}) where T
-    emit_impl!(rcv.items,snd.items,source,T)
+    multicast_impl!(rcv.items,snd.items,source,T)
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::DebugArray,snd::DebugArray,
     source,::Type{T}) where T<:AbstractVector
-    emit_impl!(rcv.items,snd.items,source,T)
+    multicast_impl!(rcv.items,snd.items,source,T)
 end
 
 Base.reduce(op,a::DebugArray;kwargs...) = reduce(op,a.items;kwargs...)

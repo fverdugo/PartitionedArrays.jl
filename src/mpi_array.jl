@@ -365,7 +365,7 @@ function scatter_impl!(
     rcv
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T
     @assert rcv.comm === snd.comm
@@ -377,7 +377,7 @@ function emit_impl!(
     MPI.Bcast!(rcv.item_ref,root,comm)
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T<:AbstractVector
     @assert rcv.comm === snd.comm
@@ -585,7 +585,7 @@ function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
         end
         rcv_ids=T[]
         done=false
-        barrier_emitted=false
+        barrier_multicastted=false
         all_sends_done=false
         barrier_req=nothing
         status = Ref(MPI.STATUS_ZERO)
@@ -602,13 +602,13 @@ function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
                 @boundscheck @assert tag_rcv == tag "Inconsistent tag in ExchangeGraph_impl()!" 
             end     
     
-            if (barrier_emitted)
+            if (barrier_multicastted)
                 done=MPI.Test(barrier_req)
             else
                 all_sends_done = MPI.Testall(requests)
                 if (all_sends_done)
                     barrier_req=MPI.Ibarrier(comm)
-                    barrier_emitted=true
+                    barrier_multicastted=true
                 end
             end
         end
