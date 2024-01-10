@@ -172,7 +172,7 @@ IJV = map(row_partition) do row_indices
 end
 I,J,V = tuple_of_arrays(IJV)
 col_partition = row_partition
-A = psparse!(I,J,V,row_partition,col_partition) |> fetch
+A = old_psparse(I,J,V,row_partition,col_partition) |> fetch
 
 # Generate an initial guess that fulfills
 # the boundary conditions.

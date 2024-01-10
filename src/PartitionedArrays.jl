@@ -132,7 +132,7 @@ export psparse_new
 export psparse_new!
 export split_values
 export split_values!
-export psparse!
+export old_psparse
 export own_ghost_values
 export ghost_own_values
 export own_own_values

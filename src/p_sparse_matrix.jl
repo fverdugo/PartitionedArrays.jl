@@ -497,14 +497,14 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
 end
 
 """
-    psparse!([f,]I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true) -> Task
+    old_psparse([f,]I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true) -> Task
 
 Crate an instance of [`PSparseMatrix`](@ref) by setting arbitrary entries
 from each of the underlying parts. It returns a task that produces the
 instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
-function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true)
+function old_psparse(f,I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true)
     if discover_rows
         I_owner = find_owner(row_partition,I)
         row_partition = map(union_ghost,row_partition,I,I_owner)
@@ -523,8 +523,8 @@ function psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true,discove
     end
 end
 
-function psparse!(I,J,V,row_partition,col_partition;kwargs...)
-    psparse!(default_local_values,I,J,V,row_partition,col_partition;kwargs...)
+function old_psparse(I,J,V,row_partition,col_partition;kwargs...)
+    old_psparse(default_local_values,I,J,V,row_partition,col_partition;kwargs...)
 end
 
 """
