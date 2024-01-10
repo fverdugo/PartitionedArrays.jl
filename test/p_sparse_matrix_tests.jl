@@ -160,21 +160,6 @@ function p_sparse_matrix_tests(distribute)
     A,cache = psparse_new(I,J,V,row_partition,col_partition,reuse=true) |> fetch
     psparse_new!(A,V,cache) |> wait
 
-    #A_da = psparse_new(I,J,V,row_partition,col_partition,style=Disassembled()) |> fetch
-    #A_sa = subassemble(A_da) |> fetch
-    #A_fa = assemble(A_sa) |> fetch
-    #psparse_new!(A_da,V) |> wait
-    #subassemble!(A_sa,A_da) |> wait
-    #assemble!(A_fa,A_sa) |> wait
-
-    #A_sa = psparse_new(I,J,V,row_partition,col_partition,style=Subassembled()) |> fetch
-    ##A_fa = assemble(A_sa) |> fetch # TODO assembly on compressed format not yet implemented
-    ##psparse_new!(A_sa,V) |> wait
-    ##assemble!(A_fa,A_sa) |> wait
-
-    #A_fa = psparse_new(I,J,V,row_partition,col_partition,style=Assembled()) |> fetch
-    #psparse_new!(A_fa,V) |> wait
-
     A_fa = psparse_new(I,J,V,row_partition,col_partition) |> fetch
     rows_co = partition(axes(A_fa,2))
     A_co = consistent(A_fa,rows_co) |> fetch
