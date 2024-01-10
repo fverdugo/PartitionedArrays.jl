@@ -1709,7 +1709,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
             restore_ids,
             reuse=true)
 
-    t2 = pvector_new(I2,V2,rows;
+    t2 = pvector(I2,V2,rows;
             assembled,
             assemble,
             discover_rows,
@@ -1731,7 +1731,7 @@ end
 function psystem!(A,b,V,V2,cache)
     (cacheA,cacheb) = cache
     t1 = psparse_new!(A,V,cacheA)
-    t2 = pvector_new!(b,V2,cacheb)
+    t2 = pvector!(b,V2,cacheb)
     @async begin
         wait(t1)
         wait(t2)

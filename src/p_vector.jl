@@ -565,11 +565,11 @@ function dense_vector(I,V,n)
     a
 end
 
-function pvector_new(I,V,rows;kwargs...)
-    pvector_new(dense_vector,I,V,rows;kwargs...)
+function pvector(I,V,rows;kwargs...)
+    pvector(dense_vector,I,V,rows;kwargs...)
 end
 
-function pvector_new(f,I,V,rows;
+function pvector(f,I,V,rows;
         assembled=false,
         assemble=true,
         discover_rows=true,
@@ -615,7 +615,7 @@ function pvector_new(f,I,V,rows;
     end
 end
 
-function pvector_new!(B,V,cache)
+function pvector!(B,V,cache)
     function update!(A,K,V)
         fill!(A,0)
         for (k,v) in zip(K,V)

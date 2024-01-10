@@ -277,11 +277,11 @@ function p_sparse_matrix_tests(distribute)
     V2 = map(copy,I)
     rows = row_partition
     cols = col_partition
-    v = pvector_new(I2,V2,rows) |> fetch
-    v,cache = pvector_new(I2,V2,rows;reuse=true) |> fetch
-    pvector_new!(v,V,cache) |> wait
+    v = pvector(I2,V2,rows) |> fetch
+    v,cache = pvector(I2,V2,rows;reuse=true) |> fetch
+    pvector!(v,V,cache) |> wait
 
-    v = pvector_new(I2,V2,rows;assemble=false) |> fetch
+    v = pvector(I2,V2,rows;assemble=false) |> fetch
     w = assemble(v) |> fetch
     w = assemble(v,rows) |> fetch
     w,cache = assemble(v,reuse=true) |> fetch
