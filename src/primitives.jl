@@ -338,6 +338,11 @@ function scatter_impl!(rcv,snd,source,::Type{T}) where T
     rcv
 end
 
+# Deprecated
+emit(args...;kwargs...) = multicast(args...;kwargs...)
+emit!(args...;kwargs...) = multicast!(args...;kwargs...)
+allocate_emit(args...;kwargs...) = allocate_multicast(args...;kwargs...)
+
 """
     multicast(snd;source=MAIN)
 
