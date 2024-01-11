@@ -771,12 +771,12 @@ function split_locally(A,rows,cols)
     own_ghost_V = own_ghost.V
     ghost_own_V = ghost_own.V
     ghost_ghost_V = ghost_ghost.V
-    cache = (;c1,c2,c3,c4,own_own_V,own_ghost_V,ghost_own_V,ghost_ghost_V)
+    cache = (c1,c2,c3,c4,own_own_V,own_ghost_V,ghost_own_V,ghost_ghost_V)
     B, cache
 end
 
 function split_locally!(B::AbstractSplitMatrix,A,rows,cols,cache)
-    (;c1,c2,c3,c4,own_own_V,own_ghost_V,ghost_own_V,ghost_ghost_V) = cache
+    (c1,c2,c3,c4,own_own_V,own_ghost_V,ghost_own_V,ghost_ghost_V) = cache
     n_own_rows = own_length(rows)
     n_own_cols = own_length(cols)
     n_ghost_rows = ghost_length(rows)
@@ -1828,7 +1828,11 @@ function Base.:\(a::PSparseMatrix,b::PVector)
     cols_trivial = trivial_partition(ranks,n)
     a_in_main = repartition(a,rows_trivial,cols_trivial) |> fetch
     b_in_main = repartition(b,partition(axes(a_in_main,1))) |> fetch
-    values = map(\,own_own_values(a_in_main),own_values(b_in_main))
+    @static if VERSION >= v"1.9"
+        values = map(\,own_own_values(a_in_main),own_values(b_in_main))
+    else
+        values = map(\,own_own_values(a_in_main),map(collect,own_values(b_in_main)))
+    end
     c_in_main = PVector(values,cols_trivial)
     cols = partition(axes(a,2))
     c = repartition(c_in_main,cols) |> fetch
