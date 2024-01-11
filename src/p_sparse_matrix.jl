@@ -497,6 +497,22 @@ function LinearAlgebra.mul!(c::PVector,a::OldPSparseMatrix,b::PVector,α::Number
 end
 
 """
+    old_psparse(f,row_partition,col_partition)
+
+Build an instance of [`PSparseMatrix`](@ref) from the initialization function
+`f` and the partition for rows and columns `row_partition` and `col_partition`.
+
+Equivalent to
+
+    matrix_partition = map(f,row_partition,col_partition)
+    OldPSparseMatrix(matrix_partition,row_partition,col_partition)
+"""
+function old_psparse(f,row_partition,col_partition;assembled=false)
+    matrix_partition = map(f,row_partition,col_partition)
+    OldPSparseMatrix(matrix_partition,row_partition,col_partition,assembled)
+end
+
+"""
     old_psparse!([f,]I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true) -> Task
 
 Crate an instance of [`OldPSparseMatrix`](@ref) by setting arbitrary entries
@@ -525,22 +541,6 @@ end
 
 function old_psparse!(I,J,V,row_partition,col_partition;kwargs...)
     old_psparse!(default_local_values,I,J,V,row_partition,col_partition;kwargs...)
-end
-
-"""
-    psparse(f,row_partition,col_partition)
-
-Build an instance of [`OldPSparseMatrix`](@ref) from the initialization function
-`f` and the partition for rows and columns `row_partition` and `col_partition`.
-
-Equivalent to
-
-    matrix_partition = map(f,row_partition,col_partition)
-    OldPSparseMatrix(matrix_partition,row_partition,col_partition)
-"""
-function psparse(f,row_partition,col_partition)
-    matrix_partition = map(f,row_partition,col_partition)
-    OldPSparseMatrix(matrix_partition,row_partition,col_partition)
 end
 
 function default_local_values(row_indices,col_indices)
@@ -1008,6 +1008,22 @@ function split_values!(B,A::PSparseMatrix,cache)
     B
 end
 
+"""
+    psparse(f,row_partition,col_partition;assembled)
+
+Build an instance of [`PSparseMatrix`](@ref) from the initialization function
+`f` and the partition for rows and columns `row_partition` and `col_partition`.
+
+Equivalent to
+
+    matrix_partition = map(f,row_partition,col_partition)
+    PSparseMatrix(matrix_partition,row_partition,col_partition,assembled)
+"""
+function psparse(f,row_partition,col_partition;assembled)
+    matrix_partition = map(f,row_partition,col_partition)
+    PSparseMatrix(matrix_partition,row_partition,col_partition,assembled)
+end
+
 function psparse(I,J,V,rows,cols;kwargs...)
     psparse(sparse,I,J,V,rows,cols;kwargs...)
 end
@@ -1019,6 +1035,8 @@ function psparse(f,I,J,V,rows,cols;
         discover_rows=true,
         discover_cols=true,
         restore_ids = true,
+        assembly_neighbors_options_rows = (;),
+        assembly_neighbors_options_cols = (;),
         reuse=Val(false)
     )
 
@@ -1040,12 +1058,16 @@ function psparse(f,I,J,V,rows,cols;
     if !assembled && discover_rows
         I_owner = find_owner(rows,I)
         rows_sa = map(union_ghost,rows,I,I_owner)
+        assembly_neighbors(rows_sa;assembly_neighbors_options_rows...)
     else
         rows_sa = rows
     end
     if discover_cols
         J_owner = find_owner(cols,J)
         cols_sa = map(union_ghost,cols,J,J_owner)
+        if ! assemble
+            assembly_neighbors(rows_sa;assembly_neighbors_options_cols...)
+        end
     else
         cols_sa = cols
     end
@@ -1066,7 +1088,7 @@ function psparse(f,I,J,V,rows,cols;
         B,cacheB = A,nothing
     end
     if assemble
-        t = PartitionedArrays.assemble(B,rows;reuse=true)
+        t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
     else
         t = @async B,cacheB
     end
@@ -1124,7 +1146,7 @@ function psparse_assemble_impl(
         ::Type{<:AbstractSplitMatrix},
         rows;
         reuse=Val(false),
-        exchange_graph_options=(;))
+        assembly_neighbors_options_cols=(;))
 
     function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
         A_ghost_own   = A.blocks.ghost_own
@@ -1225,15 +1247,17 @@ function psparse_assemble_impl(
         own_ghost_I = vcat(nz_own_ghost[1],I_rcv_ghost)
         own_ghost_J = vcat(nz_own_ghost[2],J_rcv_ghost)
         own_ghost_V = vcat(nz_own_ghost[3],V_rcv_ghost)
+        map_global_to_ghost!(nz_own_ghost[2],cols_sa)
         own_ghost_triplet = (own_ghost_I,own_ghost_J,own_ghost_V)
         triplets = (own_own_triplet,own_ghost_triplet)
-        aux = (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost)
+        aux = (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost)
         triplets, own_ghost_J, aux
     end
     function finalize_values(A,rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux)
         (own_own_triplet,own_ghost_triplet) = triplets
-        (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost) = aux
+        (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost) = aux
         map_global_to_ghost!(own_ghost_triplet[2],cols_fa)
+        map_global_to_ghost!(J_rcv_ghost,cols_fa)
         TA = typeof(A.blocks.own_own)
         n_own_rows = own_length(rows_fa)
         n_own_cols = own_length(cols_fa)
@@ -1247,7 +1271,9 @@ function psparse_assemble_impl(
         ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
         values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(rows_fa))
-        map_global_to_ghost!(J_rcv_ghost,cols_fa)
+        nnz_own_own = nnz(own_own)
+        k_own_sa = precompute_nzindex(own_own,nz_own_own[1:2]...)
+        k_ghost_sa = precompute_nzindex(own_ghost,nz_own_ghost[1:2]...)
         for p in 1:length(I_rcv_own)
             i = I_rcv_own[p]
             j = J_rcv_own[p]
@@ -1256,9 +1282,9 @@ function psparse_assemble_impl(
         for p in 1:length(I_rcv_ghost)
             i = I_rcv_ghost[p]
             j = J_rcv_ghost[p]
-            k_rcv_ghost[p] = nzindex(own_ghost,i,j)
+            k_rcv_ghost[p] = nzindex(own_ghost,i,j) + nnz_own_own
         end
-        cache = (;cache_snd...,cache_rcv...)
+        cache = (;k_own_sa,k_ghost_sa,cache_snd...,cache_rcv...)
         values, cache
     end
     rows_sa = partition(axes(A,1))
@@ -1283,7 +1309,7 @@ function psparse_assemble_impl(
         J_owner = find_owner(cols_sa,J)
         rows_fa = rows
         cols_fa = map(union_ghost,cols,J,J_owner)
-        assembly_neighbors(cols_fa;exchange_graph_options...)
+        assembly_neighbors(cols_fa;assembly_neighbors_options_cols...)
         vals_fa, cache = map(finalize_values,partition(A),rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux) |> tuple_of_arrays
         assembled = true
         B = PSparseMatrix(vals_fa,rows_fa,cols_fa,assembled)
@@ -1318,6 +1344,10 @@ function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
             V_snd_data[p] = v
         end
     end
+    function setup_sa(B,A,cache)
+        setcoofast!(B.blocks.own_own,nonzeros(A.blocks.own_own),cache.k_own_sa)
+        setcoofast!(B.blocks.own_ghost,nonzeros(A.blocks.own_ghost),cache.k_ghost_sa)
+    end
     function setup_rcv(B,cache)
         B_own_own   = B.blocks.own_own
         B_own_ghost = B.blocks.own_ghost
@@ -1326,8 +1356,6 @@ function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
         k_rcv_data = cache.k_rcv.data
         nz_own_own = nonzeros(B_own_own)
         nz_own_ghost = nonzeros(B_own_ghost)
-        nz_own_own .= 0
-        nz_own_ghost .= 0
         for p in 1:length(k_rcv_data)
             k = k_rcv_data[p]
             v = V_rcv_data[p]
@@ -1345,6 +1373,7 @@ function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     V_rcv = map(i->i.V_rcv,cache)
     graph = ExchangeGraph(parts_snd,parts_rcv)
     t = exchange!(V_rcv,V_snd,graph)
+    map(setup_sa,partition(B),partition(A),cache)
     @async begin
         wait(t)
         map(setup_rcv,partition(B),cache)
@@ -1548,10 +1577,12 @@ function psparse_consitent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
 end
 
 function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β::Number)
-    @assert a.assembled
     @boundscheck @assert matching_own_indices(axes(c,1),axes(a,1))
     @boundscheck @assert matching_own_indices(axes(a,2),axes(b,1))
     @boundscheck @assert matching_ghost_indices(axes(a,2),axes(b,1))
+    if ! a.assembled
+        @boundscheck @assert matching_ghost_indices(axes(a,1),axes(c,1))
+    end
     # Start the exchange
     t = consistent!(b)
     # Meanwhile, process the owned blocks
@@ -1561,11 +1592,22 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
         end
         mul!(co,aoo,bo,α,1)
     end
+    if ! a.assembled
+        map(ghost_values(c),ghost_own_values(a),own_values(b)) do ch,aho,bo
+            mul!(ch,aho,bo,α,1)
+        end
+    end
     # Wait for the exchange to finish
     wait(t)
     # process the ghost block
     map(own_values(c),own_ghost_values(a),ghost_values(b)) do co,aoh,bh
         mul!(co,aoh,bh,α,1)
+    end
+    if ! a.assembled
+        map(ghost_values(c),ghost_ghost_values(a),ghost_values(b)) do ch,ahh,bh
+            mul!(ch,ahh,bh,α,1)
+        end
+        assemble!(c) |> wait
     end
     c
 end
@@ -1693,7 +1735,10 @@ function psystem(I,J,V,I2,V2,rows,cols;
         discover_rows=true,
         discover_cols=true,
         restore_ids = true,
-        reuse=Val(false))
+        reuse=Val(false),
+        assembly_neighbors_options_rows = (;),
+        assembly_neighbors_options_cols = (;)
+    )
 
     # TODO this is just a reference implementation
     # for the moment.
@@ -1707,6 +1752,8 @@ function psystem(I,J,V,I2,V2,rows,cols;
             discover_rows,
             discover_cols,
             restore_ids,
+            assembly_neighbors_options_rows,
+            assembly_neighbors_options_cols,
             reuse=true)
 
     t2 = pvector(I2,V2,rows;
@@ -1714,6 +1761,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
             assemble,
             discover_rows,
             restore_ids,
+            assembly_neighbors_options_rows,
             reuse=true)
 
     @async begin

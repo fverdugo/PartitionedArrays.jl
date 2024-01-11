@@ -262,37 +262,6 @@ function setup_exact_solution(values,space,grid,col_indices)
     end
 end
 
-function setup_dofs(space,grid,tentative_dof_indices)
-    ghost_dof_to_local_dof = findall(i->i==0,space.permutation)
-    n_ghost_dofs = length(ghost_dof_to_local_dof)
-    n_local_dofs = length(space.permutation)
-    n_own_dofs = n_local_dofs - n_ghost_dofs
-    n_global_dofs = global_length(tentative_dof_indices)
-    space.permutation[ghost_dof_to_local_dof] = .- (1:n_ghost_dofs)
-    ghost_dof_to_owner = space.local_dof_to_owner[ghost_dof_to_local_dof]
-    ghost_to_global_dof = zeros(Int,n_ghost_dofs)
-    for cartesian_local_cell in grid.linear_to_cartesian_local_cell
-        local_cell = grid.cartesian_to_linear_local_cell[cartesian_local_cell]
-        for (element_node,cartesian_element_node) in enumerate(grid.linear_to_cartesian_element_node)
-            cartesian_local_node = cartesian_local_cell + (cartesian_element_node - grid.cartesian_offset)
-            local_node = grid.cartesian_to_linear_local_node[cartesian_local_node]
-            local_dof = space.local_node_to_dof[local_node]
-            if local_dof > 0
-                ghost_dof = space.permutation[local_dof]
-                if ghost_dof < 0
-                    global_dof = space.local_cell_to_global_dofs[local_cell][element_node]
-                    ghost_to_global_dof[-ghost_dof] = global_dof
-                end
-            end
-        end
-    end
-    for local_dof in ghost_dof_to_local_dof
-        space.permutation[local_dof] = n_own_dofs - space.permutation[local_dof]
-    end
-    ghost_dofs = GhostIndices(n_global_dofs,ghost_to_global_dof,ghost_dof_to_owner)
-    permute_indices(replace_ghost(tentative_dof_indices,ghost_dofs),space.permutation)
-end
-
 function fem_example(distribute)
     params = setup_params()
     n_ranks = prod(params.parts_per_dir)
@@ -303,35 +272,62 @@ function fem_example(distribute)
     grid = map(setup_grid,cell_partition)
     n_own_dofs, space = map(setup_space,grid) |> tuple_of_arrays
     n_global_dofs = sum(n_own_dofs)
-    tentative_dof_partition = variable_partition(n_own_dofs,n_global_dofs)
-    local_cell_to_global_dofs = map(setup_cell_dofs,grid,space,tentative_dof_partition)
+    dof_partition = variable_partition(n_own_dofs,n_global_dofs)
+    local_cell_to_global_dofs = map(setup_cell_dofs,grid,space,dof_partition)
     cell_to_global_dofs = PVector(local_cell_to_global_dofs,cell_partition)
     consistent!(cell_to_global_dofs) |> wait
-    map(finish_cell_dofs,grid,space,tentative_dof_partition)
+    map(finish_cell_dofs,grid,space,dof_partition)
     I,J,V = map(setup_IJV,space,grid) |> tuple_of_arrays
-    t = old_psparse!(I,J,V,tentative_dof_partition,tentative_dof_partition)
-    I,V = map(setup_b,space,grid) |> tuple_of_arrays
+    t = psparse(I,J,V,dof_partition,dof_partition)
+    II,VV = map(setup_b,space,grid) |> tuple_of_arrays
     A = fetch(t)
-    display(A)
-    row_partition = partition(axes(A,1))
-    b = old_pvector!(I,V,row_partition,discover_rows=false) |> fetch
+    b = pvector(II,VV,dof_partition) |> fetch
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
     x̂ = similar(x)
     col_partition = partition(axes(A,2))
     map(setup_exact_solution,local_values(x̂),space,grid,col_partition)
     @test norm(x-x̂) < 1.0e-5
-    dof_partition = map(setup_dofs,space,grid,tentative_dof_partition)
-    # Some optimizations when building A
-    try
-        cell_partition = uniform_partition(rank,params.parts_per_dir,params.cells_per_dir,ghost_per_dir)
-        I_owner = find_owner(tentative_dof_partition,I)
-        row_partition = map(union_ghost,tentative_dof_partition,I,I_owner)
-        neighbors = assembly_graph(cell_partition)
-        assembly_graph(row_partition;neighbors)
-        t = old_psparse!(I,J,V,row_partition,tentative_dof_partition,discover_rows=false)
-        A = fetch(t)
-    catch e
-        rethrow(e)
-    end
+
+    ## re-assembly
+    A,cacheA = psparse(I,J,V,dof_partition,dof_partition;reuse=true) |> fetch
+    b,cacheb = pvector(II,VV,dof_partition;reuse=true) |> fetch
+    psparse!(A,V,cacheA) |> wait
+    pvector!(b,VV,cacheb) |> wait
+
+    x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
+    @test norm(x-x̂) < 1.0e-5
+
+    # Simultaneous generation of matrix and vector
+    A,b = psystem(I,J,V,II,VV,dof_partition,dof_partition) |> fetch
+    x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
+    @test norm(x-x̂) < 1.0e-5
+
+    # Simultaneous generation of matrix and vector
+    # giving extra info and allowing for reassembly
+    # This one is potentially the most efficient
+    # with the only caveat that the computation
+    # of II and VV is not overlapped with the assembly
+    # of the matrix (not a big problem since I,J,V,II,VV are usually
+    # computed in the same cell-wise loop)
+    neighbors = assembly_graph(cell_partition)
+    A,b,cache = psystem(
+        I,J,V,II,VV,dof_partition,dof_partition;
+        assembly_neighbors_options_rows = (;neighbors),
+        assembly_neighbors_options_cols = (;neighbors),
+        reuse = true) |> fetch
+    x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
+    @test norm(x-x̂) < 1.0e-5
+
+    psystem!(A,b,V,VV,cache) |> fetch
+
+    # Sub-assembled variant
+    A,b = psystem(I,J,V,II,VV,dof_partition,dof_partition;assemble=false) |> fetch
+    assemble!(b) |> wait
+    x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
+    col_partition = partition(axes(A,2))
+    x̂ = similar(x)
+    map(setup_exact_solution,local_values(x̂),space,grid,col_partition)
+    @test norm(x-x̂) < 1.0e-5
+
 end
 

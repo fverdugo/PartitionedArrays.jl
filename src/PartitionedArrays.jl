@@ -127,7 +127,7 @@ include("p_vector.jl")
 
 export OldPSparseMatrix
 export PSparseMatrix
-export psparse
+export old_psparse
 export psparse
 export psparse!
 export split_values

@@ -574,7 +574,8 @@ function pvector(f,I,V,rows;
         assemble=true,
         discover_rows=true,
         restore_ids = true,
-        reuse=Val(false)
+        reuse=Val(false),
+        assembly_neighbors_options_rows = (;)
     )
 
     if assembled || assemble
@@ -584,6 +585,7 @@ function pvector(f,I,V,rows;
     if !assembled && discover_rows
         I_owner = find_owner(rows,I)
         rows_sa = map(union_ghost,rows,I,I_owner)
+        assembly_neighbors(rows_sa;assembly_neighbors_options_rows...)
     else
         rows_sa = rows
     end
