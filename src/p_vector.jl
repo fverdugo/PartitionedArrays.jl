@@ -387,7 +387,7 @@ julia> map(local_to_global,row_partition)
  [3, 4, 5, 6]
 
 julia> a = pones(row_partition)
-6-element PVector{Vector{Float64}} partitioned into 2 parts
+6-element PVector partitioned into 2 parts of type Vector{Float64}
 
 julia> local_values(a)
 2-element Vector{Vector{Float64}}:
@@ -439,7 +439,7 @@ julia> map(local_to_global,row_partition)
  [3, 4, 5, 6]
 
 julia> a = pvector(inds->fill(part_id(inds),length(inds)),row_partition)
-6-element PVector{Vector{Int32}} partitioned into 2 parts
+6-element PVector partitioned into 2 parts of type Vector{Int32}
 
 julia> local_values(a)
 2-element Vector{Vector{Int32}}:
