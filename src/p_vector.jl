@@ -537,14 +537,6 @@ Equivalent to
 end
 pvector(f,r::PRange) = pvector(f,partition(r))
 
-"""
-    old_pvector!([f,]I,V,index_partition;discover_rows=true) -> Task
-
-Crate an instance of [`PVector`](@ref) by setting arbitrary entries
-from each of the underlying parts. It returns a task that produces the
-instance of [`PVector`](@ref) allowing latency hiding while performing
-the communications needed in its setup.
-"""
 function old_pvector!(f,I,V,index_partition;discover_rows=true)
     if discover_rows
         I_owner = find_owner(index_partition,I)
@@ -569,6 +561,14 @@ function pvector(I,V,rows;kwargs...)
     pvector(dense_vector,I,V,rows;kwargs...)
 end
 
+"""
+    pvector([f,]I,V,index_partition;discover_rows=true) -> Task
+
+Crate an instance of [`PVector`](@ref) by setting arbitrary entries
+from each of the underlying parts. It returns a task that produces the
+instance of [`PVector`](@ref) allowing latency hiding while performing
+the communications needed in its setup.
+"""
 function pvector(f,I,V,rows;
         assembled=false,
         assemble=true,
@@ -617,6 +617,10 @@ function pvector(f,I,V,rows;
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function pvector!(B,V,cache)
     function update!(A,K,V)
         fill!(A,0)
@@ -925,7 +929,16 @@ end
 
 # New stuff
 
-function assemble(v::PVector,rows=map(remove_ghost,partition(axes(v,1)));reuse=Val(false))
+function assemble(v::PVector;kwargs...)
+    rows = map(remove_ghost,partition(axes(v,1)))
+    assemble(v,rows;kwargs...)
+end
+
+"""
+!!! warning
+    Document me!
+"""
+function assemble(v::PVector,rows;reuse=Val(false))
     @boundscheck @assert matching_own_indices(axes(v,1),PRange(rows))
     # TODO this is just a reference implementation
     # for the moment.
@@ -945,6 +958,10 @@ function assemble(v::PVector,rows=map(remove_ghost,partition(axes(v,1)));reuse=V
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function assemble!(w::PVector,v::PVector,cache)
     # TODO this is just a reference implementation
     # for the moment.
@@ -959,6 +976,10 @@ function assemble!(w::PVector,v::PVector,cache)
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function consistent(v::PVector,rows;reuse=Val(false))
     # TODO this is just a reference implementation
     # for the moment. It can be optimized
@@ -976,6 +997,10 @@ function consistent(v::PVector,rows;reuse=Val(false))
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function consistent!(w::PVector,v::PVector,cache)
     w .= v
     t = consistent!(w)
@@ -998,6 +1023,10 @@ function repartition_cache(v::PVector,new_partition)
     (;I,v_sa)
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function repartition(v::PVector,new_partition;reuse=Val(false))
     w = similar(v,PRange(new_partition))
     cache = repartition_cache(v,new_partition)
@@ -1012,10 +1041,16 @@ function repartition(v::PVector,new_partition;reuse=Val(false))
     end
 end
 
-function repartition!(
-    w::PVector,v::PVector,cache=repartition_cache(v,partition(axes(w,1)));
-    reversed=false
-    )
+function repartition!(w::PVector,v::PVector;kwargs...)
+    cache=repartition_cache(v,partition(axes(w,1)))
+    repartition!(w,v,cache;kwargs...)
+end
+
+"""
+!!! warning
+    Document me!
+"""
+function repartition!(w::PVector,v::PVector,cache;reversed=false)
     new_partition = partition(axes(w,1))
     old_partition = partition(axes(v,1))
     I = cache.I

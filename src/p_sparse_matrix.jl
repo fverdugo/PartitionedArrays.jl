@@ -53,51 +53,11 @@ function ghost_ghost_values(values,indices_rows,indices_cols)
     SubSparseMatrix(values,subindices,subindices_inv)
 end
 
-"""
-    struct OldPSparseMatrix{V,A,B,C,...}
-
-`OldPSparseMatrix` (partitioned sparse matrix)
-is a type representing a matrix whose rows are
-distributed (a.k.a. partitioned) over different parts for distributed-memory
-parallel computations. Each part stores a subset of the rows of the matrix and their
-corresponding non zero columns.
-
-This type overloads numerous array-like operations with corresponding
-parallel implementations.
-
-# Properties
-
-- `matrix_partition::A`
-- `row_partition::B`
-- `col_partition::C`
-
-`matrix_partition[i]` contains a (sparse) matrix with the local rows and the
-corresponding nonzero columns (the local columns) in the part number `i`.
-`eltype(matrix_partition) == V`.
-`row_partition[i]` and `col_partition[i]` contain information
-about the local, own, and ghost rows and columns respectively in part number `i`.
-The types `eltype(row_partition)` and `eltype(col_partition)` implement the
-[`AbstractLocalIndices`](@ref) interface.
-
-The rest of fields of this struct and type parameters are private.
-
-# Supertype hierarchy
-
-    OldPSparseMatrix{V,A,B,C,...} <: AbstractMatrix{T}
-
-with `T=eltype(V)`.
-"""
 struct OldPSparseMatrix{V,A,B,C,D,T} <: AbstractMatrix{T}
     matrix_partition::A
     row_partition::B
     col_partition::C
     cache::D
-    @doc """
-        OldPSparseMatrix(matrix_partition,row_partition,col_partition)
-
-    Build an instance for [`OldPSparseMatrix`](@ref) from the underlying fields
-    `matrix_partition`, `row_partition`, and `col_partition`.
-    """
     function OldPSparseMatrix(
             matrix_partition,
             row_partition,
@@ -116,81 +76,22 @@ end
 partition(a::OldPSparseMatrix) = a.matrix_partition
 Base.axes(a::OldPSparseMatrix) = (PRange(a.row_partition),PRange(a.col_partition))
 
-"""
-    local_values(a::OldPSparseMatrix)
-
-Get a vector of matrices containing the local rows and columns
-in each part of `a`.
-
-The row and column indices of the returned matrices can be mapped to global
-indices, own indices, ghost indices, and owner by using
-[`local_to_global`](@ref), [`local_to_own`](@ref), [`local_to_ghost`](@ref),
-and [`local_to_owner`](@ref), respectively.
-"""
 function local_values(a::OldPSparseMatrix)
     partition(a)
 end
 
-"""
-    own_values(a::OldPSparseMatrix)
-
-Get a vector of matrices containing the own rows and columns
-in each part of `a`.
-
-The row and column indices of the returned matrices can be mapped to global
-indices, local indices, and owner by using [`own_to_global`](@ref),
-[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
-"""
 function own_values(a::OldPSparseMatrix)
     map(own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
-"""
-    ghost_values(a::OldPSparseMatrix)
-
-Get a vector of matrices containing the ghost rows and columns
-in each part of `a`.
-
-The row and column indices of the returned matrices can be mapped to global
-indices, local indices, and owner by using [`ghost_to_global`](@ref),
-[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
-"""
 function ghost_values(a::OldPSparseMatrix)
     map(ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
-"""
-    own_ghost_values(a::OldPSparseMatrix)
-
-Get a vector of matrices containing the own rows and ghost columns
-in each part of `a`.
-
-The *row* indices of the returned matrices can be mapped to global indices,
-local indices, and owner by using [`own_to_global`](@ref),
-[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
-
-The *column* indices of the returned matrices can be mapped to global indices,
-local indices, and owner by using [`ghost_to_global`](@ref),
-[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
-"""
 function own_ghost_values(a::OldPSparseMatrix)
     map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
 
-"""
-    ghost_own_values(a::OldPSparseMatrix)
-
-Get a vector of matrices containing the ghost rows and own columns
-in each part of `a`.
-
-The *row* indices of the returned matrices can be mapped to global indices,
-local indices, and owner by using [`ghost_to_global`](@ref),
-[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
-
-The *column* indices of the returned matrices can be mapped to global indices,
-local indices, and owner by using [`own_to_global`](@ref),
-[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
-"""
 function ghost_own_values(a::OldPSparseMatrix)
     map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
@@ -295,14 +196,6 @@ function assemble!(a::OldPSparseMatrix)
     assemble!(+,a)
 end
 
-"""
-    assemble!([op,] a::OldPSparseMatrix) -> Task
-
-Transfer the ghost rows to their owner part
-and insert them according with the insertion operation `op` (`+` by default).
-It returns a task that produces `a` with updated values. After the transfer,
-the source ghost rows are set to zero.
-"""
 function assemble!(o,a::OldPSparseMatrix)
     t = assemble!(o,partition(a),a.cache)
     @async begin
@@ -496,30 +389,11 @@ function LinearAlgebra.mul!(c::PVector,a::OldPSparseMatrix,b::PVector,α::Number
     c
 end
 
-"""
-    old_psparse(f,row_partition,col_partition)
-
-Build an instance of [`PSparseMatrix`](@ref) from the initialization function
-`f` and the partition for rows and columns `row_partition` and `col_partition`.
-
-Equivalent to
-
-    matrix_partition = map(f,row_partition,col_partition)
-    OldPSparseMatrix(matrix_partition,row_partition,col_partition)
-"""
 function old_psparse(f,row_partition,col_partition;assembled=false)
     matrix_partition = map(f,row_partition,col_partition)
     OldPSparseMatrix(matrix_partition,row_partition,col_partition,assembled)
 end
 
-"""
-    old_psparse!([f,]I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true) -> Task
-
-Crate an instance of [`OldPSparseMatrix`](@ref) by setting arbitrary entries
-from each of the underlying parts. It returns a task that produces the
-instance of [`OldPSparseMatrix`](@ref) allowing latency hiding while performing
-the communications needed in its setup.
-"""
 function old_psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true,discover_cols=true)
     if discover_rows
         I_owner = find_owner(row_partition,I)
@@ -696,7 +570,6 @@ function IterativeSolvers.zerox(A::OldPSparseMatrix,b::PVector)
     fill!(x, zero(T))
     return x
 end
-
 
 # New stuff
 
@@ -938,11 +811,51 @@ function split_locally!(B::AbstractSplitMatrix,A,rows,cols,cache)
     B
 end
 
+"""
+    struct PSparseMatrix{V,B,C,D,T}
+
+`PSparseMatrix` (partitioned sparse matrix)
+is a type representing a matrix whose rows are
+distributed (a.k.a. partitioned) over different parts for distributed-memory
+parallel computations. Each part stores a subset of the rows of the matrix and their
+corresponding non zero columns.
+
+This type overloads numerous array-like operations with corresponding
+parallel implementations.
+
+# Properties
+
+- `matrix_partition::A`
+- `row_partition::B`
+- `col_partition::C`
+- `assembled::Bool`
+
+`matrix_partition[i]` contains a (sparse) matrix with the local rows and the
+corresponding nonzero columns (the local columns) in the part number `i`.
+`eltype(matrix_partition) == V`.
+`row_partition[i]` and `col_partition[i]` contain information
+about the local, own, and ghost rows and columns respectively in part number `i`.
+The types `eltype(row_partition)` and `eltype(col_partition)` implement the
+[`AbstractLocalIndices`](@ref) interface. For `assembled==true`, it is assumed that the matrix data
+is fully contained in the own rows. 
+
+# Supertype hierarchy
+
+    PSparseMatrix{V,A,B,C,T} <: AbstractMatrix{T}
+
+with `T=eltype(V)`.
+"""
 struct PSparseMatrix{V,B,C,D,T} <: AbstractMatrix{T}
     matrix_partition::B
     row_partition::C
     col_partition::D
     assembled::Bool
+    @doc """
+        PSparseMatrix(matrix_partition,row_partition,col_partition,assembled)
+
+    Build an instance for [`PSparseMatrix`](@ref) from the underlying fields
+    `matrix_partition`, `row_partition`, `col_partition`, assembled.
+    """
     function PSparseMatrix(
         matrix_partition,row_partition,col_partition,assembled)
         V = eltype(matrix_partition)
@@ -973,15 +886,81 @@ function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrix)
     end
 end
 
+"""
+    local_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the local rows and columns
+in each part of `a`.
+
+The row and column indices of the returned matrices can be mapped to global
+indices, own indices, ghost indices, and owner by using
+[`local_to_global`](@ref), [`local_to_own`](@ref), [`local_to_ghost`](@ref),
+and [`local_to_owner`](@ref), respectively.
+"""
+function local_values(a::PSparseMatrix)
+    partition(a)
+end
+
+"""
+    own_own_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the own rows and columns
+in each part of `a`.
+
+The row and column indices of the returned matrices can be mapped to global
+indices, local indices, and owner by using [`own_to_global`](@ref),
+[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
+"""
 function own_own_values(a::PSparseMatrix)
     map(own_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
+
+"""
+    own_ghost_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the own rows and ghost columns
+in each part of `a`.
+
+The *row* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`own_to_global`](@ref),
+[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
+
+The *column* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
+"""
 function own_ghost_values(a::PSparseMatrix)
     map(own_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
+
+"""
+    ghost_own_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the ghost rows and own columns
+in each part of `a`.
+
+The *row* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
+
+The *column* indices of the returned matrices can be mapped to global indices,
+local indices, and owner by using [`own_to_global`](@ref),
+[`own_to_local`](@ref), and [`own_to_owner`](@ref), respectively.
+"""
 function ghost_own_values(a::PSparseMatrix)
     map(ghost_own_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
+
+"""
+    ghost_ghost_values(a::PSparseMatrix)
+
+Get a vector of matrices containing the ghost rows and columns
+in each part of `a`.
+
+The row and column indices of the returned matrices can be mapped to global
+indices, local indices, and owner by using [`ghost_to_global`](@ref),
+[`ghost_to_local`](@ref), and [`ghost_to_owner`](@ref), respectively.
+"""
 function ghost_ghost_values(a::PSparseMatrix)
     map(ghost_ghost_values,partition(a),partition(axes(a,1)),partition(axes(a,2)))
 end
@@ -1028,6 +1007,17 @@ function psparse(I,J,V,rows,cols;kwargs...)
     psparse(sparse,I,J,V,rows,cols;kwargs...)
 end
 
+"""
+    psparse([f,]I,J,V,row_partition,col_partition;kwargs...) -> Task
+
+Crate an instance of [`PSparseMatrix`](@ref) by setting arbitrary entries
+from each of the underlying parts. It returns a task that produces the
+instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
+the communications needed in its setup.
+
+!!! warning
+    Improve me!
+"""
 function psparse(f,I,J,V,rows,cols;
         split=true,
         assembled=false,
@@ -1106,6 +1096,10 @@ function psparse(f,I,J,V,rows,cols;
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function psparse!(C,V,cache)
     (A,B,K,cacheB,cacheC,split,assembled) = cache
     rows_sa = partition(axes(A,1))
@@ -1122,16 +1116,25 @@ function psparse!(C,V,cache)
     end
 end
 
-function assemble(
-    A::PSparseMatrix,
-    rows=map(remove_ghost,partition(axes(A,1)));
-    kwargs...)
+function assemble(A::PSparseMatrix;kwargs...)
+    rows = map(remove_ghost,partition(axes(A,1))) 
+    assemble(A,rows;kwargs...)
+end
 
+"""
+!!! warning
+    Document me!
+"""
+function assemble(A::PSparseMatrix,rows;kwargs...)
     @boundscheck @assert matching_own_indices(axes(A,1),PRange(rows))
     T = eltype(partition(A))
     psparse_assemble_impl(A,T,rows;kwargs...)
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function assemble!(B::PSparseMatrix,A::PSparseMatrix,cache)
     T = eltype(partition(A))
     psparse_assemble_impl!(B,A,T,cache)
@@ -1381,12 +1384,20 @@ function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function consistent(A::PSparseMatrix,rows_co;kwargs...)
     @assert A.assembled
     T = eltype(partition(A))
     psparse_consitent_impl(A,T,rows_co;kwargs...)
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function consistent!(B::PSparseMatrix,A::PSparseMatrix,cache)
     @assert A.assembled
     T = eltype(partition(A))
@@ -1653,6 +1664,10 @@ function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
     return x
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
         I1,J1,V1 = findnz(A_own_own)
@@ -1684,6 +1699,10 @@ function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function repartition!(B::PSparseMatrix,A::PSparseMatrix,cache)
     (V,cacheB) = cache
     function fill_values!(V,A_own_own,A_own_ghost)
@@ -1700,6 +1719,10 @@ function repartition!(B::PSparseMatrix,A::PSparseMatrix,cache)
     psparse!(B,V,cacheB)
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function repartition(A::PSparseMatrix,b::PVector,new_rows,new_cols;reuse=Val(false))
     # TODO this is just a reference implementation
     # for the moment. It can be optimized.
@@ -1717,6 +1740,10 @@ function repartition(A::PSparseMatrix,b::PVector,new_rows,new_cols;reuse=Val(fal
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function repartition!(B::PSparseMatrix,c::PVector,A::PSparseMatrix,b::PVector,cache)
     (cacheB,cachec) = cache
     t1 = repartition!(B,A,cacheB)
@@ -1728,6 +1755,10 @@ function repartition!(B::PSparseMatrix,c::PVector,A::PSparseMatrix,b::PVector,ca
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function psystem(I,J,V,I2,V2,rows,cols;
         split_matrix=true,
         assembled=false,
@@ -1776,6 +1807,10 @@ function psystem(I,J,V,I2,V2,rows,cols;
     end
 end
 
+"""
+!!! warning
+    Document me!
+"""
 function psystem!(A,b,V,V2,cache)
     (cacheA,cacheb) = cache
     t1 = psparse!(A,V,cacheA)

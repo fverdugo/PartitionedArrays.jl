@@ -32,7 +32,7 @@ the items in the collection `a` over the ranks of the given MPI
 communicator `comm`. Each rank receives
 exactly one item, thus `length(a)`  and the communicator size need to match.
 For arrays that can store more than one item per
-rank see [`PVector`](@ref) or [`OldPSparseMatrix`](@ref).
+rank see [`PVector`](@ref) or [`PSparseMatrix`](@ref).
 If `duplicate_comm=false` the result will take ownership of the given communicator.
 Otherwise, a copy will be done with `MPI.Comm_dup(comm)`.
 
@@ -88,7 +88,7 @@ end
 Represent an array of element type `T` and number of dimensions `N`, where
 each item in the array is stored in a separate MPI process. I.e., each MPI
 rank stores only one item. For arrays that can store more than one item per
-rank see [`PVector`](@ref) or [`OldPSparseMatrix`](@ref). This struct implements
+rank see [`PVector`](@ref) or [`PSparseMatrix`](@ref). This struct implements
 the Julia array interface.
 However, using `setindex!` and `getindex!` is disabled
 for performance reasons (communication cost).

@@ -17,8 +17,9 @@ ghost_values(::PVector)
 ```@docs
 PVector(a,b)
 PVector{V}(::UndefInitializer,b) where V
-pvector
-old_pvector!
+pvector(f,a)
+pvector(f,a,b,c)
+pvector!
 pfill
 pzeros
 pones
@@ -29,5 +30,16 @@ prandn
 
 ```@docs
 assemble!(::PVector)
+assemble(::PVector,rows)
+assemble!(::PVector,::PVector,cache)
 consistent!(::PVector)
+consistent(::PVector,cols)
+consistent!(::PVector,::PVector,cache)
+```
+
+## Re-partition
+
+```@docs
+repartition(::PVector,rows)
+repartition!(::PVector,::PVector,cache)
 ```
