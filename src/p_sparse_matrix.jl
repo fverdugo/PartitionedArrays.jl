@@ -1605,6 +1605,9 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     end
     if ! a.assembled
         map(ghost_values(c),ghost_own_values(a),own_values(b)) do ch,aho,bo
+            if β != 1
+                β != 0 ? rmul!(ch, β) : fill!(ch,zero(eltype(ch)))
+            end
             mul!(ch,aho,bo,α,1)
         end
     end
