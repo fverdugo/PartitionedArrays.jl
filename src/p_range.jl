@@ -742,7 +742,7 @@ The argument `global_to_color` is the usual output of such tools.
 """
 function partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
     if multicast == true
-        global_to_owner = getany(multicast(global_to_color;source))
+        global_to_owner = getany(PartitionedArrays.multicast(global_to_color;source))
     else
         global_to_owner = global_to_color
     end
