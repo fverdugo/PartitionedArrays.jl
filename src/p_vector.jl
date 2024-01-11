@@ -227,7 +227,7 @@ function Base.show(io::IO,k::MIME"text/plain",data::PVector)
     n = length(data)
     np = length(partition(data))
     map_main(partition(data)) do values
-        println(io,"$n-element PVector{$T} partitioned into $np parts")
+        println(io,"$n-element PVector partitioned into $np parts of type $T")
     end
 end
 

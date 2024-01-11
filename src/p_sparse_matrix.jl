@@ -1760,7 +1760,6 @@ end
     Document me!
 """
 function psystem(I,J,V,I2,V2,rows,cols;
-        split_matrix=true,
         assembled=false,
         assemble=true,
         discover_rows=true,
@@ -1777,7 +1776,6 @@ function psystem(I,J,V,I2,V2,rows,cols;
     # that we want to generate a matrix and a vector
 
     t1 = psparse(I,J,V,rows,cols;
-            split=split_matrix,
             assembled,
             assemble,
             discover_rows,
