@@ -19,6 +19,7 @@ The old code is still available (but deprecated), and can be recovered applying 
 
 - The default parallel sparse matrix format is now split into 4 blocks corresponding to own/ghost columns/rows.
 The previous "monolithic" storage is not implemented anymore for the new version of `PSparseMatrix`, but can be implemented in the new setup if needed.
+- `emit` renamed to `multicast`. The former name is still available but deprecated.
 
 ## Added
 
@@ -29,6 +30,8 @@ treatment of the ghost rows).
 - Functions `repartition` and `repartition!` used to change the data partition of `PSparseMatrix` and `PVector` objects.
 - Functions `psystem` and `psystem!` for generating a system matrix and vector at once.
 - Function `trivial_partition`.
+- Support for sub-assembled matrices in `PSparseMatrix`.
+
 
 ## [0.3.4] - 2023-09-06
 
