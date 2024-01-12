@@ -144,8 +144,8 @@ IV = map(row_partition) do row_indices
     end
     I,V
 end
-I,V = tuple_of_arrays(IV)
-b = pvector(I,V,row_partition) |> fetch
+II,VV = tuple_of_arrays(IV)
+b = pvector(II,VV,row_partition) |> fetch
 
 
 # Compute the system matrix
@@ -180,6 +180,31 @@ A = psparse(I,J,V,row_partition,col_partition) |> fetch
 x = similar(b,axes(A,2))
 x .= b
 IterativeSolvers.cg!(x,A,b)
+r = A*x - b
+norm(r)
+
+# Imagine, that we want to create the system several times
+# (e.g., in a nonlinear solver). We can use the key-word argument `reuse`
+# to enable efficient re-construction of the matrix/vector.
+
+b,cacheb = pvector(II,VV,row_partition,reuse=true) |> fetch
+A,cacheA= psparse(I,J,V,row_partition,col_partition,reuse=true) |> fetch;
+
+# Now modify the values. For example:
+
+V = map(i->2*i,V)
+
+#
+
+VV = map(i->2*i,VV)
+
+# Update the matrix and the vector accordingly:
+
+pvector!(b,VV,cacheb) |> wait
+psparse!(A,V,cacheA) |> wait
+
+# The solution should be the same as before in this case.
+
 r = A*x - b
 norm(r)
 
