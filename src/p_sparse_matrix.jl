@@ -1014,9 +1014,6 @@ Crate an instance of [`PSparseMatrix`](@ref) by setting arbitrary entries
 from each of the underlying parts. It returns a task that produces the
 instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
-
-!!! warning
-    Improve me!
 """
 function psparse(f,I,J,V,rows,cols;
         split=true,
@@ -1097,8 +1094,7 @@ function psparse(f,I,J,V,rows,cols;
 end
 
 """
-!!! warning
-    Document me!
+    psparse!(C::PSparseMatrix,V,cache)
 """
 function psparse!(C,V,cache)
     (A,B,K,cacheB,cacheC,split,assembled) = cache
@@ -1122,8 +1118,7 @@ function assemble(A::PSparseMatrix;kwargs...)
 end
 
 """
-!!! warning
-    Document me!
+    assemble(A::PSparseMatrix[,rows];kwargs...)
 """
 function assemble(A::PSparseMatrix,rows;kwargs...)
     @boundscheck @assert matching_own_indices(axes(A,1),PRange(rows))
@@ -1132,8 +1127,7 @@ function assemble(A::PSparseMatrix,rows;kwargs...)
 end
 
 """
-!!! warning
-    Document me!
+    assemble!(B::PSparseMatrix,A::PSparseMatrix,cache)
 """
 function assemble!(B::PSparseMatrix,A::PSparseMatrix,cache)
     T = eltype(partition(A))
@@ -1385,8 +1379,7 @@ function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
 end
 
 """
-!!! warning
-    Document me!
+    consistent(A::PSparseMatrix,rows;kwargs...)
 """
 function consistent(A::PSparseMatrix,rows_co;kwargs...)
     @assert A.assembled
@@ -1395,8 +1388,7 @@ function consistent(A::PSparseMatrix,rows_co;kwargs...)
 end
 
 """
-!!! warning
-    Document me!
+    consistent!(B::PSparseMatrix,A::PSparseMatrix,cache)
 """
 function consistent!(B::PSparseMatrix,A::PSparseMatrix,cache)
     @assert A.assembled
@@ -1668,8 +1660,7 @@ function IterativeSolvers.zerox(A::PSparseMatrix,b::PVector)
 end
 
 """
-!!! warning
-    Document me!
+    repartition(A::PSparseMatrix,new_rows,new_cols;reuse=false)
 """
 function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
@@ -1703,8 +1694,7 @@ function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
 end
 
 """
-!!! warning
-    Document me!
+    repartition!(B::PSparseMatrix,A::PSparseMatrix,cache)
 """
 function repartition!(B::PSparseMatrix,A::PSparseMatrix,cache)
     (V,cacheB) = cache
@@ -1723,8 +1713,7 @@ function repartition!(B::PSparseMatrix,A::PSparseMatrix,cache)
 end
 
 """
-!!! warning
-    Document me!
+    repartition(A::PSparseMatrix,b::PVector,new_rows,new_cols;reuse=false)
 """
 function repartition(A::PSparseMatrix,b::PVector,new_rows,new_cols;reuse=Val(false))
     # TODO this is just a reference implementation
@@ -1744,8 +1733,14 @@ function repartition(A::PSparseMatrix,b::PVector,new_rows,new_cols;reuse=Val(fal
 end
 
 """
-!!! warning
-    Document me!
+    repartition!(B,c,A,b,cache)
+
+- `B::PSparseMatrix`
+- `c::PVector`
+- `A::PSparseMatrix`
+- `b::PVector`
+- `cache`
+
 """
 function repartition!(B::PSparseMatrix,c::PVector,A::PSparseMatrix,b::PVector,cache)
     (cacheB,cachec) = cache
@@ -1759,8 +1754,7 @@ function repartition!(B::PSparseMatrix,c::PVector,A::PSparseMatrix,b::PVector,ca
 end
 
 """
-!!! warning
-    Document me!
+    psystem(I,J,V,I2,V2,rows,cols;kwargs...)
 """
 function psystem(I,J,V,I2,V2,rows,cols;
         assembled=false,
@@ -1809,8 +1803,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
 end
 
 """
-!!! warning
-    Document me!
+    psystem!(A,b,V,V2,cache)
 """
 function psystem!(A,b,V,V2,cache)
     (cacheA,cacheb) = cache

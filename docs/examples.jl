@@ -145,7 +145,7 @@ IV = map(row_partition) do row_indices
     I,V
 end
 I,V = tuple_of_arrays(IV)
-b = old_pvector!(I,V,row_partition) |> fetch
+b = pvector(I,V,row_partition) |> fetch
 
 
 # Compute the system matrix
@@ -172,7 +172,7 @@ IJV = map(row_partition) do row_indices
 end
 I,J,V = tuple_of_arrays(IJV)
 col_partition = row_partition
-A = old_psparse!(I,J,V,row_partition,col_partition) |> fetch
+A = psparse(I,J,V,row_partition,col_partition) |> fetch
 
 # Generate an initial guess that fulfills
 # the boundary conditions.
@@ -182,7 +182,6 @@ x .= b
 IterativeSolvers.cg!(x,A,b)
 r = A*x - b
 norm(r)
-
 
 
 

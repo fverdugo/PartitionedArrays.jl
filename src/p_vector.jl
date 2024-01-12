@@ -562,7 +562,7 @@ function pvector(I,V,rows;kwargs...)
 end
 
 """
-    pvector([f,]I,V,index_partition;discover_rows=true) -> Task
+    pvector([f,]I,V,index_partition;kwargs...) -> Task
 
 Crate an instance of [`PVector`](@ref) by setting arbitrary entries
 from each of the underlying parts. It returns a task that produces the
@@ -618,8 +618,7 @@ function pvector(f,I,V,rows;
 end
 
 """
-!!! warning
-    Document me!
+    pvector!(B::PVector,V,cache)
 """
 function pvector!(B,V,cache)
     function update!(A,K,V)
@@ -935,8 +934,7 @@ function assemble(v::PVector;kwargs...)
 end
 
 """
-!!! warning
-    Document me!
+    assemble(v::PVector[,rows];reuse=false)
 """
 function assemble(v::PVector,rows;reuse=Val(false))
     @boundscheck @assert matching_own_indices(axes(v,1),PRange(rows))
@@ -959,8 +957,7 @@ function assemble(v::PVector,rows;reuse=Val(false))
 end
 
 """
-!!! warning
-    Document me!
+    assemble!(w::PVector,v::PVector,cache)
 """
 function assemble!(w::PVector,v::PVector,cache)
     # TODO this is just a reference implementation
@@ -977,8 +974,7 @@ function assemble!(w::PVector,v::PVector,cache)
 end
 
 """
-!!! warning
-    Document me!
+    consistent(v::PVector,rows;reuse=false)
 """
 function consistent(v::PVector,rows;reuse=Val(false))
     # TODO this is just a reference implementation
@@ -998,8 +994,7 @@ function consistent(v::PVector,rows;reuse=Val(false))
 end
 
 """
-!!! warning
-    Document me!
+    consistent!(w::PVector,v::PVector,cache)
 """
 function consistent!(w::PVector,v::PVector,cache)
     w .= v
@@ -1024,8 +1019,7 @@ function repartition_cache(v::PVector,new_partition)
 end
 
 """
-!!! warning
-    Document me!
+    repartition(v::PVector,new_partition;reuse=false)
 """
 function repartition(v::PVector,new_partition;reuse=Val(false))
     w = similar(v,PRange(new_partition))
@@ -1047,8 +1041,7 @@ function repartition!(w::PVector,v::PVector;kwargs...)
 end
 
 """
-!!! warning
-    Document me!
+    repartition!(w::PVector,v::PVector[,cache];reversed=false)
 """
 function repartition!(w::PVector,v::PVector,cache;reversed=false)
     new_partition = partition(axes(w,1))
