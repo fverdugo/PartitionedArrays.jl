@@ -598,7 +598,7 @@ function pvector(f,I,V,rows;
         map(map_local_to_global!,I,rows_sa)
     end
     A = PVector(values_sa,rows_sa)
-    if assemble
+    if !assembled && assemble
         t = PartitionedArrays.assemble(A,rows;reuse=true)
     else
         t = @async A,nothing
@@ -631,7 +631,7 @@ function pvector!(B,V,cache)
     rows_sa = partition(axes(A,1))
     values_sa = partition(A)
     map(update!,values_sa,K,V)
-    if !assembled && assembled
+    if !assembled && assemble
         t = PartitionedArrays.assemble!(B,A,cacheB)
     else
         t = @async B
@@ -964,7 +964,7 @@ function assemble!(w::PVector,v::PVector,cache)
     # for the moment.
     # The construction of v2 can (should) be avoided
     v2 = cache
-    map(copy!,local_values(v2),local_values(v))
+    copy!(v2,v)
     t = assemble!(v2)
     @async begin
         wait(t)

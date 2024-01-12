@@ -318,7 +318,14 @@ function fem_example(distribute)
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
     @test norm(x-x̂) < 1.0e-5
 
-    psystem!(A,b,V,VV,cache) |> fetch
+    ## Re assembly with different values
+    V2 = map(i->2*i,V)
+    VV2 = map(i->2*i,VV)
+    #display(partition(b))
+    psystem!(A,b,V2,VV2,cache) |> wait
+    #display(partition(b))
+    x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
+    @test norm(x-x̂) < 1.0e-5
 
     # Sub-assembled variant
     A,b = psystem(I,J,V,II,VV,dof_partition,dof_partition;assemble=false) |> fetch
