@@ -293,6 +293,7 @@ function fem_example(distribute)
     b,cacheb = pvector(II,VV,dof_partition;reuse=true) |> fetch
     psparse!(A,V,cacheA) |> wait
     pvector!(b,VV,cacheb) |> wait
+    display((A,cacheA))
 
     x = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
     @test norm(x-x̂) < 1.0e-5

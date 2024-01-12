@@ -885,6 +885,9 @@ function Base.show(io::IO,k::MIME"text/plain",data::PSparseMatrix)
         println(io,"$(m)×$(n) PSparseMatrix partitioned into $np parts of type $T")
     end
 end
+function Base.show(io::IO,data::PSparseMatrix)
+    print(io,"PSparseMatrix(…)")
+end
 
 """
     local_values(a::PSparseMatrix)

@@ -230,6 +230,9 @@ function Base.show(io::IO,k::MIME"text/plain",data::PVector)
         println(io,"$n-element PVector partitioned into $np parts of type $T")
     end
 end
+function Base.show(io::IO,data::PVector)
+    print(io,"PVector(…)")
+end
 
 function p_vector_cache(vector_partition,index_partition)
     p_vector_cache_impl(eltype(vector_partition),vector_partition,index_partition)

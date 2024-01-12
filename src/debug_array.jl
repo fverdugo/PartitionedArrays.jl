@@ -90,6 +90,9 @@ function Base.show(io::IO,k::MIME"text/plain",data::DebugArray)
         println(io,"$index = $(data.items[i])")
     end
 end
+function Base.show(io::IO,data::DebugArray)
+    print(io,"DebugArray(…)")
+end
 getany(a::DebugArray) = getany(a.items)
 
 function Base.similar(a::DebugArray,::Type{T},dims::Dims) where T

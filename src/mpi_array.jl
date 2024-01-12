@@ -196,6 +196,11 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIArray)
         MPI.Barrier(data.comm)
     end
 end
+function Base.show(io::IO,data::MPIArray)
+    if MPI.Comm_rank(data.comm) == 0
+        print(io,"MPIArray(…)")
+    end
+end
 
 getany(a::MPIArray) = a.item
 i_am_main(a::MPIArray) = MPI.Comm_rank(a.comm)+1 == MAIN

@@ -296,6 +296,9 @@ function p_sparse_matrix_tests(distribute)
     A,b,cache = psystem(I,J,V,I2,V2,rows,cols,reuse=true) |> fetch
     psystem!(A,b,V,V2,cache) |> wait
 
+    display((A,A))
+    display((b,b))
+
     #Ar = renumber(A)
     #br,cache = renumber(b,partition(axes(Ar,1)),reuse=true)
     #cr = Ar\br
