@@ -141,21 +141,21 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse(I,J,V,row_partition,col_partition,split=false,assemble=false) |> fetch
-    B = split_values(A)
-    B, cache = split_values(A,reuse=true)
-    split_values!(B,A,cache)
+    A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=false) |> fetch
+    B = split_format(A)
+    B, cache = split_format(A,reuse=true)
+    split_format!(B,A,cache)
     C = assemble(B) |> fetch
     C,cache = assemble(B,reuse=true) |> fetch
     assemble!(C,B,cache) |> wait
     display(C)
 
-    A = psparse(I,J,V,row_partition,col_partition,split=true,assemble=false) |> fetch
-    A = psparse(I,J,V,row_partition,col_partition,split=true,assemble=true) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=false) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=true) |> fetch
     A = psparse(I,J,V,row_partition,col_partition) |> fetch
     display(A)
-    # TODO Assembly in non-split format not yet implemented
-    #A = psparse(I,J,V,row_partition,col_partition,split=false,assemble=true) |> fetch
+    # TODO Assembly in non-split_format format not yet implemented
+    #A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=true) |> fetch
     
     A,cache = psparse(I,J,V,row_partition,col_partition,reuse=true) |> fetch
     psparse!(A,V,cache) |> wait
@@ -304,13 +304,5 @@ function p_sparse_matrix_tests(distribute)
     #cr = Ar\br
     #renumber!(c,cr)
     
-    # TODO
-    # 3. Cleanup and documentation
-    #  better names for precompute_nzindex, setcoofast
-    #  better name for split_values, split_values!
-    #  how to avoind conflicts with existing functions
-    #  in particular: delete val_parameter
-    #  renumber
-
 end
 

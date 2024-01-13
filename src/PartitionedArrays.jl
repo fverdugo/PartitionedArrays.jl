@@ -130,8 +130,8 @@ export PSparseMatrix
 export old_psparse
 export psparse
 export psparse!
-export split_values
-export split_values!
+export split_format
+export split_format!
 export old_psparse!
 export own_ghost_values
 export ghost_own_values
