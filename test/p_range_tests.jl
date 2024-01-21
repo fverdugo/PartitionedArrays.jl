@@ -143,8 +143,10 @@ function p_range_tests(distribute)
            LocalIndices(n,part,[1,3,7,9,10],Int32[1,1,3,4,4])
        end
    end
+   @test renumber_partition(ids) !== ids
 
    ids = uniform_partition(parts,n)
+   @test renumber_partition(ids) === ids
    @test length(ids) == length(parts)
 
    gids = map(parts) do part
@@ -176,6 +178,7 @@ function p_range_tests(distribute)
        end
    end
    ids5 = variable_partition(a,sum(a))
+   @test renumber_partition(ids5) === ids5
    map(parts,ids5) do part, local_to_global
        if part == 1
            @test local_to_global == [1, 2, 3, 4]

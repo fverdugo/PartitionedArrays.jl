@@ -771,6 +771,27 @@ function trivial_partition(ranks,n;destination=MAIN)
     partition_in_main
 end
 
+function renumber_partition(partition_in)
+    own_ids = map(own_to_global,partition_in)
+    if eltype(own_ids) <: BlockPartitionOwnToGlobal{1}
+        return partition_in
+    end
+    n_global = PartitionedArrays.getany(map(global_length,partition_in))
+    n_own = map(own_length,partition_in)
+    new_gids = variable_partition(n_own,n_global)
+    v = PVector{Vector{Int}}(undef,partition_in)
+    map(own_values(v),new_gids) do own_v, new_gids
+        own_v .= own_to_global(new_gids)
+    end
+    consistent!(v) |> wait
+    I = ghost_values(v)
+    I_owner = map(ghost_to_owner,partition_in)
+    new_ids2 = map(union_ghost,new_gids,I,I_owner)
+    perm = map(PartitionedArrays.local_permutation,partition_in)
+    partition_out = map(permute_indices,new_ids2,perm)
+    partition_out
+end
+
 function local_range(p,np,n,ghost=false,periodic=false)
     l = n ÷ np
     offset = l * (p-1)
@@ -1223,7 +1244,7 @@ assembly_cache(a::OwnAndGhostIndices) = a.assembly_cache
 local_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(local_length(a))
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
-    OwnAndGhostIndices(a.own,ghost)
+    OwnAndGhostIndices(a.own,ghost,a.global_to_owner)
 end
 
 function find_owner(indices,global_ids,::Type{<:OwnAndGhostIndices{T}}) where T

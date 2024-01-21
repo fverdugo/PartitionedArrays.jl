@@ -1272,8 +1272,8 @@ function psparse_assemble_impl(
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
         values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(rows_fa))
         nnz_own_own = nnz(own_own)
-        k_own_sa = precompute_nzindex(own_own,nz_own_own[1:2]...)
-        k_ghost_sa = precompute_nzindex(own_ghost,nz_own_ghost[1:2]...)
+        k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
+        k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
         for p in 1:length(I_rcv_own)
             i = I_rcv_own[p]
             j = J_rcv_own[p]

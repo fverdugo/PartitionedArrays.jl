@@ -26,7 +26,7 @@ The previous "monolithic" storage is not implemented anymore for the new version
 - Efficient re-construction of `PSparseMatrix` and `PVector` objects.
 - Functions `assemble` and `consistent` (allocating versions of `assemble!` and `consistent!` with a slightly different
 treatment of the ghost rows).
-- Function `consitent` for `PSparseMatrix`.
+- Function `consistent` for `PSparseMatrix`.
 - Functions `repartition` and `repartition!` used to change the data partition of `PSparseMatrix` and `PVector` objects.
 - Functions `psystem` and `psystem!` for generating a system matrix and vector at once.
 - Function `trivial_partition`.

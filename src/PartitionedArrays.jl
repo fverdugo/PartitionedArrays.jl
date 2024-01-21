@@ -66,6 +66,7 @@ export uniform_partition
 export variable_partition
 export partition_from_color
 export trivial_partition
+export renumber_partition
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices
@@ -102,6 +103,12 @@ export partition
 export assembly_graph
 export assembly_neighbors
 export assembly_local_indices
+export map_local_to_global!
+export map_global_to_local!
+export map_ghost_to_global!
+export map_global_to_ghost!
+export map_own_to_global!
+export map_global_to_own!
 include("p_range.jl")
 
 export local_values
@@ -126,6 +133,7 @@ export repartition!
 include("p_vector.jl")
 
 export OldPSparseMatrix
+export SplitMatrix
 export PSparseMatrix
 export old_psparse
 export psparse
