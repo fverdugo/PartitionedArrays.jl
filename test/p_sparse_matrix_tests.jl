@@ -217,6 +217,7 @@ function p_sparse_matrix_tests(distribute)
     A = psparse(I,J,V,row_partition,col_partition) |> fetch
     x = pones(partition(axes(A,2)))
     y = A*x
+    @test isa(y,PVector)
     dy = y - y
 
     x = IterativeSolvers.cg(A,y)
@@ -299,10 +300,19 @@ function p_sparse_matrix_tests(distribute)
     display((A,A))
     display((b,b))
 
-    #Ar = renumber(A)
-    #br,cache = renumber(b,partition(axes(Ar,1)),reuse=true)
-    #cr = Ar\br
-    #renumber!(c,cr)
+    LinearAlgebra.fillstored!(A,3)
+    B = 2*A
+    @test eltype(partition(B)) == eltype(partition(A))
+    B = A*2
+    @test eltype(partition(B)) == eltype(partition(A))
+    B = +A
+    @test eltype(partition(B)) == eltype(partition(A))
+    B = -A
+    @test eltype(partition(B)) == eltype(partition(A))
+    C = B+A
+    @test eltype(partition(C)) == eltype(partition(A))
+    C = B-A
+    @test eltype(partition(C)) == eltype(partition(A))
     
 end
 
