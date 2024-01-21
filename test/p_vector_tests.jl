@@ -47,7 +47,7 @@ function p_vector_tests(distribute)
     end |> tuple_of_arrays
 
     row_partition = uniform_partition(rank,n)
-    a = pvector!(I,V,row_partition) |> fetch
+    a = old_pvector!(I,V,row_partition) |> fetch
 
     @test any(i->i>n,a) == false
     @test all(i->i<n,a)
@@ -133,7 +133,7 @@ function p_vector_tests(distribute)
     end
     row_partition = uniform_partition(parts,n)
     values = map(copy,gids)
-    v = pvector!(gids,values,row_partition) |> fetch
+    v = old_pvector!(gids,values,row_partition) |> fetch
     u = 2*v
     map(partition(u),partition(v)) do u,v
         @test u == 2*v

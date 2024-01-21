@@ -302,6 +302,7 @@ function compresscoo(
     m,n,combine)
 end
 
+
 function compresscoo(
   ::Type{SparseMatrixCSR{Bi,Tv,Ti}},
   I::AbstractVector,
@@ -331,4 +332,22 @@ Base.axes(v::EltypeVector) = axes(v.parent)
 Base.@propagate_inbounds Base.getindex(v::EltypeVector{T},i::Integer) where T = convert(T,v.parent[i])
 Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.parent[i] = w)
 Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
+
+function precompute_nzindex(A,I,J)
+    K = zeros(Int32,length(I))
+    for (p,(i,j)) in enumerate(zip(I,J))
+        K[p] = nzindex(A,i,j)
+    end
+    K
+end
+
+function setcoofast!(A,V,K)
+    LinearAlgebra.fillstored!(A,0)
+    A_nz = nonzeros(A)
+    for (k,v) in zip(K,V)
+        A_nz[k] += v
+    end
+    A
+end
+
 

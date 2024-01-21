@@ -34,6 +34,9 @@ export allocate_gather
 export scatter
 export scatter!
 export allocate_scatter
+export multicast
+export multicast!
+export allocate_multicast
 export emit
 export emit!
 export allocate_emit
@@ -62,6 +65,8 @@ export PRange
 export uniform_partition
 export variable_partition
 export partition_from_color
+export trivial_partition
+export renumber_partition
 export AbstractLocalIndices
 export OwnAndGhostIndices
 export LocalIndices
@@ -88,6 +93,7 @@ export ghost_to_local
 export local_to_own
 export local_to_ghost
 export replace_ghost
+export remove_ghost
 export union_ghost
 export find_owner
 export assemble!
@@ -97,6 +103,12 @@ export partition
 export assembly_graph
 export assembly_neighbors
 export assembly_local_indices
+export map_local_to_global!
+export map_global_to_local!
+export map_ghost_to_global!
+export map_global_to_ghost!
+export map_own_to_global!
+export map_global_to_own!
 include("p_range.jl")
 
 export local_values
@@ -105,6 +117,8 @@ export ghost_values
 export OwnAndGhostVectors
 export PVector
 export pvector
+export old_pvector!
+export pvector
 export pvector!
 export pfill
 export pzeros
@@ -112,13 +126,27 @@ export pones
 export prand
 export prandn
 export consistent!
+export assemble
+export consistent
+export repartition
+export repartition!
 include("p_vector.jl")
 
+export OldPSparseMatrix
+export SplitMatrix
 export PSparseMatrix
+export old_psparse
 export psparse
 export psparse!
+export split_format
+export split_format!
+export old_psparse!
 export own_ghost_values
 export ghost_own_values
+export own_own_values
+export ghost_ghost_values
+export psystem
+export psystem!
 include("p_sparse_matrix.jl")
 
 export PTimer

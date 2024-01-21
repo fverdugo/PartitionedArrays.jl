@@ -31,7 +31,7 @@ function p_sparse_matrix_tests(distribute)
 
     row_partition = uniform_partition(rank,n)
     col_partition = row_partition
-    A = psparse!(I,J,V,row_partition,col_partition) |> fetch
+    A = old_psparse!(I,J,V,row_partition,col_partition) |> fetch
 
 
     n = 10
@@ -47,7 +47,7 @@ function p_sparse_matrix_tests(distribute)
         a
     end
 
-    A = PSparseMatrix(values,row_partition,col_partition)
+    A = OldPSparseMatrix(values,row_partition,col_partition)
     x = pfill(3.0,col_partition)
     b = similar(x,axes(A,1))
     mul!(b,A,x)
@@ -85,7 +85,7 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
-    A = psparse!(I,J,V,row_partition,col_partition) |> fetch
+    A = old_psparse!(I,J,V,row_partition,col_partition) |> fetch
     assemble!(A) |> wait
     x = pfill(1.5,partition(axes(A,2)))
 
@@ -122,5 +122,197 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
+    # New stuff
+
+    n = 10
+    parts = rank
+    row_partition = uniform_partition(parts,n)
+    col_partition = row_partition
+
+    I,J,V = map(parts) do part
+        if part == 1
+            [1,2,1,2,2], [2,6,1,2,1], [1.0,2.0,30.0,10.0,1.0]
+        elseif part == 2
+            [3,3,4,6], [3,9,4,2], [10.0,2.0,30.0,2.0]
+        elseif part == 3
+            [5,5,6,7], [5,6,6,7], [10.0,2.0,30.0,1.0]
+        else
+            [9,9,8,10,6], [9,3,8,10,5], [10.0,2.0,30.0,50.0,2.0]
+        end
+    end |> tuple_of_arrays
+
+    A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=false) |> fetch
+    B = split_format(A)
+    B, cache = split_format(A,reuse=true)
+    split_format!(B,A,cache)
+    C = assemble(B) |> fetch
+    C,cache = assemble(B,reuse=true) |> fetch
+    assemble!(C,B,cache) |> wait
+    display(C)
+
+    A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=false) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=true) |> fetch
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
+    display(A)
+    # TODO Assembly in non-split_format format not yet implemented
+    #A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=true) |> fetch
+    
+    A,cache = psparse(I,J,V,row_partition,col_partition,reuse=true) |> fetch
+    psparse!(A,V,cache) |> wait
+
+    A_fa = psparse(I,J,V,row_partition,col_partition) |> fetch
+    rows_co = partition(axes(A_fa,2))
+    A_co = consistent(A_fa,rows_co) |> fetch
+    A_co,cache = consistent(A_fa,rows_co;reuse=true) |> fetch
+    consistent!(A_co,A_fa,cache) |> wait
+
+    n = 10
+    parts = rank
+    row_partition = uniform_partition(parts,n)
+    col_partition = row_partition
+
+    I,J,V = map(row_partition,col_partition) do rows, cols
+        i = collect(own_to_global(rows))
+        j = copy(i)
+        v = fill(2.0,length(i))
+        i,j,v
+    end |> tuple_of_arrays
+
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
+    x = pfill(3.0,axes(A,2))
+    b = similar(x,axes(A,1))
+    mul!(b,A,x)
+    map(own_values(b)) do values
+        @test all( values .== 6 )
+    end
+    consistent!(b) |> wait
+    map(partition(b)) do values
+      @test all( values .== 6 )
+    end
+
+    _A = similar(A)
+    _A = similar(A,eltype(A))
+    copy!(_A,A)
+
+    LinearAlgebra.fillstored!(A,1.0)
+    fill!(x,3.0)
+    mul!(b,A,x)
+    consistent!(b) |> wait
+    map(partition(b)) do values
+        @test all( values .== 3 )
+    end
+    
+    I,J,V = map(parts) do part
+        if part == 1
+            [1,2,1,2,2], [2,6,1,2,1], [1.0,2.0,30.0,10.0,1.0]
+        elseif part == 2
+            [3,3,4,6], [3,9,4,2], [10.0,2.0,30.0,2.0]
+        elseif part == 3
+            [5,5,6,7], [5,6,6,7], [10.0,2.0,30.0,1.0]
+        else
+            [9,9,8,10,6], [9,3,8,10,5], [10.0,2.0,30.0,50.0,2.0]
+        end
+    end |> tuple_of_arrays
+
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
+    x = pones(partition(axes(A,2)))
+    y = A*x
+    @test isa(y,PVector)
+    dy = y - y
+
+    x = IterativeSolvers.cg(A,y)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
+
+    x = pfill(0.0,partition(axes(A,2)))
+    IterativeSolvers.cg!(x,A,y)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
+    fill!(x,0.0)
+
+    x = A\y
+    @test isa(x,PVector)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
+
+    factors = lu(A)
+    x .= 0
+    ldiv!(x,factors,y)
+    r = A*x-y
+    @test norm(r) < 1.0e-9
+
+    lu!(factors,A)
+    x .= 0
+    ldiv!(x,factors,y)
+    r = A*x-y
+    map(i->fill!(i,100),ghost_values(r))
+    @test norm(r) < 1.0e-9
+    display(A)
+
+    rows_trivial = trivial_partition(parts,n)
+    cols_trivial = rows_trivial
+    values = map(collect∘local_to_global,rows_trivial)
+    w0 = PVector(values,rows_trivial)
+    values = map(collect∘local_to_global,row_partition)
+    v = PVector(values,row_partition)
+    v0 = copy(v)
+    w = repartition(v,rows_trivial) |> fetch
+    @test w == w0
+    repartition!(w,v) |> wait
+    @test w == w0
+    w, cache = repartition(v,rows_trivial;reuse=true) |> fetch
+    repartition!(w,v,cache) |> wait
+    @test w == w0
+    repartition!(v,w,cache;reversed=true) |> wait
+    @test v == v0
+
+    B = repartition(A,rows_trivial,cols_trivial) |> fetch
+    B,cache = repartition(A,rows_trivial,cols_trivial;reuse=true) |> fetch
+    repartition!(B,A,cache)
+
+    B,w = repartition(A,v,rows_trivial,cols_trivial) |> fetch
+    B,w,cache = repartition(A,v,rows_trivial,cols_trivial,reuse=true) |> fetch
+    repartition!(B,w,A,v,cache) |> wait
+
+    I2 = map(copy,I)
+    V2 = map(copy,I)
+    rows = row_partition
+    cols = col_partition
+    v = pvector(I2,V2,rows) |> fetch
+    v,cache = pvector(I2,V2,rows;reuse=true) |> fetch
+    pvector!(v,V,cache) |> wait
+
+    v = pvector(I2,V2,rows;assemble=false) |> fetch
+    w = assemble(v) |> fetch
+    w = assemble(v,rows) |> fetch
+    w,cache = assemble(v,reuse=true) |> fetch
+    assemble!(w,v,cache) |> wait
+
+    A_cols = partition(axes(A,2))
+    u = consistent(w,A_cols) |> fetch
+    u,cache = consistent(w,A_cols;reuse=true) |> fetch
+    consistent!(u,w,cache) |> wait
+
+    A,b = psystem(I,J,V,I2,V2,rows,cols) |> fetch
+    A,b,cache = psystem(I,J,V,I2,V2,rows,cols,reuse=true) |> fetch
+    psystem!(A,b,V,V2,cache) |> wait
+
+    display((A,A))
+    display((b,b))
+
+    LinearAlgebra.fillstored!(A,3)
+    B = 2*A
+    @test eltype(partition(B)) == eltype(partition(A))
+    B = A*2
+    @test eltype(partition(B)) == eltype(partition(A))
+    B = +A
+    @test eltype(partition(B)) == eltype(partition(A))
+    B = -A
+    @test eltype(partition(B)) == eltype(partition(A))
+    C = B+A
+    @test eltype(partition(C)) == eltype(partition(A))
+    C = B-A
+    @test eltype(partition(C)) == eltype(partition(A))
+    
 end
 

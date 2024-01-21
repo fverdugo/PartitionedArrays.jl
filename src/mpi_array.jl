@@ -196,6 +196,11 @@ function Base.show(io::IO,k::MIME"text/plain",data::MPIArray)
         MPI.Barrier(data.comm)
     end
 end
+function Base.show(io::IO,data::MPIArray)
+    if MPI.Comm_rank(data.comm) == 0
+        print(io,"MPIArray(…)")
+    end
+end
 
 getany(a::MPIArray) = a.item
 i_am_main(a::MPIArray) = MPI.Comm_rank(a.comm)+1 == MAIN
@@ -365,7 +370,7 @@ function scatter_impl!(
     rcv
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T
     @assert rcv.comm === snd.comm
@@ -377,7 +382,7 @@ function emit_impl!(
     MPI.Bcast!(rcv.item_ref,root,comm)
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T<:AbstractVector
     @assert rcv.comm === snd.comm
@@ -461,6 +466,14 @@ function Base.collect(a::MPIArray)
     c = MPIArray(b,a.comm,size(a))
     gather!(c,a,destination=:all)
     c.item
+end
+
+function Base.all(a::MPIArray)
+    reduce(&,a;init=true)
+end
+function Base.all(p::Function,a::MPIArray)
+    b = map(p,a)
+    all(b)
 end
 
 function exchange_impl!(
@@ -577,7 +590,7 @@ function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
         end
         rcv_ids=T[]
         done=false
-        barrier_emitted=false
+        barrier_multicastted=false
         all_sends_done=false
         barrier_req=nothing
         status = Ref(MPI.STATUS_ZERO)
@@ -594,13 +607,13 @@ function find_rcv_ids_ibarrier(snd_ids::MPIArray{<:AbstractVector{T}}) where T
                 @boundscheck @assert tag_rcv == tag "Inconsistent tag in ExchangeGraph_impl()!" 
             end     
     
-            if (barrier_emitted)
+            if (barrier_multicastted)
                 done=MPI.Test(barrier_req)
             else
                 all_sends_done = MPI.Testall(requests)
                 if (all_sends_done)
                     barrier_req=MPI.Ibarrier(comm)
-                    barrier_emitted=true
+                    barrier_multicastted=true
                 end
             end
         end

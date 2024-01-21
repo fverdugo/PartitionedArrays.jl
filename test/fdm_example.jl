@@ -82,11 +82,11 @@ function fdm_example(distribute)
     toc!(t,"IJV")
     I,J,V = tuple_of_arrays(IJV)
 
-    # Build the PSparseMatrix from the coo-vectors
+    # Build the OldPSparseMatrix from the coo-vectors
     # and the data distribution described by rows and cols.
     tic!(t)
     tentative_col_partition = row_partition
-    A = psparse!(I,J,V,row_partition,tentative_col_partition,discover_rows=false) |> fetch
+    A = psparse(I,J,V,row_partition,tentative_col_partition,discover_rows=false) |> fetch
     toc!(t,"A")
     cols = axes(A,2)
 

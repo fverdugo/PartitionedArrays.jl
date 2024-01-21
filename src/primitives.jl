@@ -338,8 +338,13 @@ function scatter_impl!(rcv,snd,source,::Type{T}) where T
     rcv
 end
 
+# Deprecated
+emit(args...;kwargs...) = multicast(args...;kwargs...)
+emit!(args...;kwargs...) = multicast!(args...;kwargs...)
+allocate_emit(args...;kwargs...) = allocate_multicast(args...;kwargs...)
+
 """
-    emit(snd;source=MAIN)
+    multicast(snd;source=MAIN)
 
 Copy `snd[source]` into a new array of the same size and type as `snd`.
 
@@ -355,7 +360,7 @@ julia> a = [0,0,2,0]
  2
  0
 
-julia> emit(a,source=3)
+julia> multicast(a,source=3)
 4-element Vector{Int64}:
  2
  2
@@ -363,37 +368,37 @@ julia> emit(a,source=3)
  2
 ```
 """
-function emit(snd;source=MAIN)
+function multicast(snd;source=MAIN)
     T = eltype(snd)
-    emit_impl(snd,source,T)
+    multicast_impl(snd,source,T)
 end
 
-function emit_impl(snd,source,::Type{T}) where T
+function multicast_impl(snd,source,::Type{T}) where T
     @assert source !== :all "All to all not implemented"
-    rcv = allocate_emit(snd;source)
-    emit!(rcv,snd;source)
+    rcv = allocate_multicast(snd;source)
+    multicast!(rcv,snd;source)
     rcv
 end
 
 """
-    allocate_emit(snd;source=1)
+    allocate_multicast(snd;source=1)
 
-Allocate an array to be used in the first argument of [`emit!`](@ref).
+Allocate an array to be used in the first argument of [`multicast!`](@ref).
 """
-function allocate_emit(snd;source=1)
+function allocate_multicast(snd;source=1)
     T = eltype(snd)
-    allocate_emit_impl(snd,source,T)
+    allocate_multicast_impl(snd,source,T)
 end
 
-function allocate_emit_impl(snd,source,::Type{T}) where T
+function allocate_multicast_impl(snd,source,::Type{T}) where T
     @assert source !== :all "Scatter all not implemented"
     similar(snd)
 end
 
-function allocate_emit_impl(snd,source,::Type{T}) where T<:AbstractVector
+function allocate_multicast_impl(snd,source,::Type{T}) where T<:AbstractVector
     @assert source !== :all "Scatter all not implemented"
     n = map(length,snd)
-    n_all = emit(n;source)
+    n_all = multicast(n;source)
     S = eltype(T)
     map(n_all) do n
         Vector{S}(undef,n)
@@ -401,18 +406,18 @@ function allocate_emit_impl(snd,source,::Type{T}) where T<:AbstractVector
 end
 
 """
-    emit!(rcv,snd;source=1)
+    multicast!(rcv,snd;source=1)
 
-In-place version of [`emit`](@ref). The destination array `rcv`
-can be generated with the helper function [`allocate_emit`](@ref).
+In-place version of [`multicast`](@ref). The destination array `rcv`
+can be generated with the helper function [`allocate_multicast`](@ref).
 It returns `rcv`.
 """
-function emit!(rcv,snd;source=1)
+function multicast!(rcv,snd;source=1)
     T = eltype(snd)
-    emit_impl!(rcv,snd,source,T)
+    multicast_impl!(rcv,snd,source,T)
 end
 
-function emit_impl!(rcv,snd,source,::Type{T}) where T
+function multicast_impl!(rcv,snd,source,::Type{T}) where T
     @assert source !== :all "Emit all not implemented"
     for i in eachindex(rcv)
         rcv[i] = snd[source]
@@ -569,12 +574,16 @@ function default_find_rcv_ids(::AbstractArray)
 end 
 
 """
-    ExchangeGraph(snd; symmetric=false [,neighbors,find_rcv_ids])
+    ExchangeGraph(snd; symmetric=false [rcv, neighbors,find_rcv_ids])
 
 Create an `ExchangeGraph` object only from the lists of outgoing 
-neighbors in `snd`. If `symmetric==true`, then the incoming neighbors
+neighbors in `snd`. In case the list of incoming neighbors is
+known, it can be passed as key-word argument by setting `rcv` and the rest of
+key-word arguments are ignored.
+If `symmetric==true`, then the incoming neighbors
 are set to `snd`. Otherwise, either the optional `neighbors` or 
-`find_rcv_ids` are considered, in that order. `neighbors` is also an `ExchangeGraph`
+`find_rcv_ids` are considered, in that order. 
+`neighbors` is also an `ExchangeGraph`
 that contains a super set of the outgoing and incoming neighbors
 associated with `snd`. It is used to find the incoming neighbors `rcv`
 efficiently. If `neighbors` are not provided, then `find_rcv_ids` 
@@ -583,10 +592,13 @@ is used (either the user-provided or a default one).
 rcv side of the exchange graph out of the snd side information.
 """
 function ExchangeGraph(snd;
+                       rcv=nothing,
                        neighbors=nothing,
                        symmetric=false,
                        find_rcv_ids=default_find_rcv_ids(snd))
-    if symmetric
+    if (rcv != nothing)
+        ExchangeGraph(snd,rcv)
+    elseif symmetric
         ExchangeGraph(snd,snd)
     elseif (neighbors != nothing)
         ExchangeGraph_impl_with_neighbors(snd,neighbors)

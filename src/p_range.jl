@@ -198,6 +198,10 @@ only makes sense if `indices` stores ghost ids in separate vectors like in
 """
 function replace_ghost end
 
+function remove_ghost(indices)
+    replace_ghost(indices,Int[],Int32[])
+end
+
 function filter_ghost(indices,gids,owners)
     set = Set{Int}()
     part_owner = part_id(indices)
@@ -270,6 +274,26 @@ function to_global!(I,indices)
     local_to_global_indices = local_to_global(indices)
     for k in 1:length(I)
         I[k] = local_to_global_indices[I[k]]
+    end
+    I
+end
+
+map_global_to_local!(I,indices) = map_x_to_y!(global_to_local,I,indices)
+map_global_to_ghost!(I,indices) = map_x_to_y!(global_to_ghost,I,indices)
+map_global_to_own!(I,indices) = map_x_to_y!(global_to_own,I,indices)
+map_local_to_global!(I,indices) = map_x_to_y!(local_to_global,I,indices)
+map_local_to_ghost!(I,indices) = map_x_to_y!(local_to_ghost,I,indices)
+map_local_to_own!(I,indices) = map_x_to_y!(local_to_own,I,indices)
+map_own_to_global!(I,indices) = map_x_to_y!(own_to_global,I,indices)
+map_own_to_local!(I,indices) = map_x_to_y!(own_to_local,I,indices)
+map_ghost_to_global!(I,indices) = map_x_to_y!(ghost_to_global,I,indices)
+map_ghost_to_local!(I,indices) = map_x_to_y!(ghost_to_local,I,indices)
+
+function map_x_to_y!(x_to_y,I,indices)
+    local_to_global_indices = x_to_y(indices)
+    for k in 1:length(I)
+        Ik = I[k]
+        I[k] = local_to_global_indices[Ik]
     end
     I
 end
@@ -718,7 +742,7 @@ The argument `global_to_color` is the usual output of such tools.
 """
 function partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
     if multicast == true
-        global_to_owner = getany(emit(global_to_color;source))
+        global_to_owner = getany(PartitionedArrays.multicast(global_to_color;source))
     else
         global_to_owner = global_to_color
     end
@@ -731,6 +755,41 @@ function partition_from_color(ranks,global_to_color;multicast=false,source=MAIN)
         ghost = GhostIndices(nglobal,ghost_to_global,ghost_to_owner)
         OwnAndGhostIndices(own,ghost,global_to_owner)
     end
+end
+
+"""
+    trivial_partition(ranks,n;destination=MAIN)
+
+!!! warning
+    Document me!
+"""
+function trivial_partition(ranks,n;destination=MAIN)
+    n_own = map(ranks) do rank
+        rank == destination ? Int(n) : 0
+    end
+    partition_in_main = variable_partition(n_own,n)
+    partition_in_main
+end
+
+function renumber_partition(partition_in)
+    own_ids = map(own_to_global,partition_in)
+    if eltype(own_ids) <: BlockPartitionOwnToGlobal{1}
+        return partition_in
+    end
+    n_global = PartitionedArrays.getany(map(global_length,partition_in))
+    n_own = map(own_length,partition_in)
+    new_gids = variable_partition(n_own,n_global)
+    v = PVector{Vector{Int}}(undef,partition_in)
+    map(own_values(v),new_gids) do own_v, new_gids
+        own_v .= own_to_global(new_gids)
+    end
+    consistent!(v) |> wait
+    I = ghost_values(v)
+    I_owner = map(ghost_to_owner,partition_in)
+    new_ids2 = map(union_ghost,new_gids,I,I_owner)
+    perm = map(PartitionedArrays.local_permutation,partition_in)
+    partition_out = map(permute_indices,new_ids2,perm)
+    partition_out
 end
 
 function local_range(p,np,n,ghost=false,periodic=false)
@@ -1185,7 +1244,7 @@ assembly_cache(a::OwnAndGhostIndices) = a.assembly_cache
 local_permutation(a::OwnAndGhostIndices) = Int32(1):Int32(local_length(a))
 
 function replace_ghost(a::OwnAndGhostIndices,ghost::GhostIndices)
-    OwnAndGhostIndices(a.own,ghost)
+    OwnAndGhostIndices(a.own,ghost,a.global_to_owner)
 end
 
 function find_owner(indices,global_ids,::Type{<:OwnAndGhostIndices{T}}) where T

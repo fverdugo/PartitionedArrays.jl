@@ -19,9 +19,9 @@ allocate_scatter
 ## Emit
 
 ```@docs
-emit
-emit!
-allocate_emit
+multicast
+multicast!
+allocate_multicast
 ```
 
 ## Scan

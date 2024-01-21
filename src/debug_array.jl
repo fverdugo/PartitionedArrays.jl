@@ -90,6 +90,9 @@ function Base.show(io::IO,k::MIME"text/plain",data::DebugArray)
         println(io,"$index = $(data.items[i])")
     end
 end
+function Base.show(io::IO,data::DebugArray)
+    print(io,"DebugArray(…)")
+end
 getany(a::DebugArray) = getany(a.items)
 
 function Base.similar(a::DebugArray,::Type{T},dims::Dims) where T
@@ -108,6 +111,14 @@ end
 function Base.map!(f,r::DebugArray,args::DebugArray...)
     map!(f,r.items,map(i->i.items,args)...)
     r
+end
+
+function Base.all(a::DebugArray)
+    reduce(&,a;init=true)
+end
+function Base.all(p::Function,a::DebugArray)
+    b = map(p,a)
+    all(b)
 end
 
 function gather_impl!(
@@ -134,16 +145,16 @@ function scatter_impl!(
     scatter_impl!(rcv.items,snd.items,source,T)
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::DebugArray,snd::DebugArray,
     source,::Type{T}) where T
-    emit_impl!(rcv.items,snd.items,source,T)
+    multicast_impl!(rcv.items,snd.items,source,T)
 end
 
-function emit_impl!(
+function multicast_impl!(
     rcv::DebugArray,snd::DebugArray,
     source,::Type{T}) where T<:AbstractVector
-    emit_impl!(rcv.items,snd.items,source,T)
+    multicast_impl!(rcv.items,snd.items,source,T)
 end
 
 Base.reduce(op,a::DebugArray;kwargs...) = reduce(op,a.items;kwargs...)
@@ -162,7 +173,7 @@ function exchange_impl!(
     ::Type{T}) where T
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
     @async begin
-        sleep(0.2) # This is to make more likely to have errors if we don't wait
+        yield() # This is to make more likely to have errors if we don't wait
         exchange_impl!(rcv.items,snd.items,g,T) |> wait
         rcv
     end
@@ -175,7 +186,7 @@ function exchange_impl!(
     ::Type{T}) where T <: AbstractVector
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
     @async begin
-        sleep(0.2) # This is to make more likely to have errors if we don't wait
+        yield() # This is to make more likely to have errors if we don't wait
         exchange_impl!(rcv.items,snd.items,g,T) |> wait
         rcv
     end

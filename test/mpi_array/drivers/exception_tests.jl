@@ -10,7 +10,7 @@ function exception_tests(distribute)
             0
         end
     end
-    p = emit(p_main)
+    p = multicast(p_main)
     map(parts,p) do part,part_fail
         @assert  part_fail != part
     end
