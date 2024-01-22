@@ -1423,7 +1423,7 @@ end
 function consistent(A::PSparseMatrix,rows_co;kwargs...)
     @assert A.assembled
     T = eltype(partition(A))
-    psparse_consitent_impl(A,T,rows_co;kwargs...)
+    psparse_consistent_impl(A,T,rows_co;kwargs...)
 end
 
 """
@@ -1432,10 +1432,10 @@ end
 function consistent!(B::PSparseMatrix,A::PSparseMatrix,cache)
     @assert A.assembled
     T = eltype(partition(A))
-    psparse_consitent_impl!(B,A,T,cache)
+    psparse_consistent_impl!(B,A,T,cache)
 end
 
-function psparse_consitent_impl(
+function psparse_consistent_impl(
     A,
     ::Type{<:AbstractSplitMatrix},
     rows_co;
@@ -1576,7 +1576,7 @@ function psparse_consitent_impl(
     end
 end
 
-function psparse_consitent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
+function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     function setup_snd(A,cache)
         k_snd_data = cache.k_snd.data
         V_snd_data = cache.V_snd.data
