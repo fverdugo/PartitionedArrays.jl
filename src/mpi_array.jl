@@ -281,13 +281,21 @@ function gather_impl!(
     comm = snd.comm
     if isa(destination,Integer)
         root = destination-1
-        if MPI.Comm_rank(comm) == root
-            @assert length(rcv.item) == MPI.Comm_size(comm)
-            rcv.item[destination] = snd.item
-            rcv_buffer = MPI.UBuffer(rcv.item,1)
-            MPI.Gather!(MPI.IN_PLACE,rcv_buffer,root,comm)
+        if isbitstype(T)
+            if MPI.Comm_rank(comm) == root
+                @assert length(rcv.item) == MPI.Comm_size(comm)
+                rcv.item[destination] = snd.item
+                rcv_buffer = MPI.UBuffer(rcv.item,1)
+                MPI.Gather!(MPI.IN_PLACE,rcv_buffer,root,comm)
+            else
+                MPI.Gather!(snd.item_ref,nothing,root,comm)
+            end
         else
-            MPI.Gather!(snd.item_ref,nothing,root,comm)
+            if MPI.Comm_rank(comm) == root
+                rcv.item[:] = MPI.gather(snd.item,comm;root)
+            else
+                MPI.gather(snd.item,comm;root)
+            end
         end
     else
         @assert destination === :all
@@ -330,17 +338,25 @@ end
 function scatter_impl!(
     rcv::MPIArray,snd::MPIArray,
     source,::Type{T}) where T
-    @assert source !== :all "All to all not implemented"
-    @assert rcv.comm === snd.comm
-    @assert eltype(snd.item) == typeof(rcv.item)
     comm = snd.comm
     root = source - 1
-    if MPI.Comm_rank(comm) == root
-        snd_buffer = MPI.UBuffer(snd.item,1)
-        rcv.item = snd.item[source]
-        MPI.Scatter!(snd_buffer,MPI.IN_PLACE,root,comm)
+    @assert source !== :all "All to all not implemented"
+    @assert rcv.comm === snd.comm
+    if isbitstype(T)
+        @assert eltype(snd.item) == typeof(rcv.item)
+        if MPI.Comm_rank(comm) == root
+            snd_buffer = MPI.UBuffer(snd.item,1)
+            rcv.item = snd.item[source]
+            MPI.Scatter!(snd_buffer,MPI.IN_PLACE,root,comm)
+        else
+            MPI.Scatter!(nothing,rcv.item_ref,root,comm)
+        end
     else
-        MPI.Scatter!(nothing,rcv.item_ref,root,comm)
+        if MPI.Comm_rank(comm) == root
+            rcv.item_ref[] = MPI.scatter(snd.item,comm;root)
+        else
+            rcv.item_ref[] = MPI.scatter(nothing,comm;root)
+        end
     end
     rcv
 end
