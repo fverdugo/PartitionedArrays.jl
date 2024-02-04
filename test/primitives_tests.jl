@@ -75,6 +75,18 @@ function primitives_tests(distribute)
        @test snd2 == snd3
    end
 
+   np = length(rank)
+   rcv3 = map_main(rank) do rank
+       fill(NonIsBitsType([2]),np)
+   end
+   snd3 = allocate_scatter(rcv3)
+   scatter!(snd3,rcv3)
+   snd3 = scatter(rcv3)
+   rcv4 = gather(snd3)
+   map(rcv4,rcv2) do rcv4,rcv2
+       @test rcv4 == rcv2
+   end
+
    rcv = multicast(rank,source=2)
    map(rcv) do rcv
        @test rcv == 2
