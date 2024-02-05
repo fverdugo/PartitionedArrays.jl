@@ -1,6 +1,11 @@
 
 using Test
 
+struct NonIsBitsType{T}
+    data::Vector{T}
+end
+Base.:(==)(a::NonIsBitsType,b::NonIsBitsType) = a.data == b.data
+
 function primitives_tests(distribute)
 
    rank = distribute(LinearIndices((2,2)))
@@ -59,6 +64,27 @@ function primitives_tests(distribute)
    rcv = gather(snd,destination=:all)
    map(rcv) do rcv
        @test rcv == [[1],[1,2],[1,2,3],[1,2,3,4]]
+   end
+
+   snd2 = map(rank) do rank
+       NonIsBitsType([2])
+   end
+   rcv2 = gather(snd2)
+   snd3 = scatter(rcv2)
+   map(snd2,snd3) do snd2,snd3
+       @test snd2 == snd3
+   end
+
+   np = length(rank)
+   rcv3 = map_main(rank) do rank
+       fill(NonIsBitsType([2]),np)
+   end
+   snd3 = allocate_scatter(rcv3)
+   scatter!(snd3,rcv3)
+   snd3 = scatter(rcv3)
+   rcv4 = gather(snd3)
+   map(rcv4,rcv2) do rcv4,rcv2
+       @test rcv4 == rcv2
    end
 
    rcv = multicast(rank,source=2)

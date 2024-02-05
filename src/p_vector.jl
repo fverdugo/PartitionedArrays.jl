@@ -1076,4 +1076,44 @@ function repartition!(w::PVector,v::PVector,cache;reversed=false)
     end
 end
 
+function find_local_indices(node_to_mask::PVector)
+    n_own_dofs = map(count,own_values(node_to_mask))
+    n_dofs = sum(n_own_dofs)
+    dof_partition = variable_partition(n_own_dofs,n_dofs)
+    node_partition = partition(axes(node_to_mask,1))
+    node_to_global_dof = pzeros(Int,node_partition)
+    function fill_own_dofs!(own_node_to_global_dof,own_node_to_boundary,dofs)
+        own_to_global_dof = own_to_global(dofs)
+        own_node_to_global_dof[own_node_to_boundary] = own_to_global_dof
+    end
+    map(fill_own_dofs!,own_values(node_to_global_dof),own_values(node_to_mask),dof_partition)
+    consistent!(node_to_global_dof) |> wait
+    function add_ghost_dofs(ghost_node_to_global_dof,nodes,dofs)
+        ghost_node_to_owner = ghost_to_owner(nodes)
+        free_ghost_nodes = findall(global_dof->global_dof!=0,ghost_node_to_global_dof)
+        owners = view(ghost_node_to_owner,free_ghost_nodes)
+        ghost_dofs = view(ghost_node_to_global_dof,free_ghost_nodes)
+        union_ghost(dofs,ghost_dofs,owners)
+    end
+    dof_partition = map(add_ghost_dofs,ghost_values(node_to_global_dof),node_partition,dof_partition)
+    neighbors = assembly_graph(node_partition)
+    assembly_neighbors(dof_partition;neighbors)
+    node_to_local_dof = pzeros(Int32,node_partition)
+    dof_to_local_node = pzeros(Int32,dof_partition)
+    function finalize!(local_node_to_global_dof,local_node_to_local_dof,local_dof_to_local_node,dofs)
+        global_to_local_dof = global_to_local(dofs)
+        n_local_nodes = length(local_node_to_global_dof)
+        for local_node in 1:n_local_nodes
+            global_dof = local_node_to_global_dof[local_node]
+            if global_dof == 0
+                continue
+            end
+            local_dof = global_to_local_dof[global_dof]
+            local_node_to_local_dof[local_node] = local_dof
+            local_dof_to_local_node[local_dof] = local_node
+        end
+    end
+    map(finalize!,partition(node_to_global_dof),partition(node_to_local_dof),partition(dof_to_local_node),dof_partition)
+    dof_to_local_node, node_to_local_dof
+end
 

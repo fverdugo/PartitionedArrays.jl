@@ -130,6 +130,7 @@ export assemble
 export consistent
 export repartition
 export repartition!
+export find_local_indices
 include("p_vector.jl")
 
 export OldPSparseMatrix

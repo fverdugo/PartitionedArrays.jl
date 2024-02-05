@@ -16,7 +16,7 @@ scatter!
 allocate_scatter
 ```
 
-## Emit
+## Multicast
 
 ```@docs
 multicast

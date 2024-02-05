@@ -5,10 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - Unreleased
+
+### Added
+
+- Gather/scatter for non isbitstype objects.
+- Function `find_local_indices`.
 
 ## [0.4.0] - 2024-01-21
 
-## Changed
+### Changed
 
 - Major refactoring in `PSparseMatrix` (and in `PVector` in a lesser extent).
 The old code is still available (but deprecated), and can be recovered applying this renaming to your code-base:
@@ -21,7 +27,7 @@ The old code is still available (but deprecated), and can be recovered applying 
 The previous "monolithic" storage is not implemented anymore for the new version of `PSparseMatrix`, but can be implemented in the new setup if needed.
 - `emit` renamed to `multicast`. The former name is still available but deprecated.
 
-## Added
+### Added
 
 - Efficient re-construction of `PSparseMatrix` and `PVector` objects.
 - Functions `assemble` and `consistent` (allocating versions of `assemble!` and `consistent!` with a slightly different
