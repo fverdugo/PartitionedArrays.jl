@@ -1056,10 +1056,10 @@ the communications needed in its setup.
 """
 function psparse(f,I,J,V,rows,cols;
         split_format=true,
+        subassembled=false,
         assembled=false,
         assemble=true,
-        discover_rows=true,
-        discover_cols=true,
+        indices = :global,
         restore_ids = true,
         assembly_neighbors_options_rows = (;),
         assembly_neighbors_options_cols = (;),
@@ -1073,50 +1073,106 @@ function psparse(f,I,J,V,rows,cols;
     # Even the matrix compression step could be
     # merged with the assembly step
 
-    map(I,J) do I,J
-        @assert I !== J
-    end
+    # Checks
+    disassembled = (!subassembled && ! assembled) ? true : false
 
-    if assembled || assemble
-        @boundscheck @assert all(i->ghost_length(i)==0,rows)
+    @assert indices in (:global,:local)
+    if count((subassembled,assembled)) == 2
+        error("Only one of the folling flags can be set to true: subassembled, assembled")
     end
-
-    if !assembled && discover_rows
-        I_owner = find_owner(rows,I)
-        rows_sa = map(union_ghost,rows,I,I_owner)
-        assembly_neighbors(rows_sa;assembly_neighbors_options_rows...)
-    else
-        rows_sa = rows
-    end
-    if discover_cols
-        J_owner = find_owner(cols,J)
-        cols_sa = map(union_ghost,cols,J,J_owner)
-        if ! assemble
-            assembly_neighbors(rows_sa;assembly_neighbors_options_cols...)
+    if indices === :global
+        map(I,J) do I,J
+            @assert I !== J
         end
-    else
+    end
+
+    if disassembled
+        # TODO If assemble==true, we can (should) optimize the code
+        # to do the conversion from disassembled to (fully) assembled split format
+        # in a single shot.
+        @assert indices === :global
+        I_owner = find_owner(rows,I)
+        J_owner = find_owner(cols,J)
+        rows_sa = map(union_ghost,rows,I,I_owner)
+        cols_sa = map(union_ghost,cols,J,J_owner)
+        assembly_neighbors(rows_sa;assembly_neighbors_options_rows...)
+        if ! assemble
+            # We only need this if we want a subassembled output.
+            # For assembled output, this call will be deleted when optimizing
+            # the code to do the conversions in a single shot.
+            assembly_neighbors(cols_sa;assembly_neighbors_options_cols...)
+        end
+        map(map_global_to_local!,I,rows_sa)
+        map(map_global_to_local!,J,cols_sa)
+        values_sa = map(f,I,J,V,map(local_length,rows_sa),map(local_length,cols_sa))
+        if val_parameter(reuse)
+            K = map(precompute_nzindex,values_sa,I,J)
+        end
+        if restore_ids
+            map(map_local_to_global!,I,rows_sa)
+            map(map_local_to_global!,J,cols_sa)
+        end
+        A = PSparseMatrix(values_sa,rows_sa,cols_sa,assembled)
+        if split_format
+            B,cacheB = PartitionedArrays.split_format(A;reuse=true)
+        else
+            B,cacheB = A,nothing
+        end
+        if assemble
+            t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
+        else
+            t = @async B,cacheB
+        end
+    elseif subassembled
+        rows_sa = rows
         cols_sa = cols
-    end
-    map(map_global_to_local!,I,rows_sa)
-    map(map_global_to_local!,J,cols_sa)
-    values_sa = map(f,I,J,V,map(local_length,rows_sa),map(local_length,cols_sa))
-    if val_parameter(reuse)
-        K = map(precompute_nzindex,values_sa,I,J)
-    end
-    if restore_ids
-        map(map_local_to_global!,I,rows_sa)
-        map(map_local_to_global!,J,cols_sa)
-    end
-    A = PSparseMatrix(values_sa,rows_sa,cols_sa,assembled)
-    if split_format
-        B,cacheB = PartitionedArrays.split_format(A;reuse=true)
-    else
-        B,cacheB = A,nothing
-    end
-    if assemble
-        t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
-    else
+        if indices === :global
+            map(map_global_to_local!,I,rows_sa)
+            map(map_global_to_local!,J,cols_sa)
+        end
+        values_sa = map(f,I,J,V,map(local_length,rows_sa),map(local_length,cols_sa))
+        if val_parameter(reuse)
+            K = map(precompute_nzindex,values_sa,I,J)
+        end
+        if indices === :global && restore_ids
+            map(map_local_to_global!,I,rows_sa)
+            map(map_local_to_global!,J,cols_sa)
+        end
+        A = PSparseMatrix(values_sa,rows_sa,cols_sa,assembled)
+        if split_format
+            B,cacheB = PartitionedArrays.split_format(A;reuse=true)
+        else
+            B,cacheB = A,nothing
+        end
+        if assemble
+            t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
+        else
+            t = @async B,cacheB
+        end
+    elseif assembled
+        rows_fa = rows
+        cols_fa = cols
+        if indices === :global
+            map(map_global_to_local!,I,rows_fa)
+            map(map_global_to_local!,J,cols_fa)
+        end
+        values_fa = map(f,I,J,V,map(local_length,rows_fa),map(local_length,cols_fa))
+        if val_parameter(reuse)
+            K = map(precompute_nzindex,values_fa,I,J)
+        end
+        if indices === :global && restore_ids
+            map(map_local_to_global!,I,rows_fa)
+            map(map_local_to_global!,J,cols_fa)
+        end
+        A = PSparseMatrix(values_fa,rows_fa,cols_fa,assembled)
+        if split_format
+            B,cacheB = PartitionedArrays.split_format(A;reuse=true)
+        else
+            B,cacheB = A,nothing
+        end
         t = @async B,cacheB
+    else
+        error("This line should not be reached")
     end
     if val_parameter(reuse) == false
         return @async begin
@@ -1842,14 +1898,14 @@ end
     psystem(I,J,V,I2,V2,rows,cols;kwargs...)
 """
 function psystem(I,J,V,I2,V2,rows,cols;
+        subassembled=false,
         assembled=false,
         assemble=true,
-        discover_rows=true,
-        discover_cols=true,
+        indices = :global,
         restore_ids = true,
-        reuse=Val(false),
         assembly_neighbors_options_rows = (;),
-        assembly_neighbors_options_cols = (;)
+        assembly_neighbors_options_cols = (;),
+        reuse=Val(false)
     )
 
     # TODO this is just a reference implementation
@@ -1858,19 +1914,18 @@ function psystem(I,J,V,I2,V2,rows,cols;
     # that we want to generate a matrix and a vector
 
     t1 = psparse(I,J,V,rows,cols;
+            subassembled,
             assembled,
             assemble,
-            discover_rows,
-            discover_cols,
             restore_ids,
             assembly_neighbors_options_rows,
             assembly_neighbors_options_cols,
             reuse=true)
 
     t2 = pvector(I2,V2,rows;
+            subassembled,
             assembled,
             assemble,
-            discover_rows,
             restore_ids,
             assembly_neighbors_options_rows,
             reuse=true)

@@ -573,38 +573,75 @@ instance of [`PVector`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
 function pvector(f,I,V,rows;
+        subassembled=false,
         assembled=false,
         assemble=true,
-        discover_rows=true,
         restore_ids = true,
+        indices = :global,
         reuse=Val(false),
         assembly_neighbors_options_rows = (;)
     )
 
-    if assembled || assemble
-        @boundscheck @assert all(i->ghost_length(i)==0,rows)
+    # Checks
+    disassembled = (!subassembled && ! assembled) ? true : false
+    @assert indices in (:global,:local)
+    if count((subassembled,assembled)) == 2
+        error("Only one of the folling flags can be set to true: subassembled, assembled")
     end
 
-    if !assembled && discover_rows
+    if disassembled
+        @assert indices === :global
         I_owner = find_owner(rows,I)
         rows_sa = map(union_ghost,rows,I,I_owner)
         assembly_neighbors(rows_sa;assembly_neighbors_options_rows...)
-    else
+        map(map_global_to_local!,I,rows_sa)
+        values_sa = map(f,I,V,map(local_length,rows_sa))
+        if val_parameter(reuse)
+            K = map(copy,I)
+        end
+        if restore_ids
+            map(map_local_to_global!,I,rows_sa)
+        end
+        A = PVector(values_sa,rows_sa)
+        if assemble
+            t = PartitionedArrays.assemble(A,rows;reuse=true)
+        else
+            t = @async A, nothing
+        end
+    elseif subassembled
         rows_sa = rows
-    end
-    map(map_global_to_local!,I,rows_sa)
-    values_sa = map(f,I,V,map(local_length,rows_sa))
-    if val_parameter(reuse)
-        K = map(copy,I)
-    end
-    if restore_ids
-        map(map_local_to_global!,I,rows_sa)
-    end
-    A = PVector(values_sa,rows_sa)
-    if !assembled && assemble
-        t = PartitionedArrays.assemble(A,rows;reuse=true)
+        if indices === :global
+            map(map_global_to_local!,I,rows_sa)
+        end
+        values_sa = map(f,I,V,map(local_length,rows_sa))
+        if val_parameter(reuse)
+            K = map(copy,I)
+        end
+        if indices === :global && restore_ids
+            map(map_local_to_global!,I,rows_sa)
+        end
+        A = PVector(values_sa,rows_sa)
+        if assemble
+            t = PartitionedArrays.assemble(A,rows;reuse=true)
+        else
+            t = @async A, nothing
+        end
+    elseif assembled
+        rows_fa = rows
+        if indices === :global
+            map(map_global_to_local!,I,rows_fa)
+        end
+        values_fa = map(f,I,V,map(local_length,rows_fa))
+        if val_parameter(reuse)
+            K = map(copy,I)
+        end
+        if indices === :global && restore_ids
+            map(map_local_to_global!,I,rows_fa)
+        end
+        A = PVector(values_fa,rows_fa)
+        t = @async A, nothing
     else
-        t = @async A,nothing
+        error("This line should not be reached")
     end
     if val_parameter(reuse) == false
         return @async begin
@@ -640,7 +677,6 @@ function pvector!(B,V,cache)
         t = @async B
     end
 end
-
 
 function old_pvector!(I,V,index_partition;kwargs...)
     old_pvector!(default_local_values,I,V,index_partition;kwargs...)

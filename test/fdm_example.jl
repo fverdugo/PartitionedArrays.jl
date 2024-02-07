@@ -86,7 +86,15 @@ function fdm_example(distribute)
     # and the data distribution described by rows and cols.
     tic!(t)
     tentative_col_partition = row_partition
-    A = psparse(I,J,V,row_partition,tentative_col_partition,discover_rows=false) |> fetch
+    A = psparse(I,J,V,row_partition,tentative_col_partition) |> fetch
+    toc!(t,"A")
+    cols = axes(A,2)
+
+    # The same but, avoiding any communication in psparse
+    tic!(t)
+    J_owner = find_owner(row_partition,J)
+    col_partition = map(union_ghost,row_partition,J,J_owner)
+    A = psparse(I,J,V,row_partition,col_partition;assembled=true) |> fetch
     toc!(t,"A")
     cols = axes(A,2)
 
