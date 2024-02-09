@@ -1267,13 +1267,16 @@ end
 
 function map_global_to_owner(I,global_to_owner)
     Ti = eltype(global_to_owner)
-    function map_g_to_o(g)
-        if g<1
-            return zero(Ti)
+    owners = Vector{Ti}(undef,length(I))
+    for k in 1:length(I)
+        i = I[k]
+        if i<1
+            owners[k] = zero(Ti)
+            continue
         end
-        global_to_owner[g]
+        owners[k] = global_to_owner[i]
     end
-    map_g_to_o.(I)
+    owners
 end
 
 part_id(a::OwnAndGhostIndices) = a.own.owner
