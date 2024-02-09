@@ -333,21 +333,82 @@ Base.@propagate_inbounds Base.getindex(v::EltypeVector{T},i::Integer) where T = 
 Base.@propagate_inbounds Base.setindex!(v::EltypeVector,w,i::Integer) = (v.parent[i] = w)
 Base.IndexStyle(::Type{<:EltypeVector{T,V}}) where {T,V} = IndexStyle(V)
 
+# TODO deprecated
+function setcoofast!(A,V,K)
+    sparse_matrix!(A,V,K)
+end
+
+struct FilteredCooVector{F,A,B,C,T} <: AbstractVector{T}
+    f::F
+    I::A
+    J::B
+    V::C
+    function FilteredCooVector(f::F,I::A,J::B,V::C) where {F,A,B,C}
+        T = eltype(C)
+        new{F,A,B,C,T}(f,I,J,V)
+    end
+end
+Base.size(a::FilteredCooVector) = size(a.V)
+Base.IndexStyle(::Type{<:FilteredCooVector}) = IndexLinear()
+Base.@propagate_inbounds function Base.getindex(a::FilteredCooVector,k::Int)
+    i = a.I[k]
+    j = a.J[k]
+    v = a.V[k]
+    if i < 1 || j < 1
+        return a.f(v)
+    end
+    v
+end
+
+function sparse_matrix(I,J,V,m,n;kwargs...)
+    sparse_matrix(sparse,I,J,V,m,n;kwargs...)
+end
+function sparse_matrix(f,I,J,V,m,n;reuse=Val(false),skip_out_of_bounds=true)
+    if !skip_out_of_bounds
+        I2 = I
+        J2 = J
+        V2 = V
+    elseif m*n == 0
+        Ti = eltype(I)
+        Tv = eltype(V)
+        I2 = Ti[]
+        J2 = Ti[]
+        V2 = Tv[]
+    else
+        I2 = FilteredCooVector(one,I,J,I)
+        J2 = FilteredCooVector(one,I,J,J)
+        V2 = FilteredCooVector(zero,I,J,V)
+    end
+    A = f(I2,J2,V2,m,n)
+    if val_parameter(reuse)
+        K = precompute_nzindex(A,I,J)
+        return A,K
+    end
+    A
+end
+
 function precompute_nzindex(A,I,J)
     K = zeros(Int32,length(I))
     for (p,(i,j)) in enumerate(zip(I,J))
+        if i < 1 || j < 1
+            continue
+        end
         K[p] = nzindex(A,i,j)
     end
     K
 end
 
-function setcoofast!(A,V,K)
-    LinearAlgebra.fillstored!(A,0)
+function sparse_matrix!(A,V,K;reset=true)
+    if reset
+        LinearAlgebra.fillstored!(A,0)
+    end
     A_nz = nonzeros(A)
     for (k,v) in zip(K,V)
+        if k < 1
+            continue
+        end
         A_nz[k] += v
     end
     A
 end
-
 

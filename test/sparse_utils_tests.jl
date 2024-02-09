@@ -54,6 +54,42 @@ function test_mat(T)
   @test y ≈ A[rows,cols]*x
   @test C*x ≈ A[rows,cols]*x
 
+  I = Ti[1,2,5,4,1]
+  J = Ti[3,6,1,1,3]
+  V = Tv[4,5,3,2,5]
+  m = 7
+  n = 6
+  A = sparse_matrix(I,J,V,m,n)
+  A,Acache = sparse_matrix(I,J,V,m,n;reuse=true)
+  sparse_matrix!(A,V,Acache)
+
+  I = Ti[-1]
+  J = Ti[-1]
+  V = Tv[-1]
+  m = 7
+  n = 6
+  A = sparse_matrix(I,J,V,m,n)
+  A,Acache = sparse_matrix(I,J,V,m,n;reuse=true)
+  sparse_matrix!(A,V,Acache)
+
+  I = Ti[-1]
+  J = Ti[-1]
+  V = Tv[-1]
+  m = 0
+  n = 0
+  A = sparse_matrix(I,J,V,m,n)
+  A,Acache = sparse_matrix(I,J,V,m,n;reuse=true)
+  sparse_matrix!(A,V,Acache)
+
+  I = Ti[]
+  J = Ti[]
+  V = Tv[]
+  m = 0
+  n = 0
+  A = sparse_matrix(I,J,V,m,n)
+  A,Acache = sparse_matrix(I,J,V,m,n;reuse=true)
+  sparse_matrix!(A,V,Acache)
+
 end
 
 test_mat(SparseMatrixCSC{Float64,Int})
