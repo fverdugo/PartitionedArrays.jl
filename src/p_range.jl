@@ -208,6 +208,9 @@ function filter_ghost(indices,gids,owners)
     n_new_ghost = 0
     global_to_ghost_indices = global_to_ghost(indices)
     for (global_i,owner) in zip(gids,owners)
+        if global_i < 1
+            continue
+        end
         if owner != part_owner
             ghost_i = global_to_ghost_indices[global_i]
             if ghost_i == 0 && !(global_i in set)
@@ -221,6 +224,9 @@ function filter_ghost(indices,gids,owners)
     new_ghost_i = 0
     set = Set{Int}()
     for (global_i,owner) in zip(gids,owners)
+        if global_i < 1
+            continue
+        end
         if owner != part_owner
             ghost_i = global_to_ghost_indices[global_i]
             if ghost_i == 0 && !(global_i in set)
@@ -293,6 +299,9 @@ function map_x_to_y!(x_to_y,I,indices)
     local_to_global_indices = x_to_y(indices)
     for k in 1:length(I)
         Ik = I[k]
+        if Ik < 1
+            continue
+        end
         I[k] = local_to_global_indices[Ik]
     end
     I
@@ -1251,9 +1260,23 @@ function find_owner(indices,global_ids,::Type{<:OwnAndGhostIndices{T}}) where T
     if T == Nothing
         error("Not enough data to perform this operation without communciation")
     end
-    map(indices,global_ids) do indices,global_ids
-        indices.global_to_owner[global_ids]
+    map(global_ids,indices) do global_ids, indices
+        map_global_to_owner(global_ids,indices.global_to_owner)
     end
+end
+
+function map_global_to_owner(I,global_to_owner)
+    Ti = eltype(global_to_owner)
+    owners = Vector{Ti}(undef,length(I))
+    for k in 1:length(I)
+        i = I[k]
+        if i<1
+            owners[k] = zero(Ti)
+            continue
+        end
+        owners[k] = global_to_owner[i]
+    end
+    owners
 end
 
 part_id(a::OwnAndGhostIndices) = a.own.owner
@@ -1567,7 +1590,7 @@ function find_owner(indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSiz
             start
         end
         global_to_owner = BlockPartitionGlobalToOwner(start)
-        global_to_owner[global_ids]
+        map_global_to_owner(global_ids,global_to_owner)
     end
 end
 
@@ -1600,7 +1623,7 @@ function find_owner(indices,global_ids,::Type{<:LocalIndicesWithVariableBlockSiz
             start = vcat(initial,[n+1])
         end
         global_to_owner = BlockPartitionGlobalToOwner(start)
-        global_to_owner[global_ids]
+        map_global_to_owner(global_ids,global_to_owner)
     end
 end
 

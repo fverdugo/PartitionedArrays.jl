@@ -555,9 +555,22 @@ function dense_vector(I,V,n)
     T = eltype(V)
     a = zeros(T,n)
     for (i,v) in zip(I,V)
+        if i < 1
+            continue
+        end
         a[i] += v
     end
     a
+end
+
+function dense_vector!(A,K,V)
+    fill!(A,0)
+    for (k,v) in zip(K,V)
+        if k < 1
+            continue
+        end
+        A[k] += v
+    end
 end
 
 function pvector(I,V,rows;kwargs...)
@@ -665,16 +678,10 @@ end
     pvector!(B::PVector,V,cache)
 """
 function pvector!(B,V,cache)
-    function update!(A,K,V)
-        fill!(A,0)
-        for (k,v) in zip(K,V)
-            A[k] += v
-        end
-    end
     (A,cacheB,assemble,assembled,K) = cache
     rows_sa = partition(axes(A,1))
     values_sa = partition(A)
-    map(update!,values_sa,K,V)
+    map(dense_vector!,values_sa,K,V)
     if !assembled && assemble
         t = PartitionedArrays.assemble!(B,A,cacheB)
     else

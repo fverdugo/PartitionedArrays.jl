@@ -1301,18 +1301,6 @@ function psparse_assemble_impl(
         k_rcv = JaggedArray(k_rcv_data,I_rcv.ptrs)
         (;I_rcv,J_rcv,V_rcv,k_rcv,parts_rcv)
     end
-    function setup_touched_col_ids(A,cache_rcv,cols_sa)
-        J_rcv_data = cache_rcv.J_rcv.data
-        l1 = nnz(A.own_ghost)
-        l2 = length(J_rcv_data)
-        J_aux = zeros(Int,l1+l2)
-        ghost_to_global_col = ghost_to_global(cols_sa)
-        for (p,(_,j,_)) in enumerate(nziterator(A.own_ghost))
-            J_own_ghost[p] = ghost_to_global_col[j]
-        end
-        J_aux[l1.+(1:l2)] = J_rcv_data
-        J_aux
-    end
     function setup_own_triplets(A,cache_rcv,rows_sa,cols_sa)
         nz_own_own = findnz(A.blocks.own_own)
         nz_own_ghost = findnz(A.blocks.own_ghost)
