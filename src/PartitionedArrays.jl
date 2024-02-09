@@ -20,6 +20,8 @@ export nziterator
 export nzindex
 export compresscoo
 export indextype
+export sparse_matrix
+export sparse_matrix!
 include("sparse_utils.jl")
 
 export linear_indices

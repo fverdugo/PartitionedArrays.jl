@@ -579,6 +579,7 @@ function pvector(f,I,V,rows;
         restore_ids = true,
         indices = :global,
         reuse=Val(false),
+        assembled_rows = nothing,
         assembly_neighbors_options_rows = (;)
     )
 
@@ -609,6 +610,9 @@ function pvector(f,I,V,rows;
             t = @async A, nothing
         end
     elseif subassembled
+        if assembled_rows === nothing
+            assembled_rows = map(remove_ghost,rows)
+        end
         rows_sa = rows
         if indices === :global
             map(map_global_to_local!,I,rows_sa)
@@ -622,7 +626,7 @@ function pvector(f,I,V,rows;
         end
         A = PVector(values_sa,rows_sa)
         if assemble
-            t = PartitionedArrays.assemble(A,rows;reuse=true)
+            t = PartitionedArrays.assemble(A,assembled_rows;reuse=true)
         else
             t = @async A, nothing
         end

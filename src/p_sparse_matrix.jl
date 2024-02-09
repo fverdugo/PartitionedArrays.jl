@@ -1043,7 +1043,7 @@ function psparse(f,row_partition,col_partition;assembled)
 end
 
 function psparse(I,J,V,rows,cols;kwargs...)
-    psparse(sparse,I,J,V,rows,cols;kwargs...)
+    psparse(sparse_matrix,I,J,V,rows,cols;kwargs...)
 end
 
 """
@@ -1063,6 +1063,7 @@ function psparse(f,I,J,V,rows,cols;
         restore_ids = true,
         assembly_neighbors_options_rows = (;),
         assembly_neighbors_options_cols = (;),
+        assembled_rows = nothing,
         reuse=Val(false)
     )
 
@@ -1126,6 +1127,9 @@ function psparse(f,I,J,V,rows,cols;
     elseif subassembled
         rows_sa = rows
         cols_sa = cols
+        if assembled_rows == nothing
+            assembled_rows = map(remove_ghost,rows_sa)
+        end
         if indices === :global
             map(map_global_to_local!,I,rows_sa)
             map(map_global_to_local!,J,cols_sa)
@@ -1145,7 +1149,7 @@ function psparse(f,I,J,V,rows,cols;
             B,cacheB = A,nothing
         end
         if assemble
-            t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
+            t = PartitionedArrays.assemble(B,assembled_rows;reuse=true,assembly_neighbors_options_cols)
         else
             t = @async B,cacheB
         end
@@ -1196,7 +1200,7 @@ function psparse!(C,V,cache)
     rows_sa = partition(axes(A,1))
     cols_sa = partition(axes(A,2))
     values_sa = partition(A)
-    map(setcoofast!,values_sa,V,K)
+    map(sparse_matrix!,values_sa,V,K)
     if split_format
         split_format!(B,A,cacheB)
     end
@@ -1905,6 +1909,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
         restore_ids = true,
         assembly_neighbors_options_rows = (;),
         assembly_neighbors_options_cols = (;),
+        assembled_rows = nothing,
         reuse=Val(false)
     )
 
@@ -1913,6 +1918,10 @@ function psystem(I,J,V,I2,V2,rows,cols;
     # It can be optimized to exploit the fact
     # that we want to generate a matrix and a vector
 
+    if assembled_rows === nothing && subassembled
+        assembled_rows = map(remove_ghost,rows)
+    end
+
     t1 = psparse(I,J,V,rows,cols;
             subassembled,
             assembled,
@@ -1920,6 +1929,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
             restore_ids,
             assembly_neighbors_options_rows,
             assembly_neighbors_options_cols,
+            assembled_rows,
             reuse=true)
 
     t2 = pvector(I2,V2,rows;
@@ -1928,6 +1938,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
             assemble,
             restore_ids,
             assembly_neighbors_options_rows,
+            assembled_rows,
             reuse=true)
 
     @async begin
