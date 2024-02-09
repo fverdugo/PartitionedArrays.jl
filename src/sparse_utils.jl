@@ -370,7 +370,7 @@ function sparse_matrix(f,I,J,V,m,n;reuse=Val(false),skip_out_of_bounds=true)
         V2 = V
     elseif m*n == 0
         Ti = eltype(I)
-        T = eltype(V)
+        Tv = eltype(V)
         I2 = Ti[]
         J2 = Ti[]
         V2 = Tv[]
