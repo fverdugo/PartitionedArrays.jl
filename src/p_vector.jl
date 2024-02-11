@@ -573,8 +573,8 @@ function dense_vector!(A,K,V)
     end
 end
 
-function pvector(I,V,rows;kwargs...)
-    pvector(dense_vector,I,V,rows;kwargs...)
+function pvector(I,V,rows,assembled_rows=nothing;kwargs...)
+    pvector(dense_vector,I,V,rows,assembled_rows;kwargs...)
 end
 
 """
@@ -585,14 +585,13 @@ from each of the underlying parts. It returns a task that produces the
 instance of [`PVector`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
-function pvector(f,I,V,rows;
+function pvector(f,I,V,rows,assembled_rows=nothing;
         subassembled=false,
         assembled=false,
         assemble=true,
         restore_ids = true,
         indices = :global,
         reuse=Val(false),
-        assembled_rows = nothing,
         assembly_neighbors_options_rows = (;)
     )
 

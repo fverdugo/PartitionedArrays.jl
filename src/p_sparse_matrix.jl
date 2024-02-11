@@ -1042,8 +1042,8 @@ function psparse(f,row_partition,col_partition;assembled)
     PSparseMatrix(matrix_partition,row_partition,col_partition,assembled)
 end
 
-function psparse(I,J,V,rows,cols;kwargs...)
-    psparse(sparse_matrix,I,J,V,rows,cols;kwargs...)
+function psparse(I,J,V,rows,cols,assembled_rows=nothing;kwargs...)
+    psparse(sparse_matrix,I,J,V,rows,cols,assembled_rows;kwargs...)
 end
 
 """
@@ -1054,7 +1054,7 @@ from each of the underlying parts. It returns a task that produces the
 instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
-function psparse(f,I,J,V,rows,cols;
+function psparse(f,I,J,V,rows,cols,assembled_rows=nothing;
         split_format=true,
         subassembled=false,
         assembled=false,
@@ -1063,7 +1063,6 @@ function psparse(f,I,J,V,rows,cols;
         restore_ids = true,
         assembly_neighbors_options_rows = (;),
         assembly_neighbors_options_cols = (;),
-        assembled_rows = nothing,
         reuse=Val(false)
     )
 
@@ -1889,7 +1888,7 @@ end
 """
     psystem(I,J,V,I2,V2,rows,cols;kwargs...)
 """
-function psystem(I,J,V,I2,V2,rows,cols;
+function psystem(I,J,V,I2,V2,rows,cols,assembled_rows=nothing;
         subassembled=false,
         assembled=false,
         assemble=true,
@@ -1897,7 +1896,6 @@ function psystem(I,J,V,I2,V2,rows,cols;
         restore_ids = true,
         assembly_neighbors_options_rows = (;),
         assembly_neighbors_options_cols = (;),
-        assembled_rows = nothing,
         reuse=Val(false)
     )
 
@@ -1910,23 +1908,21 @@ function psystem(I,J,V,I2,V2,rows,cols;
         assembled_rows = map(remove_ghost,rows)
     end
 
-    t1 = psparse(I,J,V,rows,cols;
+    t1 = psparse(I,J,V,rows,cols,assembled_rows;
             subassembled,
             assembled,
             assemble,
             restore_ids,
             assembly_neighbors_options_rows,
             assembly_neighbors_options_cols,
-            assembled_rows,
             reuse=true)
 
-    t2 = pvector(I2,V2,rows;
+    t2 = pvector(I2,V2,rows,assembled_rows;
             subassembled,
             assembled,
             assemble,
             restore_ids,
             assembly_neighbors_options_rows,
-            assembled_rows,
             reuse=true)
 
     @async begin
