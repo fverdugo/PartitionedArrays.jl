@@ -2009,6 +2009,16 @@ function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
     c
 end
 
+function LinearAlgebra.diag(A::PSparseMatrix)
+    d = pzeros(eltype(A),partition(axes(A,1)))
+    diag!(d,A)
+end
+
+function diag!(d::PVector,A::PSparseMatrix)
+    map(diag!,own_values(d),own_own_values(A))
+    d
+end
+
 ## Test matrices
 
 function laplace_matrix(nodes_per_dir)

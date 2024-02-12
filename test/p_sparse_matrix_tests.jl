@@ -318,6 +318,8 @@ function p_sparse_matrix_tests(distribute)
     parts_per_dir = (2,2)
     A = PartitionedArrays.laplace_matrix(nodes_per_dir)
     A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+    d = diag(A)
+    diag!(d,A)
     
 end
 
