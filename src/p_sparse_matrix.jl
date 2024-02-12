@@ -2009,3 +2009,85 @@ function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
     c
 end
 
+## Test matrices
+
+function laplace_matrix(nodes_per_dir)
+    function is_boundary_node(node_1d,nodes_1d)
+        !(node_1d in 1:nodes_1d)
+    end
+    D = length(nodes_per_dir)
+    n = prod(nodes_per_dir)
+    node_to_cartesian_node = CartesianIndices(nodes_per_dir)
+    cartesian_node_to_node = LinearIndices(nodes_per_dir)
+    nnz = (2*D+1)*n
+    I = zeros(Int32,nnz)
+    J = zeros(Int32,nnz)
+    V = zeros(Float64,nnz)
+    t = 0
+    for node_i in 1:n
+        t += 1
+        I[t] = node_i
+        J[t] = node_i
+        V[t] = 2*D
+        cartesian_node_i = node_to_cartesian_node[node_i]
+        for d in 1:D
+            for i in (-1,1)
+                inc = CartesianIndex(ntuple(k->( k==d ? i : 0),Val(D)))
+                cartesian_node_j = cartesian_node_i .+ inc
+                boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                if boundary
+                    continue
+                end
+                node_j = cartesian_node_to_node[cartesian_node_j]
+                t += 1
+                I[t] = node_i
+                J[t] = node_j
+                V[t] = -1.0
+            end
+        end
+    end
+    sparse_matrix(I,J,V,n,n)
+end
+
+function laplace_matrix(nodes_per_dir,parts_per_dir,ranks)
+    function is_boundary_node(node_1d,nodes_1d)
+        !(node_1d in 1:nodes_1d)
+    end
+    D = length(nodes_per_dir)
+    n = prod(nodes_per_dir)
+    function setup(nodes)
+        node_to_cartesian_node = CartesianIndices(nodes_per_dir)
+        cartesian_node_to_node = LinearIndices(nodes_per_dir)
+        nnz = (2*D+1)*length(nodes)
+        myI = zeros(Int32,nnz)
+        myJ = zeros(Int32,nnz)
+        myV = zeros(Float64,nnz)
+        t = 0
+        for node_i in nodes
+            t += 1
+            myI[t] = node_i
+            myJ[t] = node_i
+            myV[t] = 2*D
+            cartesian_node_i = node_to_cartesian_node[node_i]
+            for d in 1:D
+                for i in (-1,1)
+                    inc = CartesianIndex(ntuple(k->( k==d ? i : 0),Val(D)))
+                    cartesian_node_j = cartesian_node_i .+ inc
+                    boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                    if boundary
+                        continue
+                    end
+                    node_j = cartesian_node_to_node[cartesian_node_j]
+                    t += 1
+                    myI[t] = node_i
+                    myJ[t] = node_j
+                    myV[t] = -1.0
+                end
+            end
+        end
+        myI,myJ,myV
+    end
+    node_partition = uniform_partition(ranks,parts_per_dir,nodes_per_dir)
+    I,J,V = map(setup,node_partition) |> tuple_of_arrays
+    A = psparse(I,J,V,node_partition,node_partition) |> fetch
+end

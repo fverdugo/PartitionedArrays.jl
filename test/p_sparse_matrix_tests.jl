@@ -313,6 +313,11 @@ function p_sparse_matrix_tests(distribute)
     @test eltype(partition(C)) == eltype(partition(A))
     C = B-A
     @test eltype(partition(C)) == eltype(partition(A))
+
+    nodes_per_dir = (10,10)
+    parts_per_dir = (2,2)
+    A = PartitionedArrays.laplace_matrix(nodes_per_dir)
+    A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
     
 end
 
