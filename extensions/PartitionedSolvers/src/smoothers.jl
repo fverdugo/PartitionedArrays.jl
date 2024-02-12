@@ -3,32 +3,21 @@ function do_nothing_linear_solver()
     setup(x,A,b) = nothing
     solve!(x,::Nothing,b) = copy!(x,b)
     setup!(::Nothing,A) = nothing
-    apply! = solve!
-    linear_solver(;setup,setup!,solve!,apply!)
+    linear_solver(;setup,setup!,solve!)
 end
 
 function lu_solver()
     setup(x,A,b) = lu(A)
     solve! = ldiv!
     setup! = lu!
-    apply! = ldiv!
-    linear_solver(;setup,solve!,setup!,apply!)
-end
-
-function ilu_solver(;kwargs...)
-    setup(x,A,b) = ilu(A;kwargs...)
-    solve! = ldiv!
-    setup! = lu!
-    apply! = ldiv!
-    linear_solver(;setup,solve!,setup!,apply!)
+    linear_solver(;setup,solve!,setup!)
 end
 
 function diagonal_solver()
     setup(x,A,b) = diag(A)
     solve!(x,D,b) = x .= D .\ b
-    apply! = solve!
     setup! = diag!
-    linear_solver(;setup,setup!,solve!,apply!)
+    linear_solver(;setup,setup!,solve!)
 end
 
 function richardson_solver(solver;niters)
@@ -70,23 +59,24 @@ end
 
 function additive_schwartz_solver(local_solver)
     function setup(x,A,b)
-        local_setups = map(PartitionedSolvers.setup(local_solver),own_values(x),own_own_values(A),own_values(b))
+        f = (x,A,b) -> PartitionedSolvers.setup(local_solver,x,A,b)
+        local_setups = map(f,own_values(x),own_own_values(A),own_values(b))
         local_setups
     end
     function setup!(local_setups,A)
-        map(PartitionedSolvers.setup!(local_solver),own_own_values(A))
+        f = (S,A) -> PartitionedSolvers.setup!(local_solver,S,A)
+        map(f,local_setups,own_own_values(A))
         local_setups
     end
     function solve!(x,local_setups,b)
-        map(PartitionedSolvers.solve!(local_solver),own_values(x),local_setups,own_values(b))
-    end
-    function apply!(x,local_setups,b)
-        map(PartitionedSolvers.apply!(local_solver),own_values(x),local_setups,own_values(b))
+        f = (x,S,b) -> PartitionedSolvers.solve!(local_solver,x,S,b)
+        map(f,own_values(x),local_setups,own_values(b))
     end
     function finalize!(local_setups)
-        map(PartitionedSolvers.finalize!(local_solver),local_setups)
+        f = (S) -> PartitionedSolvers.finalize!(local_solver,S)
+        map(f,local_setups)
         nothing
     end
-    linear_solver(;setup,setup!,solve!,apply!,finalize!)
+    linear_solver(;setup,setup!,solve!,finalize!)
 end
 

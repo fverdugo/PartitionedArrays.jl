@@ -1,35 +1,25 @@
 
-setup(a) = a.setup
-solve!(a) = a.solve!
-apply!(a) = a.apply!
-setup!(a) = a.setup!
-finalize!(a) = a.finalize!
-residual!(a) = a.residual!
-jacobian!(a) = a.jacobian!
-residual_and_jacobian!(a) = a.residual_and_jacobian!
-
 abstract type AbstractLinearSolver end
 
-struct GenericLinearSolver{A,B,C,D,E} <: AbstractLinearSolver
+struct GenericLinearSolver{A,B,C,D} <: AbstractLinearSolver
     setup::A # (x,A,b) -> ls_setup
     solve!::B # (x,ls_setup,b) -> results
     setup!::C # (ls_setup,A) -> ls_setup
     finalize!::D # ls_setup -> nothing
-    apply!::E # (x,ls_setup,b) -> x
 end
+
+setup(solver::GenericLinearSolver,x,A,b) = solver.setup(x,A,b)
+solve!(solver::GenericLinearSolver,x,S,b) = solver.solve!(x,S,b)
+setup!(solver::GenericLinearSolver,S,A) = solver.setup!(S,A)
+finalize!(solver::GenericLinearSolver,S) = solver.finalize!(S)
 
 function linear_solver(;
         setup,
         solve!,
         setup!,
         finalize! = ls_setup->nothing,
-        apply! = (x,ls_setup,b) -> begin
-            fill!(x,zero(eltype(x)))
-            solve!(x,ls_setup,b)
-            x
-        end
     )
-    GenericLinearSolver(setup,solve!,setup!,finalize!,apply!)
+    GenericLinearSolver(setup,solve!,setup!,finalize!)
 end
 
 struct Preconditioner{A,B}
@@ -38,22 +28,22 @@ struct Preconditioner{A,B}
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
-    apply!(P.solver)(x,P.solver_setup,b)
+    fill!(x,zero(eltype(x)))
+    solve!(P.solver,x,P.solver_setup,b)
     x
 end
 
 function preconditioner(x,A,b,solver)
-    solver_setup =  setup(solver)(x,A,b)
+    solver_setup =  setup(solver,x,A,b)
     Preconditioner(solver,solver_setup)
 end
 
 function preconditioner!(P::Preconditioner,A)
-    setup!(P.solver)(P.solver_setup,A)
+    setup!(P.solver,P.solver_setup,A)
     P
 end
 
 function finalize!(P::Preconditioner)
-    PartitionedSolvers.finalize!(P.solver)(P.solver_setup)
+    PartitionedSolvers.finalize!(P.solver,P.solver_setup)
 end
-
 

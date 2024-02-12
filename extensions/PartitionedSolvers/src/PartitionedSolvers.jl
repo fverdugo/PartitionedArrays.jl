@@ -3,7 +3,6 @@ module PartitionedSolvers
 using PartitionedArrays
 using SparseArrays
 using LinearAlgebra
-using IncompleteLU
 
 export setup
 export solve!
