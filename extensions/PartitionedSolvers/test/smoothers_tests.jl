@@ -19,12 +19,12 @@ solver = lu_solver()
 problem = linear_problem(A,b)
 y = similar(x)
 S = setup(solver)(problem,y)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
 problem = replace_matrix(problem,2*A)
 setup!(solver)(problem,y,S)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
@@ -33,12 +33,12 @@ problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
 S = setup(solver)(problem,y)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
 problem = replace_matrix(problem,2*A)
 setup!(solver)(problem,y,S)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
@@ -47,12 +47,12 @@ problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
 S = setup(solver)(problem,y)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
 problem = replace_matrix(problem,2*A)
 setup!(solver)(problem,y,S)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
@@ -61,10 +61,10 @@ problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
 S = setup(solver)(problem,y)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 problem = replace_matrix(problem,2*A)
 setup!(solver)(problem,y,S)
-solve!(solver)(problem,y,S)
+use!(solver)(problem,y,S)
 finalize!(solver)(S)
 
 end #module

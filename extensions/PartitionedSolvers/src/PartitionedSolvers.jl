@@ -5,7 +5,7 @@ using SparseArrays
 using LinearAlgebra
 
 export setup
-export solve!
+export use!
 export setup!
 export finalize!
 export AbstractLinearProblem

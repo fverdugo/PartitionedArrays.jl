@@ -2,15 +2,15 @@
 function lu_solver()
     setup(problem,x) = lu(matrix(problem))
     setup!(problem,x,state) = lu!(state,matrix(problem))
-    solve!(problem,x,state) = ldiv!(x,state,rhs(problem))
-    linear_solver(;setup,solve!,setup!)
+    use!(problem,x,state) = ldiv!(x,state,rhs(problem))
+    linear_solver(;setup,use!,setup!)
 end
 
 function diagonal_solver()
     setup(problem,x) = diag(matrix(problem))
     setup!(problem,x,state) = diag!(state,matrix(problem))
-    solve!(problem,x,state) = x .= state .\ rhs(problem)
-    linear_solver(;setup,setup!,solve!)
+    use!(problem,x,state) = x .= state .\ rhs(problem)
+    linear_solver(;setup,setup!,use!)
 end
 
 function richardson(solver;niters)
@@ -27,7 +27,7 @@ function richardson(solver;niters)
         preconditioner!(P,problem,dx)
         state
     end
-    function solve!(problem,x,state)
+    function use!(problem,x,state)
         (r,dx,P) = state
         A = matrix(problem)
         b = rhs(problem)
@@ -44,7 +44,7 @@ function richardson(solver;niters)
         (r,dx,P) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    linear_solver(;setup,setup!,use!,finalize!)
 end
 
 function jacobi(;kwargs...)
@@ -74,14 +74,14 @@ function additive_schwarz(local_solver)
         map(PartitionedSolvers.setup!(local_solver),local_problems,own_values(x),local_setups)
         local_setups
     end
-    function solve!(problem,x,local_setups)
+    function use!(problem,x,local_setups)
         local_problems = build_local_problems(problem)
-        map(PartitionedSolvers.solve!(local_solver),local_problems,own_values(x),local_setups)
+        map(PartitionedSolvers.use!(local_solver),local_problems,own_values(x),local_setups)
     end
     function finalize!(local_setups)
         map(PartitionedSolvers.finalize!(local_solver),local_setups)
         nothing
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    linear_solver(;setup,setup!,use!,finalize!)
 end
 
