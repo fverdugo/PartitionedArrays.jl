@@ -20,7 +20,7 @@ function diagonal_solver()
     linear_solver(;setup,setup!,solve!)
 end
 
-function richardson_solver(solver;niters)
+function richardson(solver;niters)
     function setup(x,A,b)
         dx = similar(x,axes(A,2))
         r = similar(b,axes(A,1))
@@ -52,12 +52,12 @@ function richardson_solver(solver;niters)
     linear_solver(;setup,setup!,solve!,finalize!)
 end
 
-function jacobi_solver(;kwargs...)
+function jacobi(;kwargs...)
     solver = diagonal_solver()
-    richardson_solver(solver;kwargs...)
+    richardson(solver;kwargs...)
 end
 
-function additive_schwartz_solver(local_solver)
+function additive_schwarz(local_solver)
     function setup(x,A,b)
         f = (x,A,b) -> PartitionedSolvers.setup(local_solver,x,A,b)
         local_setups = map(f,own_values(x),own_own_values(A),own_values(b))

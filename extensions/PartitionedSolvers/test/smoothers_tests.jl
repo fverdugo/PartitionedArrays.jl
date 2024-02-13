@@ -26,7 +26,7 @@ solve!(solver,y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver,S)
 
-solver = richardson_solver(lu_solver(),niters=1)
+solver = richardson(lu_solver(),niters=1)
 S = setup(solver,x,A,b)
 y = similar(x)
 y .= 0
@@ -38,7 +38,7 @@ solve!(solver,y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver,S)
 
-solver = jacobi_solver(;niters=1000)
+solver = jacobi(;niters=1000)
 S = setup(solver,x,A,b)
 y = similar(x)
 y .= 0
@@ -50,7 +50,7 @@ solve!(solver,y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver,S)
 
-solver = additive_schwartz_solver(lu_solver())
+solver = additive_schwarz(lu_solver())
 S = setup(solver,x,A,b)
 y = similar(x)
 y .= 0

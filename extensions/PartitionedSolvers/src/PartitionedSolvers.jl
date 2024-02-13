@@ -17,9 +17,9 @@ export do_nothing_linear_solver
 export lu_solver
 export ilu_solver
 export diagonal_solver
-export richardson_solver
-export jacobi_solver
-export additive_schwartz_solver
+export richardson
+export jacobi
+export additive_schwarz
 include("smoothers.jl")
 
 end # module
