@@ -66,24 +66,20 @@ end
 function additive_schwarz(local_solver)
     function setup(problem,x)
         local_problems = build_local_problems(problem)
-        f = (p,x) -> PartitionedSolvers.setup(local_solver,p,x)
-        local_setups = map(f,local_problems,own_values(x))
+        local_setups = map(PartitionedSolvers.setup(local_solver),local_problems,own_values(x))
         local_setups
     end
     function setup!(problem,x,local_setups)
         local_problems = build_local_problems(problem)
-        f = (p,x,s) -> PartitionedSolvers.setup!(local_solver,p,x,s)
-        map(f,local_problems,own_values(x),local_setups)
+        map(PartitionedSolvers.setup!(local_solver),local_problems,own_values(x),local_setups)
         local_setups
     end
     function solve!(problem,x,local_setups)
         local_problems = build_local_problems(problem)
-        f = (p,x,s) -> PartitionedSolvers.solve!(local_solver,p,x,s)
-        map(f,local_problems,own_values(x),local_setups)
+        map(PartitionedSolvers.solve!(local_solver),local_problems,own_values(x),local_setups)
     end
     function finalize!(local_setups)
-        f = (S) -> PartitionedSolvers.finalize!(local_solver,S)
-        map(f,local_setups)
+        map(PartitionedSolvers.finalize!(local_solver),local_setups)
         nothing
     end
     linear_solver(;setup,setup!,solve!,finalize!)

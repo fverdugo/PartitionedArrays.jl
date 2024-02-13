@@ -47,10 +47,10 @@ struct GenericLinearSolver{A,B,C,D} <: AbstractLinearSolver
     finalize!::D
 end
 
-setup(solver::GenericLinearSolver,problem,x) = solver.setup(problem,x)
-setup!(solver::GenericLinearSolver,problem,x,state) = solver.setup!(problem,x,state)
-solve!(solver::GenericLinearSolver,problem,x,state) = solver.solve!(problem,x,state)
-finalize!(solver::GenericLinearSolver,state) = solver.finalize!(state)
+setup(solver::GenericLinearSolver) = solver.setup
+setup!(solver::GenericLinearSolver) = solver.setup!
+solve!(solver::GenericLinearSolver) = solver.solve!
+finalize!(solver::GenericLinearSolver) = solver.finalize!
 
 struct Preconditioner{A,B,C}
     solver::A
@@ -59,23 +59,23 @@ struct Preconditioner{A,B,C}
 end
 
 function preconditioner(solver,problem,x)
-    solver_setup = setup(solver,problem,x)
+    solver_setup = setup(solver)(problem,x)
     Preconditioner(solver,solver_setup,problem)
 end
 
 function preconditioner!(P::Preconditioner,problem,x)
-    setup!(P.solver,problem,x,P.solver_setup)
+    setup!(P.solver)(problem,x,P.solver_setup)
     P
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
     fill!(x,zero(eltype(x)))
     problem = replace_rhs(P.problem,b)
-    solve!(P.solver,problem,x,P.solver_setup)
+    solve!(P.solver)(problem,x,P.solver_setup)
     x
 end
 
 function finalize!(P::Preconditioner)
-    PartitionedSolvers.finalize!(P.solver,P.solver_setup)
+    PartitionedSolvers.finalize!(P.solver)(P.solver_setup)
 end
 
