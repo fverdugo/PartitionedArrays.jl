@@ -1,55 +1,57 @@
 
 function do_nothing_linear_solver()
-    setup(x,A,b) = nothing
-    solve!(x,::Nothing,b) = copy!(x,b)
-    setup!(::Nothing,A) = nothing
-    linear_solver(;setup,setup!,solve!)
+    setup(x,problem) = nothing
+    solve!(x,problem,state) = copy!(x,b)
+    setup!(x,problem,state) = nothing
+    algebraic_solver(;setup,setup!,solve!)
 end
 
 function lu_solver()
-    setup(x,A,b) = lu(A)
-    solve! = ldiv!
-    setup! = lu!
-    linear_solver(;setup,solve!,setup!)
+    setup(x,problem) = lu(linear_operator(problem))
+    setup!(x,problem,state) = lu!(state,linear_operator(problem))
+    solve!(x,problem,state) = ldiv!(x,state,rhs(problem))
+    algebraic_solver(;setup,solve!,setup!)
 end
 
 function diagonal_solver()
-    setup(x,A,b) = diag(A)
-    solve!(x,D,b) = x .= D .\ b
-    setup! = diag!
-    linear_solver(;setup,setup!,solve!)
+    setup(x,problem) = diag(linear_operator(problem))
+    setup!(x,problem,D) = diag!(D,linear_operator(problem))
+    solve!(x,problem,D) = x .= D .\ rhs(problem)
+    algebraic_solver(;setup,setup!,solve!)
 end
 
 function richardson(solver;niters)
-    function setup(x,A,b)
+    function setup(x,problem)
+        A = linear_operator(problem)
+        b = rhs(problem)
+        r = similar(b)
         dx = similar(x,axes(A,2))
-        r = similar(b,axes(A,1))
-        P = preconditioner(dx,A,r,solver)
-        A_ref = Ref(A)
-        state = (dx,r,A_ref,P)
+        P = preconditioner(solver,dx,problem)
+        state = (r,dx,P)
     end
-    function setup!(state,A)
-        (dx,r,A_ref,P) = state
-        preconditioner!(P,A)
-        A_ref[] = A
+    function setup!(x,problem,state)
+        (r,dx,P) = state
+        preconditioner!(P,dx,problem)
         state
     end
-    function solve!(x,state,b)
-        (dx,r,A_ref,P) = state
-        A = A_ref[]
+    function solve!(x,problem,state)
+        A = linear_operator(problem)
+        b = rhs(problem)
+        (r,dx,P) = state
         for iter in 1:niters
             dx .= x
             mul!(r,A,dx)
-            r .-= b
+            r .= r .- b
             ldiv!(dx,P,r)
             x .-= dx
         end
+        (;niters)
     end
     function finalize!(state)
-        (dx,r,A_ref,P) = state
+        (r,dx,P) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    algebraic_solver(;setup,setup!,solve!,finalize!)
 end
 
 function jacobi(;kwargs...)
@@ -58,19 +60,28 @@ function jacobi(;kwargs...)
 end
 
 function additive_schwarz(local_solver)
-    function setup(x,A,b)
-        f = (x,A,b) -> PartitionedSolvers.setup(local_solver,x,A,b)
-        local_setups = map(f,own_values(x),own_own_values(A),own_values(b))
+    function setup(x,problem)
+        A = linear_operator(problem)
+        b = rhs(problem)
+        local_problems = map(linear_problem,own_own_values(A),own_values(b))
+        f = (x,p) -> PartitionedSolvers.setup(local_solver,x,p)
+        local_setups = map(f,own_values(x),local_problems)
         local_setups
     end
-    function setup!(local_setups,A)
-        f = (S,A) -> PartitionedSolvers.setup!(local_solver,S,A)
-        map(f,local_setups,own_own_values(A))
+    function setup!(x,problem,local_setups)
+        A = linear_operator(problem)
+        b = rhs(problem)
+        local_problems = map(linear_problem,own_own_values(A),own_values(b))
+        f = (x,p,s) -> PartitionedSolvers.setup!(local_solver,x,p,s)
+        map(f,own_values(x),local_problems,local_setups)
         local_setups
     end
-    function solve!(x,local_setups,b)
-        f = (x,S,b) -> PartitionedSolvers.solve!(local_solver,x,S,b)
-        map(f,own_values(x),local_setups,own_values(b))
+    function solve!(x,problem,local_setups)
+        A = linear_operator(problem)
+        b = rhs(problem)
+        local_problems = map(linear_problem,own_own_values(A),own_values(b))
+        f = (x,p,s) -> PartitionedSolvers.solve!(local_solver,x,p,s)
+        map(f,own_values(x),local_problems,local_setups)
     end
     function finalize!(local_setups)
         f = (S) -> PartitionedSolvers.finalize!(local_solver,S)
