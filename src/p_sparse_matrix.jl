@@ -2042,8 +2042,8 @@ function laplace_matrix(nodes_per_dir)
         cartesian_node_i = node_to_cartesian_node[node_i]
         for d in 1:D
             for i in (-1,1)
-                inc = CartesianIndex(ntuple(k->( k==d ? i : 0),Val(D)))
-                cartesian_node_j = cartesian_node_i .+ inc
+                inc = ntuple(k->( k==d ? i : 0),Val(D))
+                cartesian_node_j = CartesianIndex(Tuple(cartesian_node_i) .+ inc)
                 boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
                 if boundary
                     continue
@@ -2081,8 +2081,8 @@ function laplace_matrix(nodes_per_dir,parts_per_dir,ranks)
             cartesian_node_i = node_to_cartesian_node[node_i]
             for d in 1:D
                 for i in (-1,1)
-                    inc = CartesianIndex(ntuple(k->( k==d ? i : 0),Val(D)))
-                    cartesian_node_j = cartesian_node_i .+ inc
+                    inc = ntuple(k->( k==d ? i : 0),Val(D))
+                    cartesian_node_j = CartesianIndex(Tuple(cartesian_node_i) .+ inc)
                     boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
                     if boundary
                         continue
