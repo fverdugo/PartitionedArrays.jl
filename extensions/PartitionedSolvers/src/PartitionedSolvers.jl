@@ -25,6 +25,9 @@ export additive_schwarz
 include("smoothers.jl")
 
 export amg
+export smoothed_aggregation
+export v_cycle
+export w_cycle
 include("amg.jl")
 
 end # module

@@ -710,6 +710,29 @@ function Base.:*(b::AbstractSplitMatrix,a::Number)
     a*b
 end
 
+function Base.:*(A::AbstractSplitMatrix,B::AbstractSplitMatrix)
+    own_own = A.blocks.own_own*B.blocks.own_own + A.blocks.own_ghost*B.blocks.ghost_own
+    own_ghost = A.blocks.own_own*B.blocks.own_ghost + A.blocks.own_ghost*B.blocks.ghost_ghost
+    ghost_own = A.blocks.ghost_own*B.blocks.own_own + A.blocks.ghost_ghost*B.blocks.ghost_own
+    ghost_ghost = A.blocks.ghost_own*B.blocks.own_ghost + A.blocks.ghost_ghost*B.blocks.ghost_ghost
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,A.row_permutation,B.col_permutation)
+end
+
+function Base.:*(Ct::Transpose{T,<:AbstractSplitMatrix} where T,B::AbstractSplitMatrix)
+    C = Ct.parent
+    A_own_own = transpose(C.blocks.own_own)
+    A_own_ghost = transpose(C.blocks.ghost_own)
+    A_ghost_own = transpose(C.blocks.own_ghost)
+    A_ghost_ghost = transpose(C.blocks.ghost_ghost)
+    own_own = A_own_own*B.blocks.own_own + A_own_ghost*B.blocks.ghost_own
+    own_ghost = A_own_own*B.blocks.own_ghost + A_own_ghost*B.blocks.ghost_ghost
+    ghost_own = A_ghost_own*B.blocks.own_own + A_ghost_ghost*B.blocks.ghost_own
+    ghost_ghost = A_ghost_own*B.blocks.own_ghost + A_ghost_ghost*B.blocks.ghost_ghost
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,C.col_permutation,B.col_permutation)
+end
+
 for op in (:+,:-)
     @eval begin
         function Base.$op(a::AbstractSplitMatrix)
@@ -1751,6 +1774,109 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     c
 end
 
+function LinearAlgebra.mul!(c::PVector,at::Transpose{T,<:PSparseMatrix} where T,b::PVector,α::Number,β::Number)
+    a = at.parent
+    @assert a.assembled
+    map(ghost_values(c),own_ghost_values(a),own_values(b)) do ch,aoh,bo
+        atoh = transpose(aoh)
+        mul!(ch,atoh,bo,α,1)
+    end
+    t = assemble!(c)
+    map(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
+        if β != 1
+            β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
+        end
+        atoo = transpose(aoo)
+        mul!(co,atoo,bo,α,1)
+    end
+    wait(t)
+    c
+end
+
+function LinearAlgebra.diag(A::PSparseMatrix)
+    d = pzeros(eltype(A),partition(axes(A,1)))
+    diag!(d,A)
+end
+
+function diag!(d::PVector,A::PSparseMatrix)
+    map(diag!,own_values(d),own_own_values(A))
+    d
+end
+
+function sparse_diag(d::PVector,shape)
+    row_partition,col_partition = map(partition,shape)
+    function setup(own_d,rows,cols)
+        I = own_to_global(rows) |> collect
+        J = own_to_global(cols) |> collect
+        V = own_d
+        I,J,V
+    end
+    I,J,V = map(setup,own_values(d),row_partition,col_partition) |> tuple_of_arrays
+    psparse(I,J,V,row_partition,col_partition;assembled=true) |> fetch
+end
+
+function spmm(A,B;reuse=Val(false))
+    C = A*B
+    if val_parameter(reuse)
+        error("not implemented")
+    end
+    C
+end
+
+function spmm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
+    @assert A.assembled
+    @assert B.assembled
+    col_partition = partition(axes(A,2))
+    C = consistent(B,col_partition) |> fetch
+    D_partition = map(spmm,partition(A),partition(C))
+    assembled = true
+    D = PSparseMatrix(D_partition,partition(axes(A,1)),partition(axes(B,2)),assembled)
+    if val_parameter(reuse)
+        error("not implemented")
+    end
+    D
+end
+
+function spmtm(A,B;reuse=Val(false))
+    C = transpose(A)*B
+    if val_parameter(reuse)
+        error("not implemented")
+    end
+    C
+end
+
+function spmtm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
+    if val_parameter(reuse)
+        error("not implemented")
+    end
+    @assert A.assembled
+    @assert B.assembled
+    D_partition = map(spmtm,partition(A),partition(B))
+    assembled = false
+    D = PSparseMatrix(D_partition,partition(axes(A,2)),partition(axes(B,2)),assembled)
+    C = assemble(D) |> fetch
+    C
+end
+
+function Base.:*(A::PSparseMatrix,B::PSparseMatrix)
+    C = spmm(A,B)
+    C
+end
+
+function Base.:*(At::Transpose{T,<:PSparseMatrix} where T,B::PSparseMatrix)
+    A = At.parent
+    C = spmtm(A,B)
+    C
+end
+
+function Base.:-(I::LinearAlgebra.UniformScaling,A::PSparseMatrix)
+    T = eltype(A)
+    row_partition = partition(axes(A,1))
+    d = pones(T,row_partition)
+    D = sparse_diag(d,axes(A))
+    D-A
+end
+
 Base.similar(a::PSparseMatrix) = similar(a,eltype(a))
 function Base.similar(a::PSparseMatrix,::Type{T}) where T
     matrix_partition = map(partition(a)) do values
@@ -2009,15 +2135,6 @@ function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
     c
 end
 
-function LinearAlgebra.diag(A::PSparseMatrix)
-    d = pzeros(eltype(A),partition(axes(A,1)))
-    diag!(d,A)
-end
-
-function diag!(d::PVector,A::PSparseMatrix)
-    map(diag!,own_values(d),own_own_values(A))
-    d
-end
 
 ## Test matrices
 

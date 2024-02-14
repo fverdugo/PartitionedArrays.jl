@@ -417,12 +417,12 @@ function diag!(d,A)
     d
 end
 
-function sparse_diag(d)
+function sparse_diag(d,shape)
     n = length(d)
     I = 1:n
     J = 1:n
     V = d
-    sparse(I,J,V,n,n)
+    sparse(I,J,V,map(length,shape)...)
 end
 
 function rap(R,A,P;reuse=Val(false))

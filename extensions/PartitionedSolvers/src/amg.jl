@@ -127,8 +127,8 @@ function aggregate(A::PSparseMatrix,diagA=diag(A);kwargs...)
     n = sum(nown)
     aggregate_partition = variable_partition(nown,n)
     node_partition = partition(axes(A,1))
-    map(map_own_to_global!,node_to_aggregate_data,node_partition)
-    node_to_aggregate = PVector(node_to_aggregate_data,aggregate_partition)
+    map(map_own_to_global!,node_to_aggregate_data,aggregate_partition)
+    node_to_aggregate = PVector(node_to_aggregate_data,node_partition)
     node_to_aggregate, PRange(aggregate_partition)
 end
 
@@ -172,7 +172,7 @@ end
 
 function tentative_prolongator(node_to_aggregate::PVector,aggregates::PRange)
     function setup_triplets(node_to_aggregate,nodes)
-        myI = local_to_global(nodes)
+        myI = 1:local_length(nodes)
         myJ = node_to_aggregate
         myV = ones(length(node_to_aggregate))
         (myI,myJ,myV)
@@ -182,17 +182,18 @@ function tentative_prolongator(node_to_aggregate::PVector,aggregates::PRange)
     aggregate_partition = partition(aggregates)
     J_owner = find_owner(aggregate_partition,J)
     aggregate_partition = map(union_ghost,aggregate_partition,J,J_owner)
-    P0 = psparse(I,J,V,node_partition,aggregate_partition;assembled=true) |> fetch
+    map(map_global_to_local!,J,aggregate_partition)
+    P0 = psparse(I,J,V,node_partition,aggregate_partition;assembled=true,indices=:local) |> fetch
     P0
 end
 
 function smoothed_prolongator(A,P0,diagA=diag(A);omega)
-    Dinv = sparse_diag(1 ./ diagA)
+    Dinv = sparse_diag(1 ./ diagA,(axes(A,1),axes(A,1)))
     P = (I-omega*Dinv*A)*P0
     P
 end
 
-function smooth_aggregation(;epsilon,omega)
+function smoothed_aggregation(;epsilon,omega)
     function coarsen(problem)
         A = matrix(problem)
         B = nullspace(problem)
@@ -204,9 +205,8 @@ function smooth_aggregation(;epsilon,omega)
         Ac,cache = rap(R,A,P;reuse=true)
         #TODO enhance the partition of Ac,R,P
         #TODO null space for vector-valued problems
-        Bc = similar(B,axes(Ac,2))
+        Bc = default_nullspace(Ac)
         # TODO enhance partitioning for Ac,R,P
-        fill!(Bc,1)
         b = rhs(problem)
         bc = similar(b,axes(Ac,1))
         coarse_problem = linear_problem(Ac,bc,Bc)
@@ -224,7 +224,7 @@ end
 function default_amg_fine_params()
     #TODO more resonable defaults?
     pre_smoother = jacobi(;maxiters=10,omega=2/3)
-    coarsening = smooth_aggregation(;epsilon=0,omega=1)
+    coarsening = smoothed_aggregation(;epsilon=0,omega=1)
     cycle = v_cycle()
     pos_smoother = pre_smoother
     level_params = (;pre_smoother,pos_smoother,coarsening,cycle)
