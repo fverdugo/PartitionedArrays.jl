@@ -417,3 +417,26 @@ function diag!(d,A)
     d
 end
 
+function sparse_diag(d)
+    n = length(d)
+    I = 1:n
+    J = 1:n
+    V = d
+    sparse(I,J,V,n,n)
+end
+
+function rap(R,A,P;reuse=Val(false))
+    Ac = R*A*P
+    if val_parameter(reuse)
+        return Ac, nothing
+    end
+    Ac
+end
+
+function rap!(Ac,R,A,P,cache)
+    # TODO improve performance
+    tmp = R*A*P
+    nonzeros(Ac) .= nonzeros(tmp)
+    Ac
+end
+

@@ -24,4 +24,7 @@ export jacobi
 export additive_schwarz
 include("smoothers.jl")
 
+export amg
+include("amg.jl")
+
 end # module

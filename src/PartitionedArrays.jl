@@ -23,6 +23,9 @@ export indextype
 export sparse_matrix
 export sparse_matrix!
 export diag!
+export sparse_diag
+export rap
+export rap!
 include("sparse_utils.jl")
 
 export linear_indices
