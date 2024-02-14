@@ -28,7 +28,7 @@ use!(solver)(problem,y,S)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
-solver = richardson(lu_solver(),niters=1)
+solver = richardson(lu_solver(),maxiters=1)
 problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
@@ -42,7 +42,7 @@ use!(solver)(problem,y,S)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
-solver = jacobi(;niters=1000)
+solver = jacobi(;maxiters=1000)
 problem = linear_problem(A,b)
 y = similar(x)
 y .= 0

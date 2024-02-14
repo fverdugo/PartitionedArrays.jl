@@ -1,8 +1,16 @@
 
 abstract type AbstractLinearProblem  end
 
-function linear_problem(matrix,rhs,nullspace=nothing)
+function linear_problem(matrix,rhs,nullspace=default_nullspace(matrix))
     GenericLinearProblem(matrix,rhs,nullspace)
+end
+
+function default_nullspace(A)
+    ones(size(A,1))
+end
+
+function default_nullspace(A::PSparseMatrix)
+    map(default_nullspace,own_own_values(A))
 end
 
 struct GenericLinearProblem{A,B,C} <: AbstractLinearProblem
@@ -37,20 +45,20 @@ function linear_solver(;
         setup!,
         finalize! = ls_setup->nothing,
     )
-    GenericLinearSolver(setup,use!,setup!,finalize!)
+    LinearSolver(setup,use!,setup!,finalize!)
 end
 
-struct GenericLinearSolver{A,B,C,D} <: AbstractLinearSolver
+struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
     setup::A
     use!::B
     setup!::C
     finalize!::D
 end
 
-setup(solver::GenericLinearSolver) = solver.setup
-setup!(solver::GenericLinearSolver) = solver.setup!
-use!(solver::GenericLinearSolver) = solver.use!
-finalize!(solver::GenericLinearSolver) = solver.finalize!
+setup(solver::LinearSolver) = solver.setup
+setup!(solver::LinearSolver) = solver.setup!
+use!(solver::LinearSolver) = solver.use!
+finalize!(solver::LinearSolver) = solver.finalize!
 
 struct Preconditioner{A,B,C}
     solver::A

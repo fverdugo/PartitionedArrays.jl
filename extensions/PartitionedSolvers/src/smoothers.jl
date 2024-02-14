@@ -13,7 +13,7 @@ function diagonal_solver()
     linear_solver(;setup,setup!,use!)
 end
 
-function richardson(solver;niters)
+function richardson(solver;maxiters,omega=1)
     function setup(problem,x)
         A = matrix(problem)
         b = rhs(problem)
@@ -31,14 +31,14 @@ function richardson(solver;niters)
         (r,dx,P) = state
         A = matrix(problem)
         b = rhs(problem)
-        for iter in 1:niters
+        for iter in 1:maxiters
             dx .= x
             mul!(r,A,dx)
             r .-= b
             ldiv!(dx,P,r)
-            x .-= dx
+            x .-= omega .* dx
         end
-        (;niters)
+        (;maxiters)
     end
     function finalize!(state)
         (r,dx,P) = state
