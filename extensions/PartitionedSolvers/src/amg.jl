@@ -132,7 +132,7 @@ function aggregate(A::PSparseMatrix,diagA=diag(A);kwargs...)
     node_to_aggregate, PRange(aggregate_partition)
 end
 
-function tentative_prolongator(node_to_aggregate,aggregates)
+function aggregate_constant_prolongator(node_to_aggregate,aggregates)
     typeof_aggregate = eltype(node_to_aggregate)
     nnodes = length(node_to_aggregate)
     pending = typeof_aggregate(0)
@@ -170,7 +170,7 @@ function tentative_prolongator(node_to_aggregate,aggregates)
     P0
 end
 
-function tentative_prolongator(node_to_aggregate::PVector,aggregates::PRange)
+function aggregate_constant_prolongator(node_to_aggregate::PVector,aggregates::PRange)
     function setup_triplets(node_to_aggregate,nodes)
         myI = 1:local_length(nodes)
         myJ = node_to_aggregate
@@ -187,6 +187,45 @@ function tentative_prolongator(node_to_aggregate::PVector,aggregates::PRange)
     P0
 end
 
+function tentative_prolongator!(P0::SparseArrays.AbstractSparseMatrixCSC,B)
+    # TODO assumes CSC
+    #TODO null space for vector-valued problems
+    tol = 1e-10
+    Tv = eltype(B)
+    nf,nc = size(P0)
+    R = zeros(Tv,nc)
+    copy!(P0.nzval,B)
+    for j in 1:nc
+        # For each column, we do its QR factorization.
+        # This is equivalent to the first step of a Gram-Schimdt process
+        # (making the column a unit vector)
+        norm_j = zero(Tv)
+        for p in nzrange(P0,j)
+            val = P0.nzval[p]
+            norm_j += val*val
+        end
+        norm_j = sqrt(norm_j)
+        if norm_j < tol
+            continue
+        end
+        R[j] = norm_j
+        inv_norm_j = one(Tv)/norm_j
+        for p in nzrange(P0,j)
+            P0.nzval[p] *= inv_norm_j
+        end
+    end
+    Bc = R
+    Bc
+end
+
+function tentative_prolongator!(P0::PSparseMatrix,B)
+    #TODO null space for vector-valued problems
+    # TODO for parallel matrices
+    Tv = eltype(eltype(B))
+    Bc = map(cols->ones(Tv,length(cols)),partition(axes(P0,2)))
+    Bc
+end
+
 function smoothed_prolongator(A,P0,diagA=diag(A);omega)
     Dinv = sparse_diag(1 ./ diagA,(axes(A,1),axes(A,1)))
     P = (I-omega*Dinv*A)*P0
@@ -199,13 +238,13 @@ function smoothed_aggregation(;epsilon,omega)
         B = nullspace(operator)
         diagA = diag(A)
         node_to_aggregate, aggregates = aggregate(A,diagA;epsilon)
-        P0 = tentative_prolongator(node_to_aggregate, aggregates)
+        P0 = aggregate_constant_prolongator(node_to_aggregate, aggregates)
+        # TODO improve null space B with few iterations of a check solver
+        Bc = tentative_prolongator!(P0,B)
         P = smoothed_prolongator(A,P0,diagA;omega)
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
         #TODO enhance the partition of Ac,R,P
-        #TODO null space for vector-valued problems
-        Bc = default_nullspace(Ac)
         # TODO enhance partitioning for Ac,R,P
         coarse_operator = attach_nullspace(Ac,Bc)
         coarse_operator,R,P,cache

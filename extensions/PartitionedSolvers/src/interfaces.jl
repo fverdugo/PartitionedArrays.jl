@@ -18,7 +18,7 @@ function default_nullspace(A)
 end
 
 function default_nullspace(A::PSparseMatrix)
-    map(default_nullspace,own_own_values(A))
+    map(default_nullspace,partition(A))
 end
 
 abstract type AbstractLinearSolver end
