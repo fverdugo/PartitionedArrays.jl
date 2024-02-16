@@ -18,11 +18,11 @@ b = A*x
 solver = lu_solver()
 y = similar(x)
 S = setup(solver)(y,A,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
@@ -30,11 +30,11 @@ solver = richardson(lu_solver(),maxiters=1)
 y = similar(x)
 y .= 0
 S = setup(solver)(y,A,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
@@ -42,11 +42,11 @@ solver = jacobi(;maxiters=1000)
 y = similar(x)
 y .= 0
 S = setup(solver)(y,A,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
@@ -54,9 +54,9 @@ solver = additive_schwarz(lu_solver())
 y = similar(x)
 y .= 0
 S = setup(solver)(y,A,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
 end #module

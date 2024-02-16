@@ -252,9 +252,9 @@ function amg(;
     amg_params = (;fine_params,coarse_params)
     setup(x,O,b) = amg_setup(x,O,b,amg_params)
     setup! = amg_setup!
-    use! = amg_use!
+    solve! = amg_solve!
     finalize! = amg_finalize!
-    linear_solver(;setup,setup!,use!,finalize!)
+    linear_solver(;setup,setup!,solve!,finalize!)
 end
 
 function amg_setup(x,operator,b,amg_params)
@@ -293,7 +293,7 @@ function amg_setup(x,operator,b,amg_params)
     (;nlevels,fine_levels,coarse_level,amg_params)
 end
 
-function amg_use!(x,setup,b)
+function amg_solve!(x,setup,b)
     level=1
     amg_cycle!(x,setup,b,level)
     x
@@ -304,13 +304,13 @@ function amg_cycle!(x,setup,b,level)
     if level == setup.nlevels
         coarse_solver = amg_params.coarse_params.coarse_solver
         coarse_solver_setup = setup.coarse_level.coarse_solver_setup
-        return use!(coarse_solver)(x,coarse_solver_setup,b)
+        return solve!(coarse_solver)(x,coarse_solver_setup,b)
     end
     level_params = amg_params.fine_params[level]
     level_setup = setup.fine_levels[level]
     (;pre_smoother,pos_smoother,cycle) = level_params
     (;R,P,r,rc,e,ec,operator,coarse_operator,pre_setup,pos_setup) = level_setup
-    use!(pre_smoother)(x,pre_setup,b)
+    solve!(pre_smoother)(x,pre_setup,b)
     A = matrix(operator)
     mul!(r,A,x)
     r .= r .- b
@@ -319,7 +319,7 @@ function amg_cycle!(x,setup,b,level)
     cycle(ec,setup,rc,level+1)
     mul!(e,P,ec)
     x .-= e
-    use!(pos_smoother)(x,pos_setup,b)
+    solve!(pos_smoother)(x,pos_setup,b)
     x
 end
 

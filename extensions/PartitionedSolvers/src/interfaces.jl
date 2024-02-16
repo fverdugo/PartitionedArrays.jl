@@ -25,23 +25,23 @@ abstract type AbstractLinearSolver end
 
 function linear_solver(;
         setup,
-        use!,
+        solve!,
         setup!,
         finalize! = ls_setup->nothing,
     )
-    LinearSolver(setup,use!,setup!,finalize!)
+    LinearSolver(setup,solve!,setup!,finalize!)
 end
 
 struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
     setup::A
-    use!::B
+    solve!::B
     setup!::C
     finalize!::D
 end
 
 setup(solver::LinearSolver) = solver.setup
 setup!(solver::LinearSolver) = solver.setup!
-use!(solver::LinearSolver) = solver.use!
+solve!(solver::LinearSolver) = solver.solve!
 finalize!(solver::LinearSolver) = solver.finalize!
 
 struct Preconditioner{A,B}
@@ -61,7 +61,7 @@ end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
     fill!(x,zero(eltype(x)))
-    use!(P.solver)(x,P.solver_setup,b)
+    solve!(P.solver)(x,P.solver_setup,b)
     x
 end
 

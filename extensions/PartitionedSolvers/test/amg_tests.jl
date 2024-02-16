@@ -17,9 +17,9 @@ y .= 0
 
 solver = amg()
 S = setup(solver)(y,A,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
 amg_statistics(S) |> display
@@ -46,9 +46,9 @@ solver = amg(;fine_params,coarse_params)
 
 O = attach_nullspace(A,default_nullspace(A))
 S = setup(solver)(y,O,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
 # Now as a preconditioner
@@ -73,18 +73,18 @@ y .= 0
 solver = amg()
 S = setup(solver)(y,A,b)
 amg_statistics(S) |> display
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
 # Now with a nullspace
 
 O = attach_nullspace(A,default_nullspace(A))
 S = setup(solver)(y,O,b)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
-use!(solver)(y,S,b)
+solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
 Pl = preconditioner(amg(),y,A,b)
