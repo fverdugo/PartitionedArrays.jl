@@ -324,6 +324,10 @@ function amg_cycle!(x,setup,b,level)
 end
 
 function amg_statistics(setup)
+    # Taken from: An Introduction to Algebraic Multigrid, R. D. Falgout, April 25, 2006
+    # Grid complexity is the total number of grid points on all grids divided by the number
+    # of grid points on the fine grid. Operator complexity is the total number of nonzeroes in the linear operators
+    # on all grids divided by the number of nonzeroes in the fine grid operator
     nlevels = setup.nlevels
     level_rows = zeros(Int,nlevels)
     level_nnz = zeros(Int,nlevels)
@@ -338,14 +342,19 @@ function amg_statistics(setup)
     level_rows[end] = size(matrix(coarse_operator),1)
     level_nnz[end] = nnz(matrix(coarse_operator))
     nnz_total = sum(level_nnz)
+    rows_total = sum(level_rows)
     level_id = collect(1:nlevels)
-    complexity = zeros(nlevels)
-    complexity[1] = nnz_total ./ level_nnz[1]
-    Dict([ :rows => level_rows,
-          :nnz => level_nnz,
-          :nnz_rel => level_nnz ./ nnz_total,
+    op_complexity = zeros(nlevels)
+    op_complexity[1] = nnz_total ./ level_nnz[1]
+    grid_complexity = zeros(nlevels)
+    grid_complexity[1] = rows_total ./ level_rows[1]
+    Dict([ :unknowns => level_rows,
+          :unknowns_rel => level_rows ./ rows_total,
+          :nonzeros => level_nnz,
+          :nonzers_rel => level_nnz ./ nnz_total,
           :level => level_id,
-          :complexity => complexity
+          :operator_complexity => op_complexity,
+          :grid_complexity => grid_complexity,
          ]
         )
 end

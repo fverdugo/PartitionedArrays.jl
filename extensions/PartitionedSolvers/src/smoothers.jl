@@ -7,9 +7,11 @@ function lu_solver()
 end
 
 function diagonal_solver()
-    setup(x,op,b) = diag(matrix(op))
+    setup(x,op,b) = diag!(similar(b),matrix(op))
     setup!(state,op) = diag!(state,matrix(op))
-    solve!(x,state,b) = x .= state .\ b
+    function solve!(x,state,b)
+        x .= state .\ b
+    end
     linear_solver(;setup,setup!,solve!)
 end
 
