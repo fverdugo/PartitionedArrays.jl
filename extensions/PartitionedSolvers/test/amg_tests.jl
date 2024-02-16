@@ -60,10 +60,8 @@ solver = amg()
 workspace = setup(solver)(problem,y)
 use!(solver)(problem,y,workspace)
 problem = replace_matrix(problem,2*A)
-@test_broken begin
-    setup!(solver)(problem,y,workspace)
-    use!(solver)(problem,y,workspace)
-    finalize!(solver)(workspace)
-end
+setup!(solver)(problem,y,workspace)
+use!(solver)(problem,y,workspace)
+finalize!(solver)(workspace)
 
 end
