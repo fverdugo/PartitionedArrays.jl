@@ -219,28 +219,36 @@ function smoothed_aggregation(;epsilon,omega)
     (coarsen, coarsen!)
 end
 
-function default_amg_fine_params()
+function amg_level_params(;
     #TODO more resonable defaults?
-    pre_smoother = jacobi(;maxiters=10,omega=2/3)
-    coarsening = smoothed_aggregation(;epsilon=0,omega=1)
-    cycle = v_cycle()
-    pos_smoother = pre_smoother
+    pre_smoother = jacobi(;maxiters=10,omega=2/3),
+    coarsening = smoothed_aggregation(;epsilon=0,omega=1),
+    cycle = v_cycle(),
+    pos_smoother = pre_smoother,
+    )
+
     level_params = (;pre_smoother,pos_smoother,coarsening,cycle)
-    nfine = 3
-    fine_params = fill(level_params,nfine)
+    level_params
+end
+
+function amg_fine_params(;level_params = amg_level_params(),n_fine_levels=3)
+    #TODO more resonable defaults?
+    fine_params = fill(level_params,n_fine_levels)
     fine_params
 end
 
-function default_amg_coarse_params()
-    coarse_solver = lu_solver()
-    coarse_size = 10
+function amg_coarse_params(;
+    #TODO more resonable defaults?
+    coarse_solver = lu_solver(),
+    coarse_size = 10,
+    )
     coarse_params = (;coarse_solver,coarse_size)
     coarse_params
 end
 
 function amg(;
-        fine_params=default_amg_fine_params(),
-        coarse_params=default_amg_coarse_params(),)
+        fine_params=amg_fine_params(),
+        coarse_params=amg_coarse_params(),)
     amg_params = (;fine_params,coarse_params)
     setup(x,O,b) = amg_setup(x,O,b,amg_params)
     setup! = amg_setup!

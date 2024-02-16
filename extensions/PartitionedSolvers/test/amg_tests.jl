@@ -21,20 +21,22 @@ setup!(solver)(S,2*A)
 use!(solver)(y,S,b)
 finalize!(solver)(S)
 
-level_params = (;
+
+# Non-default options
+
+level_params = amg_level_params(;
     pre_smoother = jacobi(;maxiters=10,omega=2/3),
-    pos_smoother = jacobi(;maxiters=10,omega=2/3),
-    coarsening = smoothed_aggregation(;epsilon=0,omega=1),
     cycle = w_cycle()
    )
+
+fine_params = amg_fine_params(;
+    level_params,
+    n_fine_levels=5)
 
 coarse_params = (;
     coarse_solver = lu_solver(),
     coarse_size = 15,
    )
-
-nfine = 10
-fine_params = fill(level_params,nfine)
 
 solver = amg(;fine_params,coarse_params)
 
