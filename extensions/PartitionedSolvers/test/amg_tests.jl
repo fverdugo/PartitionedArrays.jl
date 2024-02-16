@@ -11,18 +11,15 @@ nodes_per_dir = (100,100)
 A = laplace_matrix(nodes_per_dir)
 x = ones(axes(A,2))
 b = A*x
-
-problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
 
 solver = amg()
-workspace = setup(solver)(problem,y)
-use!(solver)(problem,y,workspace)
-problem = replace_matrix(problem,2*A)
-setup!(solver)(problem,y,workspace)
-use!(solver)(problem,y,workspace)
-finalize!(solver)(workspace)
+S = setup(solver)(y,A,b)
+use!(solver)(y,S,b)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
+finalize!(solver)(S)
 
 level_params = (;
     pre_smoother = jacobi(;maxiters=10,omega=2/3),
@@ -40,8 +37,17 @@ nfine = 10
 fine_params = fill(level_params,nfine)
 
 solver = amg(;fine_params,coarse_params)
-workspace = setup(solver)(problem,y)
-use!(solver)(problem,y,workspace)
+
+# Now with a nullspace
+
+O = attach_nullspace(A,default_nullspace(A))
+S = setup(solver)(y,O,b)
+use!(solver)(y,S,b)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
+finalize!(solver)(S)
+
+# Now in parallel
 
 parts_per_dir = (2,2)
 np = prod(parts_per_dir)
@@ -52,16 +58,23 @@ A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
 x = pones(partition(axes(A,2)))
 b = A*x
 
-problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
 
 solver = amg()
-workspace = setup(solver)(problem,y)
-use!(solver)(problem,y,workspace)
-problem = replace_matrix(problem,2*A)
-setup!(solver)(problem,y,workspace)
-use!(solver)(problem,y,workspace)
-finalize!(solver)(workspace)
+S = setup(solver)(y,A,b)
+use!(solver)(y,S,b)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
+finalize!(solver)(S)
+
+# Now with a nullspace
+
+O = attach_nullspace(A,default_nullspace(A))
+S = setup(solver)(y,O,b)
+use!(solver)(y,S,b)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
+finalize!(solver)(S)
 
 end

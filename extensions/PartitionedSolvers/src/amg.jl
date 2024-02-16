@@ -194,9 +194,9 @@ function smoothed_prolongator(A,P0,diagA=diag(A);omega)
 end
 
 function smoothed_aggregation(;epsilon,omega)
-    function coarsen(problem)
-        A = matrix(problem)
-        B = nullspace(problem)
+    function coarsen(operator)
+        A = matrix(operator)
+        B = nullspace(operator)
         diagA = diag(A)
         node_to_aggregate, aggregates = aggregate(A,diagA;epsilon)
         P0 = tentative_prolongator(node_to_aggregate, aggregates)
@@ -207,16 +207,14 @@ function smoothed_aggregation(;epsilon,omega)
         #TODO null space for vector-valued problems
         Bc = default_nullspace(Ac)
         # TODO enhance partitioning for Ac,R,P
-        b = rhs(problem)
-        bc = similar(b,axes(Ac,1))
-        coarse_problem = linear_problem(Ac,bc,Bc)
-        coarse_problem,R,P,cache
+        coarse_operator = attach_nullspace(Ac,Bc)
+        coarse_operator,R,P,cache
     end
-    function coarsen!(problem,coarse_problem,R,P,cache)
-        A = matrix(problem)
-        Ac = matrix(coarse_problem)
+    function coarsen!(operator,coarse_operator,R,P,cache)
+        A = matrix(operator)
+        Ac = matrix(coarse_operator)
         rap!(Ac,R,A,P,cache)
-        coarse_problem,R,P,cache
+        coarse_operator,R,P,cache
     end
     (coarsen, coarsen!)
 end
@@ -242,21 +240,18 @@ end
 
 function amg(;
         fine_params=default_amg_fine_params(),
-        coarse_params=default_amg_coarse_params(),
-    )
-    AMG(fine_params,coarse_params)
+        coarse_params=default_amg_coarse_params(),)
+    amg_params = (;fine_params,coarse_params)
+    setup(x,O,b) = amg_setup(x,O,b,amg_params)
+    setup! = amg_setup!
+    use! = amg_use!
+    finalize! = amg_finalize!
+    linear_solver(;setup,setup!,use!,finalize!)
 end
 
-struct AMG{A,B} <: AbstractLinearSolver
-    fine_params::A
-    coarse_params::B
-end
-
-setup(amg::AMG) = (problem,x) -> amg_setup(amg,problem,x)
-
-function amg_setup(amg,problem,x)
-    fine_params = amg.fine_params
-    coarse_params = amg.coarse_params
+function amg_setup(x,operator,b,amg_params)
+    fine_params = amg_params.fine_params
+    coarse_params = amg_params.coarse_params
     (;coarse_solver,coarse_size) = coarse_params
     done = false
     fine_levels =  map(fine_params) do fine_level
@@ -264,60 +259,59 @@ function amg_setup(amg,problem,x)
             return nothing
         end
         (;pre_smoother,pos_smoother,coarsening,cycle) = fine_level
-        pre_setup = setup(pre_smoother)(problem,x)
-        pos_setup = setup(pos_smoother)(problem,x)
+        pre_setup = setup(pre_smoother)(x,operator,b)
+        pos_setup = setup(pos_smoother)(x,operator,b)
         coarsen, _ = coarsening
-        coarse_problem,R,P,coarse_problem_setup = coarsen(problem)
-        Ac = matrix(coarse_problem)
+        coarse_operator,R,P,coarse_operator_setup = coarsen(operator)
+        Ac = matrix(coarse_operator)
         nc = size(Ac,1)
         if nc <= coarse_size
             done = true
         end
-        r = similar(rhs(problem))
+        r = similar(b)
+        rc = similar(r,axes(Ac,1))
         e = similar(x)
         ec = similar(e,axes(Ac,2))
-        level_setup = (;R,P,r,e,ec,coarse_problem,pre_setup,pos_setup,coarse_problem_setup)
+        level_setup = (;R,P,r,rc,e,ec,operator,coarse_operator,pre_setup,pos_setup,coarse_operator_setup)
         x = ec
-        problem = coarse_problem
+        b = rc
+        operator = coarse_operator
         level_setup
     end
     n_fine_levels = count(i->i!==nothing,fine_levels)
     nlevels = n_fine_levels+1
-    coarse_solver_setup = setup(coarse_solver)(problem,x)
+    coarse_solver_setup = setup(coarse_solver)(x,operator,b)
     coarse_level = (;coarse_solver_setup)
-    (;nlevels,fine_levels,coarse_level)
+    (;nlevels,fine_levels,coarse_level,amg_params)
 end
 
-function use!(amg::AMG)
-    function use_amg!(problem,x,setup)
-        level=1
-        amg_cycle!(amg,x,problem,setup,level)
-        x
-    end
+function amg_use!(x,setup,b)
+    level=1
+    amg_cycle!(x,setup,b,level)
+    x
 end
 
-function amg_cycle!(amg,x,problem,setup,level)
+function amg_cycle!(x,setup,b,level)
+    amg_params = setup.amg_params
     if level == setup.nlevels
-        coarse_solver = amg.coarse_params.coarse_solver
+        coarse_solver = amg_params.coarse_params.coarse_solver
         coarse_solver_setup = setup.coarse_level.coarse_solver_setup
-        return use!(coarse_solver)(problem,x,coarse_solver_setup)
+        return use!(coarse_solver)(x,coarse_solver_setup,b)
     end
-    level_params = amg.fine_params[level]
+    level_params = amg_params.fine_params[level]
     level_setup = setup.fine_levels[level]
     (;pre_smoother,pos_smoother,cycle) = level_params
-    (;R,P,r,e,ec,coarse_problem,pre_setup,pos_setup) = level_setup
-    use!(pre_smoother)(problem,x,pre_setup)
-    A = matrix(problem)
-    b = rhs(problem)
+    (;R,P,r,rc,e,ec,operator,coarse_operator,pre_setup,pos_setup) = level_setup
+    use!(pre_smoother)(x,pre_setup,b)
+    A = matrix(operator)
     mul!(r,A,x)
     r .= r .- b
-    rc = rhs(coarse_problem)
     mul!(rc,R,r)
     fill!(ec,zero(eltype(ec)))
-    cycle(amg,ec,coarse_problem,setup,level+1)
+    cycle(ec,setup,rc,level+1)
     mul!(e,P,ec)
     x .-= e
-    use!(pos_smoother)(problem,x,pos_setup)
+    use!(pos_smoother)(x,pos_setup,b)
     x
 end
 
@@ -332,41 +326,38 @@ function w_cycle()
     end
 end
 
-setup!(amg::AMG) = (problem,x,setup) -> amg_setup!(amg,problem,x,setup)
-
-function amg_setup!(amg,problem,x,setup)
+function amg_setup!(setup,operator)
+    amg_params = setup.amg_params
     nlevels = setup.nlevels
     for level in 1:(nlevels-1)
-        level_params = amg.fine_params[level]
+        level_params = amg_params.fine_params[level]
         level_setup = setup.fine_levels[level]
         (;coarsening,pre_smoother,pos_smoother) = level_params
         _, coarsen! = coarsening
-        (;R,P,r,e,ec,coarse_problem,pre_setup,pos_setup,coarse_problem_setup) = level_setup
-        setup!(pre_smoother)(problem,x,pre_setup)
-        setup!(pos_smoother)(problem,x,pos_setup)
-        coarsen!(problem,coarse_problem,R,P,coarse_problem_setup)
-        problem = coarse_problem
-        x = ec
+        (;R,P,operator,coarse_operator,coarse_operator_setup,pre_setup,pos_setup) = level_setup
+        setup!(pre_smoother)(pre_setup,operator)
+        setup!(pos_smoother)(pos_setup,operator)
+        coarsen!(operator,coarse_operator,R,P,coarse_operator_setup)
+        operator = coarse_operator
     end
-    coarse_solver = amg.coarse_params.coarse_solver
+    coarse_solver = amg_params.coarse_params.coarse_solver
     coarse_solver_setup = setup.coarse_level.coarse_solver_setup
-    setup!(coarse_solver)(problem,x,coarse_solver_setup)
+    setup!(coarse_solver)(coarse_solver_setup,operator)
     setup
 end
 
-finalize!(amg::AMG) = (setup) -> amg_finalize!(amg,setup)
-
-function amg_finalize!(amg,setup)
+function amg_finalize!(setup)
+    amg_params = setup.amg_params
     nlevels = setup.nlevels
     for level in 1:(nlevels-1)
-        level_params = amg.fine_params[level]
+        level_params = amg_params.fine_params[level]
         level_setup = setup.fine_levels[level]
         (;pre_smoother,pos_smoother) = level_params
         (;pre_setup,pos_setup) = level_setup
         finalize!(pre_smoother)(pre_setup)
         finalize!(pos_smoother)(pos_setup)
     end
-    coarse_solver = amg.coarse_params.coarse_solver
+    coarse_solver = amg_params.coarse_params.coarse_solver
     coarse_solver_setup = setup.coarse_level.coarse_solver_setup
     finalize!(coarse_solver)(coarse_solver_setup)
     nothing

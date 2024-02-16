@@ -1,36 +1,36 @@
 
 function lu_solver()
-    setup(problem,x) = lu(matrix(problem))
-    setup!(problem,x,state) = lu!(state,matrix(problem))
-    use!(problem,x,state) = ldiv!(x,state,rhs(problem))
+    setup(x,op,b) = lu(matrix(op))
+    setup!(state,op) = lu!(state,matrix(op))
+    use!(x,state,b) = ldiv!(x,state,b)
     linear_solver(;setup,use!,setup!)
 end
 
 function diagonal_solver()
-    setup(problem,x) = diag(matrix(problem))
-    setup!(problem,x,state) = diag!(state,matrix(problem))
-    use!(problem,x,state) = x .= state .\ rhs(problem)
+    setup(x,op,b) = diag(matrix(op))
+    setup!(state,op) = diag!(state,matrix(op))
+    use!(x,state,b) = x .= state .\ b
     linear_solver(;setup,setup!,use!)
 end
 
 function richardson(solver;maxiters,omega=1)
-    function setup(problem,x)
-        A = matrix(problem)
-        b = rhs(problem)
+    function setup(x,O,b)
+        A = matrix(O)
+        A_ref = Ref(A)
         r = similar(b)
         dx = similar(x,axes(A,2))
-        P = preconditioner(solver,problem,dx)
-        state = (r,dx,P)
+        P = preconditioner(solver,dx,O,r)
+        state = (r,dx,P,A_ref)
     end
-    function setup!(problem,x,state)
-        (r,dx,P) = state
-        preconditioner!(P,problem,dx)
+    function setup!(state,O)
+        (r,dx,P,A_ref) = state
+        A_ref[] = matrix(O)
+        preconditioner!(P,O)
         state
     end
-    function use!(problem,x,state)
-        (r,dx,P) = state
-        A = matrix(problem)
-        b = rhs(problem)
+    function use!(x,state,b)
+        (r,dx,P,A_ref) = state
+        A = A_ref[]
         for iter in 1:maxiters
             dx .= x
             mul!(r,A,dx)
@@ -41,7 +41,7 @@ function richardson(solver;maxiters,omega=1)
         (;maxiters)
     end
     function finalize!(state)
-        (r,dx,P) = state
+        (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
     linear_solver(;setup,setup!,use!,finalize!)
@@ -52,31 +52,27 @@ function jacobi(;kwargs...)
     richardson(solver;kwargs...)
 end
 
-function build_local_problems(problem)
-    A = matrix(problem)
-    b = rhs(problem)
-    ns = nullspace(problem)
-    if ns === nothing
-        map(linear_problem,own_own_values(A),own_values(b))
-    else
-        map(linear_problem,own_own_values(A),own_values(b),ns)
-    end
-end
-
 function additive_schwarz(local_solver)
-    function setup(problem,x)
-        local_problems = build_local_problems(problem)
-        local_setups = map(PartitionedSolvers.setup(local_solver),local_problems,own_values(x))
+    function build_local_operators(O::MatrixWithNullspace)
+        A = matrix(O)
+        ns = nullspace(O)
+        map(linear_operator,own_own_values(A),ns)
+    end
+    function build_local_operators(A)
+        own_own_values(matrix(A))
+    end
+    function setup(x,O,b)
+        local_O = build_local_operators(O)
+        local_setups = map(PartitionedSolvers.setup(local_solver),own_values(x),local_O,own_values(b))
         local_setups
     end
-    function setup!(problem,x,local_setups)
-        local_problems = build_local_problems(problem)
-        map(PartitionedSolvers.setup!(local_solver),local_problems,own_values(x),local_setups)
+    function setup!(local_setups,O)
+        local_O = build_local_operators(O)
+        map(PartitionedSolvers.setup!(local_solver),local_setups,local_O)
         local_setups
     end
-    function use!(problem,x,local_setups)
-        local_problems = build_local_problems(problem)
-        map(PartitionedSolvers.use!(local_solver),local_problems,own_values(x),local_setups)
+    function use!(x,local_setups,b)
+        map(PartitionedSolvers.use!(local_solver),own_values(x),local_setups,own_values(b))
     end
     function finalize!(local_setups)
         map(PartitionedSolvers.finalize!(local_solver),local_setups)

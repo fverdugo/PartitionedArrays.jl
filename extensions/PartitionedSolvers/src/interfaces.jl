@@ -1,9 +1,17 @@
 
-abstract type AbstractLinearProblem  end
-
-function linear_problem(matrix,rhs,nullspace=default_nullspace(matrix))
-    GenericLinearProblem(matrix,rhs,nullspace)
+function attach_nullspace(A,ns)
+    MatrixWithNullspace(A,ns)
 end
+
+struct MatrixWithNullspace{A,B}
+    matrix::A
+    nullspace::B
+end
+matrix(a::MatrixWithNullspace) = a.matrix
+nullspace(a::MatrixWithNullspace) = a.nullspace
+
+matrix(a) = a
+nullspace(a) = default_nullspace(a)
 
 function default_nullspace(A)
     ones(size(A,1))
@@ -11,30 +19,6 @@ end
 
 function default_nullspace(A::PSparseMatrix)
     map(default_nullspace,own_own_values(A))
-end
-
-struct GenericLinearProblem{A,B,C} <: AbstractLinearProblem
-    matrix::A
-    rhs::B
-    nullspace::C
-end
-
-matrix(a::GenericLinearProblem) = a.matrix
-rhs(a::GenericLinearProblem) = a.rhs
-nullspace(a::GenericLinearProblem) = a.nullspace
-
-function replace_matrix(a::GenericLinearProblem,A)
-    linear_problem(
-        A,
-        rhs(a),
-        nullspace(a))
-end
-
-function replace_rhs(a::GenericLinearProblem,b)
-    linear_problem(
-        matrix(a),
-        b,
-        nullspace(a))
 end
 
 abstract type AbstractLinearSolver end
@@ -60,26 +44,24 @@ setup!(solver::LinearSolver) = solver.setup!
 use!(solver::LinearSolver) = solver.use!
 finalize!(solver::LinearSolver) = solver.finalize!
 
-struct Preconditioner{A,B,C}
+struct Preconditioner{A,B}
     solver::A
     solver_setup::B
-    problem::C
 end
 
-function preconditioner(solver,problem,x)
-    solver_setup = setup(solver)(problem,x)
-    Preconditioner(solver,solver_setup,problem)
+function preconditioner(solver,x,A,b)
+    solver_setup = setup(solver)(x,A,b)
+    Preconditioner(solver,solver_setup)
 end
 
-function preconditioner!(P::Preconditioner,problem,x)
-    setup!(P.solver)(problem,x,P.solver_setup)
+function preconditioner!(P::Preconditioner,A)
+    setup!(P.solver)(P.solver_setup,A)
     P
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
     fill!(x,zero(eltype(x)))
-    problem = replace_rhs(P.problem,b)
-    use!(P.solver)(problem,x,P.solver_setup)
+    use!(P.solver)(x,P.solver_setup,b)
     x
 end
 

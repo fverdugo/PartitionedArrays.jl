@@ -16,55 +16,47 @@ x = pones(partition(axes(A,2)))
 b = A*x
 
 solver = lu_solver()
-problem = linear_problem(A,b)
 y = similar(x)
-S = setup(solver)(problem,y)
-use!(solver)(problem,y,S)
+S = setup(solver)(y,A,b)
+use!(solver)(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-problem = replace_matrix(problem,2*A)
-setup!(solver)(problem,y,S)
-use!(solver)(problem,y,S)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
 solver = richardson(lu_solver(),maxiters=1)
-problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
-S = setup(solver)(problem,y)
-use!(solver)(problem,y,S)
+S = setup(solver)(y,A,b)
+use!(solver)(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-problem = replace_matrix(problem,2*A)
-setup!(solver)(problem,y,S)
-use!(solver)(problem,y,S)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
 solver = jacobi(;maxiters=1000)
-problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
-S = setup(solver)(problem,y)
-use!(solver)(problem,y,S)
+S = setup(solver)(y,A,b)
+use!(solver)(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-problem = replace_matrix(problem,2*A)
-setup!(solver)(problem,y,S)
-use!(solver)(problem,y,S)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(solver)(S)
 
 solver = additive_schwarz(lu_solver())
-problem = linear_problem(A,b)
 y = similar(x)
 y .= 0
-S = setup(solver)(problem,y)
-use!(solver)(problem,y,S)
-problem = replace_matrix(problem,2*A)
-setup!(solver)(problem,y,S)
-use!(solver)(problem,y,S)
+S = setup(solver)(y,A,b)
+use!(solver)(y,S,b)
+setup!(solver)(S,2*A)
+use!(solver)(y,S,b)
 finalize!(solver)(S)
 
 end #module
