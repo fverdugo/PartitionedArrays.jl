@@ -22,10 +22,6 @@ export compresscoo
 export indextype
 export sparse_matrix
 export sparse_matrix!
-export diag!
-export sparse_diag
-export rap
-export rap!
 include("sparse_utils.jl")
 
 export linear_indices
@@ -154,6 +150,14 @@ export own_own_values
 export ghost_ghost_values
 export psystem
 export psystem!
+export diag!
+export sparse_diag
+export rap
+export rap!
+export spmm
+export spmm!
+export spmtm
+export spmtm!
 include("p_sparse_matrix.jl")
 
 export PTimer

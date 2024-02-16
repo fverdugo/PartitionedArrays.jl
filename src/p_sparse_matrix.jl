@@ -719,18 +719,48 @@ function Base.:*(A::AbstractSplitMatrix,B::AbstractSplitMatrix)
     split_matrix(blocks,A.row_permutation,B.col_permutation)
 end
 
-function Base.:*(Ct::Transpose{T,<:AbstractSplitMatrix} where T,B::AbstractSplitMatrix)
-    C = Ct.parent
-    A_own_own = transpose(C.blocks.own_own)
-    A_own_ghost = transpose(C.blocks.ghost_own)
-    A_ghost_own = transpose(C.blocks.own_ghost)
-    A_ghost_ghost = transpose(C.blocks.ghost_ghost)
+function LinearAlgebra.mul!(C::AbstractSplitMatrix,A::AbstractSplitMatrix,B::AbstractSplitMatrix)
+    # TODO not sure if there is available an efficient implementation for mul! for SparseMatrixCSC
+    mul!(C.blocks.own_own,A.blocks.own_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.own_own,A.blocks.own_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.own_ghost,A.blocks.own_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.own_ghost,A.blocks.own_ghost,B.blocks.ghost_ghost,1,1)
+    mul!(C.blocks.ghost_own,A.blocks.ghost_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.ghost_own,A.blocks.ghost_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.ghost_ghost,A.blocks.ghost_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.ghost_ghost,A.blocks.ghost_ghost,B.blocks.ghost_ghost,1,1)
+    C
+end
+
+function Base.:*(At::Transpose{T,<:AbstractSplitMatrix} where T,B::AbstractSplitMatrix)
+    A = At.parent
+    A_own_own = transpose(A.blocks.own_own)
+    A_own_ghost = transpose(A.blocks.ghost_own)
+    A_ghost_own = transpose(A.blocks.own_ghost)
+    A_ghost_ghost = transpose(A.blocks.ghost_ghost)
     own_own = A_own_own*B.blocks.own_own + A_own_ghost*B.blocks.ghost_own
     own_ghost = A_own_own*B.blocks.own_ghost + A_own_ghost*B.blocks.ghost_ghost
     ghost_own = A_ghost_own*B.blocks.own_own + A_ghost_ghost*B.blocks.ghost_own
     ghost_ghost = A_ghost_own*B.blocks.own_ghost + A_ghost_ghost*B.blocks.ghost_ghost
     blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-    split_matrix(blocks,C.col_permutation,B.col_permutation)
+    split_matrix(blocks,A.col_permutation,B.col_permutation)
+end
+
+function LinearAlgebra.mul!(C::AbstractSplitMatrix,At::Transpose{T,<:AbstractSplitMatrix} where T,B::AbstractSplitMatrix)
+    # TODO not sure if there is available an efficient implementation for mul! for SparseMatrixCSC
+    A = At.parent
+    A_own_own = transpose(A.blocks.own_own)
+    A_own_ghost = transpose(A.blocks.ghost_own)
+    A_ghost_own = transpose(A.blocks.own_ghost)
+    A_ghost_ghost = transpose(A.blocks.ghost_ghost)
+    mul!(C.blocks.own_own,A_own_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.own_own,A_own_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.own_ghost,A_own_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.own_ghost,A_own_ghost,B.blocks.ghost_ghost,1,1)
+    mul!(C.blocks.ghost_own,A_ghost_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.ghost_own,A_ghost_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.ghost_ghost,A_ghost_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.ghost_ghost,A_ghost_ghost,B.blocks.ghost_ghost,1,1)
 end
 
 for op in (:+,:-)
@@ -1377,7 +1407,7 @@ function psparse_assemble_impl(
         ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
         ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(rows_fa))
+        values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(cols_fa))
         nnz_own_own = nnz(own_own)
         k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
         k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
@@ -1798,9 +1828,22 @@ function LinearAlgebra.diag(A::PSparseMatrix)
     diag!(d,A)
 end
 
+function diag!(d,A)
+    d .= diag(A)
+    d
+end
+
 function diag!(d::PVector,A::PSparseMatrix)
     map(diag!,own_values(d),own_own_values(A))
     d
+end
+
+function sparse_diag(d,shape)
+    n = length(d)
+    I = 1:n
+    J = 1:n
+    V = d
+    sparse(I,J,V,map(length,shape)...)
 end
 
 function sparse_diag(d::PVector,shape)
@@ -1815,46 +1858,89 @@ function sparse_diag(d::PVector,shape)
     psparse(I,J,V,row_partition,col_partition;assembled=true) |> fetch
 end
 
+function rap(R,A,P;reuse=Val(false))
+    Ac = R*A*P
+    if val_parameter(reuse)
+        return Ac, nothing
+    end
+    Ac
+end
+
+function rap!(Ac,R,A,P,cache)
+    # TODO improve performance
+    tmp = R*A*P
+    copyto!(Ac,tmp)
+    Ac
+end
+
 function spmm(A,B;reuse=Val(false))
     C = A*B
     if val_parameter(reuse)
-        error("not implemented")
+        return C, nothing
     end
     C
 end
 
+function spmm!(C,A,B,state)
+    mul!(C,A,B)
+    C
+end
+
 function spmm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
+    # TODO latency hiding
     @assert A.assembled
     @assert B.assembled
     col_partition = partition(axes(A,2))
-    C = consistent(B,col_partition) |> fetch
-    D_partition = map(spmm,partition(A),partition(C))
+    C,cacheC = consistent(B,col_partition;reuse=true) |> fetch
+    D_partition,cacheD = map((args...)->spmm(args...;reuse=true),partition(A),partition(C)) |> tuple_of_arrays
     assembled = true
     D = PSparseMatrix(D_partition,partition(axes(A,1)),partition(axes(B,2)),assembled)
     if val_parameter(reuse)
-        error("not implemented")
+        cache = (C,cacheC,cacheD)
+        return D,cache
     end
+    D
+end
+
+function spmm!(D::PSparseMatrix,A::PSparseMatrix,B::PSparseMatrix,cache)
+    (C,cacheC,cacheD)= cache
+    consistent!(C,B,cacheC) |> wait
+    map(spmm!,partition(D),partition(A),partition(C),cacheD)
     D
 end
 
 function spmtm(A,B;reuse=Val(false))
     C = transpose(A)*B
     if val_parameter(reuse)
-        error("not implemented")
+        return C, nothing
     end
     C
 end
 
+function spmtm!(C,A,B,cache)
+    mul!(C,transpose(A),B)
+    C
+end
+
 function spmtm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
-    if val_parameter(reuse)
-        error("not implemented")
-    end
+    # TODO latency hiding
     @assert A.assembled
     @assert B.assembled
-    D_partition = map(spmtm,partition(A),partition(B))
+    D_partition,cacheD = map((args...)->spmtm(args...;reuse=true),partition(A),partition(B)) |> tuple_of_arrays
     assembled = false
     D = PSparseMatrix(D_partition,partition(axes(A,2)),partition(axes(B,2)),assembled)
-    C = assemble(D) |> fetch
+    C,cacheC = assemble(D;reuse=true) |> fetch
+    if val_parameter(reuse)
+        cache = (D,cacheC,cacheD)
+        return C,cache
+    end
+    C
+end
+
+function spmtm!(C::PSparseMatrix,A::PSparseMatrix,B::PSparseMatrix,cache)
+    (D,cacheC,cacheD)= cache
+    map(spmtm!,partition(D),partition(A),partition(B),cacheD)
+    assemble!(C,D,cacheC) |> wait
     C
 end
 
@@ -1888,17 +1974,16 @@ end
 
 function Base.copy!(a::PSparseMatrix,b::PSparseMatrix)
     @assert size(a) == size(b)
-    copyto!(a,b)
+    @assert a.assembled == b.assembled
+    if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
+        copyto!(a,b)
+    else
+        error("Trying to copy a PSparseMatrix into another one with a different data layout. This case is not implemented yet. It would require communications.")
+    end
 end
 
 function Base.copyto!(a::PSparseMatrix,b::PSparseMatrix)
-    ## Think about the role
-    @assert a.assembled == b.assembled
-    if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
-        map(copy!,partition(a),partition(b))
-    else
-        error("Trying to copy a OldPSparseMatrix into another one with a different data layout. This case is not implemented yet. It would require communications.")
-    end
+    map(copy!,partition(a),partition(b))
     a
 end
 
@@ -2212,9 +2297,9 @@ function laplace_matrix(nodes_per_dir,parts_per_dir,ranks)
                 end
             end
         end
-        myI,myJ,myV
+        @views myI[1:t],myJ[1:t],myV[1:t]
     end
     node_partition = uniform_partition(ranks,parts_per_dir,nodes_per_dir)
     I,J,V = map(setup,node_partition) |> tuple_of_arrays
-    A = psparse(I,J,V,node_partition,node_partition) |> fetch
+    A = psparse(sparse,I,J,V,node_partition,node_partition) |> fetch
 end
