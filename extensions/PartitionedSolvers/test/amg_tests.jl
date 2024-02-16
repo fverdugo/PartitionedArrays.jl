@@ -22,6 +22,8 @@ setup!(solver)(S,2*A)
 use!(solver)(y,S,b)
 finalize!(solver)(S)
 
+amg_statistics(S) |> display
+
 # Non-default options
 
 level_params = amg_level_params(;
@@ -60,7 +62,7 @@ parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
-nodes_per_dir = (10,10)
+nodes_per_dir = (100,100)
 A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
 x = pones(partition(axes(A,2)))
 b = A*x
@@ -70,6 +72,7 @@ y .= 0
 
 solver = amg()
 S = setup(solver)(y,A,b)
+amg_statistics(S) |> display
 use!(solver)(y,S,b)
 setup!(solver)(S,2*A)
 use!(solver)(y,S,b)

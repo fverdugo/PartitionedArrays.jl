@@ -786,6 +786,15 @@ for op in (:+,:-)
     end
 end
 
+function SparseArrays.nnz(a::SplitMatrix)
+    n = 0
+    n += nnz(a.blocks.own_own)
+    n += nnz(a.blocks.own_ghost)
+    n += nnz(a.blocks.ghost_own)
+    n += nnz(a.blocks.ghost_ghost)
+    n
+end
+
 function split_format_locally(A,rows,cols)
     n_own_rows = own_length(rows)
     n_own_cols = own_length(cols)
@@ -1992,6 +2001,11 @@ function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
         LinearAlgebra.fillstored!(values,v)
     end
     a
+end
+
+function SparseArrays.nnz(a::PSparseMatrix)
+    ns = map(nnz,partition(a))
+    sum(ns)
 end
 
 # This function could be removed if IterativeSolvers was implemented in terms

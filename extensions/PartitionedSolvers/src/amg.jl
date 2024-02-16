@@ -231,7 +231,7 @@ function amg_level_params(;
     level_params
 end
 
-function amg_fine_params(;level_params = amg_level_params(),n_fine_levels=3)
+function amg_fine_params(;level_params = amg_level_params(),n_fine_levels=6)
     #TODO more resonable defaults?
     fine_params = fill(level_params,n_fine_levels)
     fine_params
@@ -240,7 +240,7 @@ end
 function amg_coarse_params(;
     #TODO more resonable defaults?
     coarse_solver = lu_solver(),
-    coarse_size = 10,
+    coarse_size = 50,
     )
     coarse_params = (;coarse_solver,coarse_size)
     coarse_params
@@ -321,6 +321,33 @@ function amg_cycle!(x,setup,b,level)
     x .-= e
     use!(pos_smoother)(x,pos_setup,b)
     x
+end
+
+function amg_statistics(setup)
+    nlevels = setup.nlevels
+    level_rows = zeros(Int,nlevels)
+    level_nnz = zeros(Int,nlevels)
+    for level in 1:(nlevels-1)
+        level_setup = setup.fine_levels[level]
+        (;operator,) = level_setup
+        level_rows[level] = size(matrix(operator),1)
+        level_nnz[level] = nnz(matrix(operator))
+    end
+    level_setup = setup.fine_levels[nlevels-1]
+    (;coarse_operator) = level_setup
+    level_rows[end] = size(matrix(coarse_operator),1)
+    level_nnz[end] = nnz(matrix(coarse_operator))
+    nnz_total = sum(level_nnz)
+    level_id = collect(1:nlevels)
+    complexity = zeros(nlevels)
+    complexity[1] = nnz_total ./ level_nnz[1]
+    Dict([ :rows => level_rows,
+          :nnz => level_nnz,
+          :nnz_rel => level_nnz ./ nnz_total,
+          :level => level_id,
+          :complexity => complexity
+         ]
+        )
 end
 
 function v_cycle()

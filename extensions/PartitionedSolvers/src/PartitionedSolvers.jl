@@ -29,6 +29,7 @@ export w_cycle
 export amg_level_params
 export amg_fine_params
 export amg_coarse_params
+export amg_statistics
 include("amg.jl")
 
 end # module
