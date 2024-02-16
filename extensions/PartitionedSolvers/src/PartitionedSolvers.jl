@@ -12,6 +12,7 @@ export AbstractLinearSolver
 export linear_solver
 export attach_nullspace
 export default_nullspace
+export preconditioner
 include("interfaces.jl")
 
 export lu_solver

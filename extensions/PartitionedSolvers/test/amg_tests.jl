@@ -5,6 +5,7 @@ using PartitionedArrays: laplace_matrix
 using PartitionedSolvers
 using LinearAlgebra
 using Test
+using IterativeSolvers: cg!
 
 # First with a sequential matrix
 nodes_per_dir = (100,100)
@@ -20,7 +21,6 @@ use!(solver)(y,S,b)
 setup!(solver)(S,2*A)
 use!(solver)(y,S,b)
 finalize!(solver)(S)
-
 
 # Non-default options
 
@@ -49,13 +49,18 @@ setup!(solver)(S,2*A)
 use!(solver)(y,S,b)
 finalize!(solver)(S)
 
+# Now as a preconditioner
+Pl = preconditioner(amg(),y,A,b)
+y .= 0
+cg!(y,A,b;Pl,verbose=true)
+
 # Now in parallel
 
 parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
-nodes_per_dir = (4,4)
+nodes_per_dir = (10,10)
 A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
 x = pones(partition(axes(A,2)))
 b = A*x
@@ -78,5 +83,9 @@ use!(solver)(y,S,b)
 setup!(solver)(S,2*A)
 use!(solver)(y,S,b)
 finalize!(solver)(S)
+
+Pl = preconditioner(amg(),y,A,b)
+y .= 0
+cg!(y,A,b;Pl,verbose=true)
 
 end
