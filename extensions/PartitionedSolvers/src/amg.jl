@@ -115,6 +115,10 @@ function aggregate(A,diagA=dense_diag(A);epsilon)
     end
     naggregates = aggregate
 
+    if nnodes == 1
+        node_to_aggregate .= 1
+        naggregates = 1
+    end
     node_to_aggregate, 1:naggregates
 end
 
@@ -124,8 +128,9 @@ function aggregate(A::PSparseMatrix,diagA=dense_diag(A);kwargs...)
     @assert A.assembled
     node_to_aggregate_data, local_ranges = map((A,diagA)->aggregate(A,diagA;kwargs...),own_own_values(A),own_values(diagA)) |> tuple_of_arrays
     nown = map(length,local_ranges)
-    n = sum(nown)
-    aggregate_partition = variable_partition(nown,n)
+    n_aggregates = sum(nown)
+    nparts = length(nown)
+    aggregate_partition = variable_partition(nown,n_aggregates)
     node_partition = partition(axes(A,1))
     map(map_own_to_global!,node_to_aggregate_data,aggregate_partition)
     node_to_aggregate = PVector(node_to_aggregate_data,node_partition)

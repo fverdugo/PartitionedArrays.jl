@@ -69,7 +69,7 @@ cg!(y,A,b;Pl,verbose=true)
 
 # Now in parallel
 
-parts_per_dir = (2,2)
+parts_per_dir = (4,4)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
