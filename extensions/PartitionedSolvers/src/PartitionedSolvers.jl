@@ -21,6 +21,7 @@ export lu_solver
 export diagonal_solver
 export richardson
 export jacobi
+export gauss_seidel
 export additive_schwarz
 include("smoothers.jl")
 

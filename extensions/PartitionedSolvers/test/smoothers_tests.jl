@@ -59,4 +59,13 @@ setup!(solver)(S,2*A)
 solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
+solver = additive_schwarz(gauss_seidel(;iters=1))
+y = similar(x)
+y .= 0
+S = setup(solver)(y,A,b)
+solve!(solver)(y,S,b)
+setup!(solver)(S,2*A)
+solve!(solver)(y,S,b)
+finalize!(solver)(S)
+
 end #module

@@ -284,7 +284,7 @@ function smoothed_aggregation(;
 end
 
 function amg_level_params(;
-    pre_smoother = jacobi(;iters=1,omega=2/3),
+    pre_smoother = additive_schwarz(gauss_seidel(;iters=1)),
     coarsening = smoothed_aggregation(;),
     cycle = v_cycle,
     pos_smoother = pre_smoother,

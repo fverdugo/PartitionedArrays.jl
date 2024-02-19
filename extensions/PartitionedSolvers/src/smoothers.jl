@@ -54,6 +54,55 @@ function jacobi(;kwargs...)
     richardson(solver;kwargs...)
 end
 
+function gauss_seidel(;iters=1,sweep=:symmetric)
+    @assert sweep in (:forward,:backward,:symmetric)
+    function setup(x,op,b)
+        A = matrix(op)
+        diagA = dense_diag!(similar(b),A)
+        A_ref = Ref(A)
+        (diagA,A_ref)
+    end
+    function setup!(state,op)
+        (diagA,A_ref) = state
+        A = matrix(op)
+        dense_diag!(diagA,A)
+        A_ref[] = A
+        state
+    end
+    function gauss_seidel_sweep!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
+        #assumes symmetric matrix
+        for col in cols
+            s = b[col]
+            for p in nzrange(A,col)
+                row = A.rowval[p]
+                a = A.nzval[p]
+                s -= a*x[row]
+            end
+            d = diagA[col]
+            s += d*x[col]
+            s = s/d
+            x[col] = s
+        end
+        x
+    end
+    function solve!(x,state,b)
+        (diagA,A_ref) = state
+        A = A_ref[]
+        n = length(b)
+        for iter in 1:iters
+            if sweep === :symmetric || sweep === :forward
+                gauss_seidel_sweep!(x,A,diagA,b,1:n)
+            end
+            if sweep === :symmetric || sweep === :backward
+                gauss_seidel_sweep!(x,A,diagA,b,n:-1:1)
+            end
+        end
+        x
+    end
+    linear_solver(;setup,setup!,solve!)
+end
+
+
 function additive_schwarz(local_solver)
     function build_local_operators(O::MatrixWithNullspace)
         A = matrix(O)
@@ -64,21 +113,41 @@ function additive_schwarz(local_solver)
     function build_local_operators(A)
         own_own_values(matrix(A))
     end
+    is_parallel(A::PSparseMatrix) = Val(true)
+    is_parallel(A) = Val(false)
     function setup(x,O,b)
-        local_O = build_local_operators(O)
-        local_setups = map(PartitionedSolvers.setup(local_solver),own_values(x),local_O,own_values(b))
-        local_setups
+        parallel = is_parallel(matrix(O))
+        if PartitionedArrays.val_parameter(parallel)
+            local_O = build_local_operators(O)
+            local_setups = map(PartitionedSolvers.setup(local_solver),own_values(x),local_O,own_values(b))
+        else
+            local_setups = PartitionedSolvers.setup(local_solver)(x,O,b)
+        end
+        (local_setups,parallel)
     end
-    function setup!(local_setups,O)
-        local_O = build_local_operators(O)
-        map(PartitionedSolvers.setup!(local_solver),local_setups,local_O)
-        local_setups
+    function setup!((local_setups,parallel),O)
+        if PartitionedArrays.val_parameter(parallel)
+            local_O = build_local_operators(O)
+            map(PartitionedSolvers.setup!(local_solver),local_setups,local_O)
+        else
+            PartitionedSolvers.setup!(local_solver)(local_setups,O)
+        end
+        (local_setups,parallel)
     end
-    function solve!(x,local_setups,b)
-        map(PartitionedSolvers.solve!(local_solver),own_values(x),local_setups,own_values(b))
+    function solve!(x,(local_setups,parallel),b)
+        if PartitionedArrays.val_parameter(parallel)
+            map(PartitionedSolvers.solve!(local_solver),own_values(x),local_setups,own_values(b))
+        else
+            PartitionedSolvers.solve!(local_solver)(x,local_setups,b)
+        end
+        x
     end
-    function finalize!(local_setups)
-        map(PartitionedSolvers.finalize!(local_solver),local_setups)
+    function finalize!((local_setups,parallel))
+        if PartitionedArrays.val_parameter(parallel)
+            map(PartitionedSolvers.finalize!(local_solver),local_setups)
+        else
+            PartitionedSolvers.finalize!(local_solver)(local_setups)
+        end
         nothing
     end
     linear_solver(;setup,setup!,solve!,finalize!)

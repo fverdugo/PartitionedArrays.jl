@@ -54,9 +54,18 @@ solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
 # Now as a preconditioner
-Pl = preconditioner(amg(),y,A,b)
+
+level_params = amg_level_params(;
+   pre_smoother = gauss_seidel(;iters=1),
+   )
+
+fine_params = amg_fine_params(;level_params)
+
+Pl = preconditioner(amg(;fine_params),y,A,b)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
+
+
 
 # Now in parallel
 
@@ -104,7 +113,7 @@ y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
 level_params = amg_level_params(;
-    pre_smoother = richardson(additive_schwarz(lu_solver()),iters=4),
+    pre_smoother = richardson(additive_schwarz(gauss_seidel(;iters=1)),iters=1),
    )
 
 fine_params = amg_fine_params(;
