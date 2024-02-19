@@ -57,8 +57,9 @@ end
 function additive_schwarz(local_solver)
     function build_local_operators(O::MatrixWithNullspace)
         A = matrix(O)
-        ns = nullspace(O)
-        map(linear_operator,own_own_values(A),ns)
+        ns = map(i->own_values(i),nullspace(O))
+        B = map(vcat,ns...)
+        map(attach_nullspace,own_own_values(A),B)
     end
     function build_local_operators(A)
         own_own_values(matrix(A))

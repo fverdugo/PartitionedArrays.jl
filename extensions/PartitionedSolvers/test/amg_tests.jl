@@ -103,4 +103,18 @@ Pl = preconditioner(solver,y,A,b)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
+level_params = amg_level_params(;
+    pre_smoother = richardson(additive_schwarz(lu_solver()),iters=4),
+   )
+
+fine_params = amg_fine_params(;
+    level_params,
+    n_fine_levels=5)
+
+solver = amg(;fine_params)
+
+Pl = preconditioner(solver,y,A,b)
+y .= 0
+cg!(y,A,b;Pl,verbose=true)
+
 end
