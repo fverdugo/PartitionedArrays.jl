@@ -1832,22 +1832,35 @@ function LinearAlgebra.mul!(c::PVector,at::Transpose{T,<:PSparseMatrix} where T,
     c
 end
 
-function LinearAlgebra.diag(A::PSparseMatrix)
-    d = pzeros(eltype(A),partition(axes(A,1)))
-    diag!(d,A)
+## LinearAlgebra.diag returns a sparse vector for sparse matrices
+# this is why we introduce dense_diag
+function dense_diag(A)
+    d = zeros(eltype(A),size(A,1))
+    dense_diag!(d,A)
 end
 
-function diag!(d,A)
+function dense_diag!(d,A)
     d .= diag(A)
     d
 end
 
-function diag!(d::PVector,A::PSparseMatrix)
-    map(diag!,own_values(d),own_own_values(A))
+function dense_diag(A::PSparseMatrix)
+    diag(A)
+end
+
+function LinearAlgebra.diag(A::PSparseMatrix)
+    d = pzeros(eltype(A),partition(axes(A,1)))
+    dense_diag!(d,A)
+end
+
+function dense_diag!(d::PVector,A::PSparseMatrix)
+    map(dense_diag!,own_values(d),own_own_values(A))
     d
 end
 
-function sparse_diag(d,shape)
+# TODO SparseArrays.spdiagm already exists
+# For the moment we keep it as a private helper function
+function sparse_diag_matrix(d,shape)
     n = length(d)
     I = 1:n
     J = 1:n
@@ -1855,7 +1868,7 @@ function sparse_diag(d,shape)
     sparse(I,J,V,map(length,shape)...)
 end
 
-function sparse_diag(d::PVector,shape)
+function sparse_diag_matrix(d::PVector,shape)
     row_partition,col_partition = map(partition,shape)
     function setup(own_d,rows,cols)
         I = own_to_global(rows) |> collect
@@ -1968,7 +1981,7 @@ function Base.:-(I::LinearAlgebra.UniformScaling,A::PSparseMatrix)
     T = eltype(A)
     row_partition = partition(axes(A,1))
     d = pones(T,row_partition)
-    D = sparse_diag(d,axes(A))
+    D = sparse_diag_matrix(d,axes(A))
     D-A
 end
 

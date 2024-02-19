@@ -7,15 +7,15 @@ function lu_solver()
 end
 
 function diagonal_solver()
-    setup(x,op,b) = diag!(similar(b),matrix(op))
-    setup!(state,op) = diag!(state,matrix(op))
+    setup(x,op,b) = dense_diag!(similar(b),matrix(op))
+    setup!(state,op) = dense_diag!(state,matrix(op))
     function solve!(x,state,b)
         x .= state .\ b
     end
     linear_solver(;setup,setup!,solve!)
 end
 
-function richardson(solver;maxiters,omega=1)
+function richardson(solver;iters,omega=1)
     function setup(x,O,b)
         A = matrix(O)
         A_ref = Ref(A)
@@ -33,14 +33,14 @@ function richardson(solver;maxiters,omega=1)
     function solve!(x,state,b)
         (r,dx,P,A_ref) = state
         A = A_ref[]
-        for iter in 1:maxiters
+        for iter in 1:iters
             dx .= x
             mul!(r,A,dx)
             r .-= b
             ldiv!(dx,P,r)
             x .-= omega .* dx
         end
-        (;maxiters)
+        (;iters)
     end
     function finalize!(state)
         (r,dx,P,A_ref) = state

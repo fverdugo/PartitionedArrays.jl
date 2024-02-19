@@ -14,11 +14,14 @@ matrix(a) = a
 nullspace(a) = default_nullspace(a)
 
 function default_nullspace(A)
-    ones(size(A,1))
+    T = eltype(A)
+    [ones(T,size(A,2))]
 end
 
 function default_nullspace(A::PSparseMatrix)
-    map(default_nullspace,partition(A))
+    col_partition = partition(axes(A,2))
+    T = eltype(A)
+    [ pones(T,col_partition) ]
 end
 
 abstract type AbstractLinearSolver end

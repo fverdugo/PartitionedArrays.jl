@@ -150,8 +150,8 @@ export own_own_values
 export ghost_ghost_values
 export psystem
 export psystem!
-export diag!
-export sparse_diag
+export dense_diag
+export dense_diag!
 export rap
 export rap!
 export spmm

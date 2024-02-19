@@ -1,5 +1,5 @@
 
-function aggregate(A,diagA=diag(A);epsilon)
+function aggregate(A,diagA=dense_diag(A);epsilon)
     # TODO It assumes CSC format for the moment
 
     # This one is algorithm 5.1 from
@@ -118,7 +118,7 @@ function aggregate(A,diagA=diag(A);epsilon)
     node_to_aggregate, 1:naggregates
 end
 
-function aggregate(A::PSparseMatrix,diagA=diag(A);kwargs...)
+function aggregate(A::PSparseMatrix,diagA=dense_diag(A);kwargs...)
     # This is the vanilla "uncoupled" strategy from "Parallel Smoothed Aggregation Multigrid : Aggregation Strategies on Massively Parallel Machines"
     # TODO: implement other more advanced strategies
     @assert A.assembled
@@ -132,7 +132,10 @@ function aggregate(A::PSparseMatrix,diagA=diag(A);kwargs...)
     node_to_aggregate, PRange(aggregate_partition)
 end
 
-function aggregate_constant_prolongator(node_to_aggregate,aggregates)
+function constant_prolongator(node_to_aggregate,aggregates,n_nullspace_vecs)
+    if n_nullspace_vecs != 1
+        error("case not implemented yet")
+    end
     typeof_aggregate = eltype(node_to_aggregate)
     nnodes = length(node_to_aggregate)
     pending = typeof_aggregate(0)
@@ -170,7 +173,10 @@ function aggregate_constant_prolongator(node_to_aggregate,aggregates)
     P0
 end
 
-function aggregate_constant_prolongator(node_to_aggregate::PVector,aggregates::PRange)
+function constant_prolongator(node_to_aggregate::PVector,aggregates::PRange,n_nullspace_vecs)
+    if n_nullspace_vecs != 1
+        error("case not implemented yet")
+    end
     function setup_triplets(node_to_aggregate,nodes)
         myI = 1:local_length(nodes)
         myJ = node_to_aggregate
@@ -187,65 +193,83 @@ function aggregate_constant_prolongator(node_to_aggregate::PVector,aggregates::P
     P0
 end
 
-function tentative_prolongator!(P0::SparseArrays.AbstractSparseMatrixCSC,B)
-    # TODO assumes CSC
-    #TODO null space for vector-valued problems
-    tol = 1e-10
-    Tv = eltype(B)
-    nf,nc = size(P0)
-    R = zeros(Tv,nc)
-    copy!(P0.nzval,B)
-    for j in 1:nc
-        # For each column, we do its QR factorization.
-        # This is equivalent to the first step of a Gram-Schimdt process
-        # (making the column a unit vector)
-        norm_j = zero(Tv)
-        for p in nzrange(P0,j)
-            val = P0.nzval[p]
-            norm_j += val*val
-        end
-        norm_j = sqrt(norm_j)
-        if norm_j < tol
-            continue
-        end
-        R[j] = norm_j
-        inv_norm_j = one(Tv)/norm_j
-        for p in nzrange(P0,j)
-            P0.nzval[p] *= inv_norm_j
-        end
+function tentative_prolongator_for_laplace(P0,B)
+    n_nullspace_vecs = length(B)
+    if n_nullspace_vecs != 1
+        error("Only one nullspace vector allowed")
     end
-    Bc = R
-    Bc
+    Bc = default_nullspace(P0)
+    P0,Bc
 end
 
-function tentative_prolongator!(P0::PSparseMatrix,B)
-    #TODO null space for vector-valued problems
-    # TODO for parallel matrices
-    Tv = eltype(eltype(B))
-    Bc = map(cols->ones(Tv,length(cols)),partition(axes(P0,2)))
-    Bc
+function generic_tentative_prolongator(P0::SparseArrays.AbstractSparseMatrixCSC,B)
+    error("not implemented yet")
+    # A draft for the scalar case is commented below
+    ## TODO assumes CSC
+    ##TODO null space for vector-valued problems
+    #tol = 1e-10
+    #Tv = eltype(B[1])
+    #nf,nc = size(P0)
+    #R = zeros(Tv,nc)
+    #copy!(P0.nzval,B[1])
+    #for j in 1:nc
+    #    # For each column, we do its QR factorization.
+    #    # This is equivalent to the first step of a Gram-Schimdt process
+    #    # (making the column a unit vector)
+    #    norm_j = zero(Tv)
+    #    for p in nzrange(P0,j)
+    #        val = P0.nzval[p]
+    #        norm_j += val*val
+    #    end
+    #    norm_j = sqrt(norm_j)
+    #    if norm_j < tol
+    #        continue
+    #    end
+    #    R[j] = norm_j
+    #    inv_norm_j = one(Tv)/norm_j
+    #    for p in nzrange(P0,j)
+    #        P0.nzval[p] *= inv_norm_j
+    #    end
+    #end
+    #Bc = R
+    #Bc
 end
 
-function smoothed_prolongator(A,P0,diagA=diag(A);omega)
-    Dinv = sparse_diag(1 ./ diagA,(axes(A,1),axes(A,1)))
+function generic_tentative_prolongator(P0::PSparseMatrix,B)
+    error("not implemented yet")
+end
+
+function smoothed_prolongator(A,P0,diagA=dense_diag(A);approximate_omega)
+    # TODO the performance of this one can be improved
+    invDiagA = 1 ./ diagA
+    omega = approximate_omega(invDiagA,A)
+    Dinv = PartitionedArrays.sparse_diag_matrix(invDiagA,(axes(A,1),axes(A,1)))
     P = (I-omega*Dinv*A)*P0
     P
 end
 
-function smoothed_aggregation(;epsilon=0,omega=2/3)
+function omega_for_1d_laplace(invD,A)
+    # in general this will be (4/3)/ρ(D^-1*A)
+    # with a cheap approximation (e.g., power method) of the spectral radius ρ(D^-1*A)
+    # ρ(D^-1*A) == 2 for 1d Laplace problem
+    2/3
+end
+
+function smoothed_aggregation(;
+    epsilon = 0,
+    approximate_omega = omega_for_1d_laplace,
+    tentative_prolongator = tentative_prolongator_for_laplace)
     function coarsen(operator)
         A = matrix(operator)
         B = nullspace(operator)
-        diagA = diag(A)
+        diagA = dense_diag(A)
         node_to_aggregate, aggregates = aggregate(A,diagA;epsilon)
-        P0 = aggregate_constant_prolongator(node_to_aggregate, aggregates)
-        # TODO improve null space B with few iterations of a check solver
-        #Bc = tentative_prolongator!(P0,B)
-        P = smoothed_prolongator(A,P0,diagA;omega)
+        n_nullspace_vecs = length(B)
+        P0 = constant_prolongator(node_to_aggregate, aggregates,n_nullspace_vecs)
+        P0,Bc = tentative_prolongator(P0,B)
+        P = smoothed_prolongator(A,P0,diagA;approximate_omega)
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
-        Bc = default_nullspace(Ac)
-        #TODO enhance the partition of Ac,R,P
         # TODO enhance partitioning for Ac,R,P
         coarse_operator = attach_nullspace(Ac,Bc)
         coarse_operator,R,P,cache
@@ -260,10 +284,9 @@ function smoothed_aggregation(;epsilon=0,omega=2/3)
 end
 
 function amg_level_params(;
-    #TODO more resonable defaults?
-    pre_smoother = jacobi(;maxiters=1,omega=2/3),
+    pre_smoother = jacobi(;iters=1,omega=2/3),
     coarsening = smoothed_aggregation(;),
-    cycle = v_cycle(),
+    cycle = v_cycle,
     pos_smoother = pre_smoother,
     )
 
@@ -384,10 +407,8 @@ function amg_statistics(setup)
     nnz_total = sum(level_nnz)
     rows_total = sum(level_rows)
     level_id = collect(1:nlevels)
-    op_complexity = zeros(nlevels)
-    op_complexity[1] = nnz_total ./ level_nnz[1]
-    grid_complexity = zeros(nlevels)
-    grid_complexity[1] = rows_total ./ level_rows[1]
+    op_complexity = fill(nnz_total ./ level_nnz[1],nlevels)
+    grid_complexity = fill(rows_total ./ level_rows[1],nlevels)
     Dict([ :unknowns => level_rows,
           :unknowns_rel => level_rows ./ rows_total,
           :nonzeros => level_nnz,
@@ -399,15 +420,13 @@ function amg_statistics(setup)
         )
 end
 
-function v_cycle()
-    amg_cycle!
+@inline function v_cycle(args...)
+    amg_cycle!(args...)
 end
 
-function w_cycle()
-    function cycle(args...)
-        amg_cycle!(args...)
-        amg_cycle!(args...)
-    end
+@inline function w_cycle(args...)
+    amg_cycle!(args...)
+    amg_cycle!(args...)
 end
 
 function amg_setup!(setup,operator)

@@ -10,7 +10,9 @@ using IterativeSolvers: cg!
 # First with a sequential matrix
 nodes_per_dir = (100,100)
 A = laplace_matrix(nodes_per_dir)
-x = ones(axes(A,2))
+using Random
+Random.seed!(1)
+x = rand(size(A,2))
 b = A*x
 y = similar(x)
 y .= 0
@@ -27,8 +29,8 @@ amg_statistics(S) |> display
 # Non-default options
 
 level_params = amg_level_params(;
-    pre_smoother = jacobi(;maxiters=10,omega=2/3),
-    cycle = w_cycle()
+    pre_smoother = jacobi(;iters=10,omega=2/3),
+    cycle = v_cycle,
    )
 
 fine_params = amg_fine_params(;
@@ -87,7 +89,17 @@ setup!(solver)(S,2*A)
 solve!(solver)(y,S,b)
 finalize!(solver)(S)
 
-Pl = preconditioner(amg(),y,A,b)
+level_params = amg_level_params(;
+    pre_smoother = jacobi(;iters=1,omega=2/3),
+   )
+
+fine_params = amg_fine_params(;
+    level_params,
+    n_fine_levels=5)
+
+solver = amg(;fine_params)
+
+Pl = preconditioner(solver,y,A,b)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
