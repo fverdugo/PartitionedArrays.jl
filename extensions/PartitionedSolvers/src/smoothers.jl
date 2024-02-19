@@ -2,7 +2,7 @@
 function lu_solver()
     setup(x,op,b) = lu(matrix(op))
     setup!(state,op) = lu!(state,matrix(op))
-    solve!(x,state,b) = ldiv!(x,state,b)
+    solve! = ldiv!
     linear_solver(;setup,solve!,setup!)
 end
 

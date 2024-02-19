@@ -232,7 +232,7 @@ function smoothed_prolongator(A,P0,diagA=diag(A);omega)
     P
 end
 
-function smoothed_aggregation(;epsilon,omega)
+function smoothed_aggregation(;epsilon=0,omega=2/3)
     function coarsen(operator)
         A = matrix(operator)
         B = nullspace(operator)
@@ -240,10 +240,11 @@ function smoothed_aggregation(;epsilon,omega)
         node_to_aggregate, aggregates = aggregate(A,diagA;epsilon)
         P0 = aggregate_constant_prolongator(node_to_aggregate, aggregates)
         # TODO improve null space B with few iterations of a check solver
-        Bc = tentative_prolongator!(P0,B)
+        #Bc = tentative_prolongator!(P0,B)
         P = smoothed_prolongator(A,P0,diagA;omega)
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
+        Bc = default_nullspace(Ac)
         #TODO enhance the partition of Ac,R,P
         # TODO enhance partitioning for Ac,R,P
         coarse_operator = attach_nullspace(Ac,Bc)
@@ -260,8 +261,8 @@ end
 
 function amg_level_params(;
     #TODO more resonable defaults?
-    pre_smoother = jacobi(;maxiters=10,omega=2/3),
-    coarsening = smoothed_aggregation(;epsilon=0,omega=1),
+    pre_smoother = jacobi(;maxiters=1,omega=2/3),
+    coarsening = smoothed_aggregation(;),
     cycle = v_cycle(),
     pos_smoother = pre_smoother,
     )
@@ -279,7 +280,7 @@ end
 function amg_coarse_params(;
     #TODO more resonable defaults?
     coarse_solver = lu_solver(),
-    coarse_size = 50,
+    coarse_size = 10,
     )
     coarse_params = (;coarse_solver,coarse_size)
     coarse_params
@@ -352,12 +353,12 @@ function amg_cycle!(x,setup,b,level)
     solve!(pre_smoother)(x,pre_setup,b)
     A = matrix(operator)
     mul!(r,A,x)
-    r .= r .- b
+    r .= b .- r
     mul!(rc,R,r)
     fill!(ec,zero(eltype(ec)))
     cycle(ec,setup,rc,level+1)
     mul!(e,P,ec)
-    x .-= e
+    x .+= e
     solve!(pos_smoother)(x,pos_setup,b)
     x
 end
