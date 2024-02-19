@@ -18,7 +18,7 @@ export nullspace
 include("interfaces.jl")
 
 export lu_solver
-export diagonal_solver
+export jacobi_correction
 export richardson
 export jacobi
 export gauss_seidel

@@ -6,7 +6,7 @@ function lu_solver()
     linear_solver(;setup,solve!,setup!)
 end
 
-function diagonal_solver()
+function jacobi_correction()
     setup(x,op,b) = dense_diag!(similar(b),matrix(op))
     setup!(state,op) = dense_diag!(state,matrix(op))
     function solve!(x,state,b)
@@ -50,7 +50,7 @@ function richardson(solver;iters,omega=1)
 end
 
 function jacobi(;kwargs...)
-    solver = diagonal_solver()
+    solver = jacobi_correction()
     richardson(solver;kwargs...)
 end
 
