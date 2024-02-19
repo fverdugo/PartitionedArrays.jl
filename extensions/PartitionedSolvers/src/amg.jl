@@ -260,10 +260,33 @@ function omega_for_1d_laplace(invD,A)
     2/3
 end
 
+function enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)
+    Ac,Bc,R,P,cache,repartition_threshold
+end
+
+function enhance_coarse_partition(A::PSparseMatrix,Ac,Bc,R,P,cache,repartition_threshold)
+    # TODO now we redistribute to a single proc when the threshold is reached
+    # We need to redistributed to fewer but several processors
+    # TODO a way of avoiding the extra rap ?
+    n_coarse = size(Ac,1)
+    if n_coarse <= repartition_threshold
+        repartition_threshold = 0 # do not repartition again
+        parts = linear_indices(partition(Ac))
+        coarse_partition = trivial_partition(parts,n_coarse)
+        P = repartition(P,partition(axes(P,1)),coarse_partition) |> fetch
+        Bc = map(b->repartition(b,partition(axes(P,2)))|>fetch,Bc)
+        R = transpose(P)
+        Ac,cache = rap(R,A,P;reuse=true)
+    end
+    Ac,Bc,R,P,cache,repartition_threshold
+end
+
 function smoothed_aggregation(;
     epsilon = 0,
     approximate_omega = omega_for_1d_laplace,
-    tentative_prolongator = tentative_prolongator_for_laplace)
+    tentative_prolongator = tentative_prolongator_for_laplace,
+    repartition_threshold = 2000,
+    )
     function coarsen(operator)
         A = matrix(operator)
         B = nullspace(operator)
@@ -275,7 +298,7 @@ function smoothed_aggregation(;
         P = smoothed_prolongator(A,P0,diagA;approximate_omega)
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
-        # TODO enhance partitioning for Ac,R,P
+        Ac,Bc,R,P,cache,repartition_threshold = enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)
         coarse_operator = attach_nullspace(Ac,Bc)
         coarse_operator,R,P,cache
     end
@@ -289,7 +312,7 @@ function smoothed_aggregation(;
 end
 
 function amg_level_params(;
-    pre_smoother = additive_schwarz(gauss_seidel(;iters=1)),
+    pre_smoother = richardson(additive_schwarz(gauss_seidel(;iters=1));iters=1),
     coarsening = smoothed_aggregation(;),
     cycle = v_cycle,
     pos_smoother = pre_smoother,
@@ -345,7 +368,7 @@ function amg_setup(x,operator,b,amg_params)
             done = true
         end
         r = similar(b)
-        rc = similar(r,axes(Ac,1))
+        rc = similar(r,axes(Ac,2)) # we need ghost ids for the mul!(rc,R,r)
         e = similar(x)
         ec = similar(e,axes(Ac,2))
         level_setup = (;R,P,r,rc,e,ec,operator,coarse_operator,pre_setup,pos_setup,coarse_operator_setup)

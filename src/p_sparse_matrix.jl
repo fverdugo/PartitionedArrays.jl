@@ -1817,6 +1817,7 @@ function LinearAlgebra.mul!(c::PVector,at::Transpose{T,<:PSparseMatrix} where T,
     a = at.parent
     @assert a.assembled
     map(ghost_values(c),own_ghost_values(a),own_values(b)) do ch,aoh,bo
+        fill!(ch,zero(eltype(ch)))
         atoh = transpose(aoh)
         mul!(ch,atoh,bo,α,1)
     end

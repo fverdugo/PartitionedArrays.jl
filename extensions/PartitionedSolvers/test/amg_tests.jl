@@ -69,7 +69,7 @@ cg!(y,A,b;Pl,verbose=true)
 
 # Now in parallel
 
-parts_per_dir = (4,4)
+parts_per_dir = (1,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
@@ -100,6 +100,7 @@ finalize!(solver)(S)
 
 level_params = amg_level_params(;
     pre_smoother = jacobi(;iters=1,omega=2/3),
+    coarsening = smoothed_aggregation(;repartition_threshold=10000000)
    )
 
 fine_params = amg_fine_params(;
@@ -112,15 +113,8 @@ Pl = preconditioner(solver,y,A,b)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
-level_params = amg_level_params(;
-    pre_smoother = richardson(additive_schwarz(gauss_seidel(;iters=1)),iters=1),
-   )
 
-fine_params = amg_fine_params(;
-    level_params,
-    n_fine_levels=5)
-
-solver = amg(;fine_params)
+solver = amg()
 
 Pl = preconditioner(solver,y,A,b)
 y .= 0
