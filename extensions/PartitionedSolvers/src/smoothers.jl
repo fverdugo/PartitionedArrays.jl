@@ -102,8 +102,11 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
     linear_solver(;setup,setup!,solve!)
 end
 
+function additive_schwarz(local_solver;iters=1)
+    richardson(additive_schwarz_correction(local_solver);iters)
+end
 
-function additive_schwarz(local_solver)
+function additive_schwarz_correction(local_solver)
     function build_local_operators(O::MatrixWithNullspace)
         A = matrix(O)
         ns = map(i->own_values(i),nullspace(O))

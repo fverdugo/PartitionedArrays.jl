@@ -22,6 +22,7 @@ export jacobi_correction
 export richardson
 export jacobi
 export gauss_seidel
+export additive_schwarz_correction
 export additive_schwarz
 include("smoothers.jl")
 
