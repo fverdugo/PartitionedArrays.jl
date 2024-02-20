@@ -58,7 +58,7 @@ jobs:
       - uses: julia-actions/cache@v1
       - uses: julia-actions/julia-buildpkg@v1
       - run: |
-          julia --project=extensions/PartitionedSolvers -e '
+          julia --project=PartitionedSolvers -e '
             using Pkg
             Pkg.develop(path=".")
             Pkg.test("PartitionedSolvers")'
@@ -76,7 +76,7 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Pkg
-            Pkg.develop(path="extensions/PartitionedSolvers")'
+            Pkg.develop(path="PartitionedSolvers")'
       - uses: julia-actions/julia-docdeploy@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
