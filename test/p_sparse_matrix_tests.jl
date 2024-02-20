@@ -339,6 +339,10 @@ function p_sparse_matrix_tests(distribute)
     C,cacheC = rap(transpose(A),A,A;reuse=true)
     rap!(C,transpose(A),A,A,cacheC)
 
+    r = pzeros(partition(axes(A,2)))
+    x = pones(partition(axes(A,1)))
+    mul!(r,transpose(A),x)
+
     B = LinearAlgebra.I-A
     
 end
