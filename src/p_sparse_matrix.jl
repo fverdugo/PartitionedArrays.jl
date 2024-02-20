@@ -710,6 +710,59 @@ function Base.:*(b::AbstractSplitMatrix,a::Number)
     a*b
 end
 
+function Base.:*(A::AbstractSplitMatrix,B::AbstractSplitMatrix)
+    own_own = A.blocks.own_own*B.blocks.own_own + A.blocks.own_ghost*B.blocks.ghost_own
+    own_ghost = A.blocks.own_own*B.blocks.own_ghost + A.blocks.own_ghost*B.blocks.ghost_ghost
+    ghost_own = A.blocks.ghost_own*B.blocks.own_own + A.blocks.ghost_ghost*B.blocks.ghost_own
+    ghost_ghost = A.blocks.ghost_own*B.blocks.own_ghost + A.blocks.ghost_ghost*B.blocks.ghost_ghost
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,A.row_permutation,B.col_permutation)
+end
+
+function LinearAlgebra.mul!(C::AbstractSplitMatrix,A::AbstractSplitMatrix,B::AbstractSplitMatrix)
+    # TODO not sure if there is available an efficient implementation for mul! for SparseMatrixCSC
+    mul!(C.blocks.own_own,A.blocks.own_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.own_own,A.blocks.own_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.own_ghost,A.blocks.own_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.own_ghost,A.blocks.own_ghost,B.blocks.ghost_ghost,1,1)
+    mul!(C.blocks.ghost_own,A.blocks.ghost_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.ghost_own,A.blocks.ghost_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.ghost_ghost,A.blocks.ghost_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.ghost_ghost,A.blocks.ghost_ghost,B.blocks.ghost_ghost,1,1)
+    C
+end
+
+function Base.:*(At::Transpose{T,<:AbstractSplitMatrix} where T,B::AbstractSplitMatrix)
+    A = At.parent
+    A_own_own = transpose(A.blocks.own_own)
+    A_own_ghost = transpose(A.blocks.ghost_own)
+    A_ghost_own = transpose(A.blocks.own_ghost)
+    A_ghost_ghost = transpose(A.blocks.ghost_ghost)
+    own_own = A_own_own*B.blocks.own_own + A_own_ghost*B.blocks.ghost_own
+    own_ghost = A_own_own*B.blocks.own_ghost + A_own_ghost*B.blocks.ghost_ghost
+    ghost_own = A_ghost_own*B.blocks.own_own + A_ghost_ghost*B.blocks.ghost_own
+    ghost_ghost = A_ghost_own*B.blocks.own_ghost + A_ghost_ghost*B.blocks.ghost_ghost
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,A.col_permutation,B.col_permutation)
+end
+
+function LinearAlgebra.mul!(C::AbstractSplitMatrix,At::Transpose{T,<:AbstractSplitMatrix} where T,B::AbstractSplitMatrix)
+    # TODO not sure if there is available an efficient implementation for mul! for SparseMatrixCSC
+    A = At.parent
+    A_own_own = transpose(A.blocks.own_own)
+    A_own_ghost = transpose(A.blocks.ghost_own)
+    A_ghost_own = transpose(A.blocks.own_ghost)
+    A_ghost_ghost = transpose(A.blocks.ghost_ghost)
+    mul!(C.blocks.own_own,A_own_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.own_own,A_own_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.own_ghost,A_own_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.own_ghost,A_own_ghost,B.blocks.ghost_ghost,1,1)
+    mul!(C.blocks.ghost_own,A_ghost_own,B.blocks.own_own,1,0)
+    mul!(C.blocks.ghost_own,A_ghost_ghost,B.blocks.ghost_own,1,1)
+    mul!(C.blocks.ghost_ghost,A_ghost_own,B.blocks.own_ghost,1,0)
+    mul!(C.blocks.ghost_ghost,A_ghost_ghost,B.blocks.ghost_ghost,1,1)
+end
+
 for op in (:+,:-)
     @eval begin
         function Base.$op(a::AbstractSplitMatrix)
@@ -731,6 +784,15 @@ for op in (:+,:-)
             split_matrix(blocks,b.row_permutation,b.col_permutation)
         end
     end
+end
+
+function SparseArrays.nnz(a::SplitMatrix)
+    n = 0
+    n += nnz(a.blocks.own_own)
+    n += nnz(a.blocks.own_ghost)
+    n += nnz(a.blocks.ghost_own)
+    n += nnz(a.blocks.ghost_ghost)
+    n
 end
 
 function split_format_locally(A,rows,cols)
@@ -1354,7 +1416,7 @@ function psparse_assemble_impl(
         ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
         ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(rows_fa))
+        values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(cols_fa))
         nnz_own_own = nnz(own_own)
         k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
         k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
@@ -1751,6 +1813,179 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     c
 end
 
+function LinearAlgebra.mul!(c::PVector,at::Transpose{T,<:PSparseMatrix} where T,b::PVector,α::Number,β::Number)
+    a = at.parent
+    @assert a.assembled
+    map(ghost_values(c),own_ghost_values(a),own_values(b)) do ch,aoh,bo
+        fill!(ch,zero(eltype(ch)))
+        atoh = transpose(aoh)
+        mul!(ch,atoh,bo,α,1)
+    end
+    t = assemble!(c)
+    map(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
+        if β != 1
+            β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
+        end
+        atoo = transpose(aoo)
+        mul!(co,atoo,bo,α,1)
+    end
+    wait(t)
+    c
+end
+
+## LinearAlgebra.diag returns a sparse vector for sparse matrices
+# this is why we introduce dense_diag
+function dense_diag(A)
+    d = zeros(eltype(A),size(A,1))
+    dense_diag!(d,A)
+end
+
+function dense_diag!(d,A)
+    d .= diag(A)
+    d
+end
+
+function dense_diag(A::PSparseMatrix)
+    diag(A)
+end
+
+function LinearAlgebra.diag(A::PSparseMatrix)
+    d = pzeros(eltype(A),partition(axes(A,1)))
+    dense_diag!(d,A)
+end
+
+function dense_diag!(d::PVector,A::PSparseMatrix)
+    map(dense_diag!,own_values(d),own_own_values(A))
+    d
+end
+
+# TODO SparseArrays.spdiagm already exists
+# For the moment we keep it as a private helper function
+function sparse_diag_matrix(d,shape)
+    n = length(d)
+    I = 1:n
+    J = 1:n
+    V = d
+    sparse(I,J,V,map(length,shape)...)
+end
+
+function sparse_diag_matrix(d::PVector,shape)
+    row_partition,col_partition = map(partition,shape)
+    function setup(own_d,rows,cols)
+        I = own_to_global(rows) |> collect
+        J = own_to_global(cols) |> collect
+        V = own_d
+        I,J,V
+    end
+    I,J,V = map(setup,own_values(d),row_partition,col_partition) |> tuple_of_arrays
+    psparse(I,J,V,row_partition,col_partition;assembled=true) |> fetch
+end
+
+function rap(R,A,P;reuse=Val(false))
+    Ac = R*A*P
+    if val_parameter(reuse)
+        return Ac, nothing
+    end
+    Ac
+end
+
+function rap!(Ac,R,A,P,cache)
+    # TODO improve performance
+    tmp = R*A*P
+    copyto!(Ac,tmp)
+    Ac
+end
+
+function spmm(A,B;reuse=Val(false))
+    C = A*B
+    if val_parameter(reuse)
+        return C, nothing
+    end
+    C
+end
+
+function spmm!(C,A,B,state)
+    mul!(C,A,B)
+    C
+end
+
+function spmm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
+    # TODO latency hiding
+    @assert A.assembled
+    @assert B.assembled
+    col_partition = partition(axes(A,2))
+    C,cacheC = consistent(B,col_partition;reuse=true) |> fetch
+    D_partition,cacheD = map((args...)->spmm(args...;reuse=true),partition(A),partition(C)) |> tuple_of_arrays
+    assembled = true
+    D = PSparseMatrix(D_partition,partition(axes(A,1)),partition(axes(B,2)),assembled)
+    if val_parameter(reuse)
+        cache = (C,cacheC,cacheD)
+        return D,cache
+    end
+    D
+end
+
+function spmm!(D::PSparseMatrix,A::PSparseMatrix,B::PSparseMatrix,cache)
+    (C,cacheC,cacheD)= cache
+    consistent!(C,B,cacheC) |> wait
+    map(spmm!,partition(D),partition(A),partition(C),cacheD)
+    D
+end
+
+function spmtm(A,B;reuse=Val(false))
+    C = transpose(A)*B
+    if val_parameter(reuse)
+        return C, nothing
+    end
+    C
+end
+
+function spmtm!(C,A,B,cache)
+    mul!(C,transpose(A),B)
+    C
+end
+
+function spmtm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
+    # TODO latency hiding
+    @assert A.assembled
+    @assert B.assembled
+    D_partition,cacheD = map((args...)->spmtm(args...;reuse=true),partition(A),partition(B)) |> tuple_of_arrays
+    assembled = false
+    D = PSparseMatrix(D_partition,partition(axes(A,2)),partition(axes(B,2)),assembled)
+    C,cacheC = assemble(D;reuse=true) |> fetch
+    if val_parameter(reuse)
+        cache = (D,cacheC,cacheD)
+        return C,cache
+    end
+    C
+end
+
+function spmtm!(C::PSparseMatrix,A::PSparseMatrix,B::PSparseMatrix,cache)
+    (D,cacheC,cacheD)= cache
+    map(spmtm!,partition(D),partition(A),partition(B),cacheD)
+    assemble!(C,D,cacheC) |> wait
+    C
+end
+
+function Base.:*(A::PSparseMatrix,B::PSparseMatrix)
+    C = spmm(A,B)
+    C
+end
+
+function Base.:*(At::Transpose{T,<:PSparseMatrix} where T,B::PSparseMatrix)
+    A = At.parent
+    C = spmtm(A,B)
+    C
+end
+
+function Base.:-(I::LinearAlgebra.UniformScaling,A::PSparseMatrix)
+    T = eltype(A)
+    row_partition = partition(axes(A,1))
+    d = pones(T,row_partition)
+    D = sparse_diag_matrix(d,axes(A))
+    D-A
+end
+
 Base.similar(a::PSparseMatrix) = similar(a,eltype(a))
 function Base.similar(a::PSparseMatrix,::Type{T}) where T
     matrix_partition = map(partition(a)) do values
@@ -1762,17 +1997,16 @@ end
 
 function Base.copy!(a::PSparseMatrix,b::PSparseMatrix)
     @assert size(a) == size(b)
-    copyto!(a,b)
+    @assert a.assembled == b.assembled
+    if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
+        copyto!(a,b)
+    else
+        error("Trying to copy a PSparseMatrix into another one with a different data layout. This case is not implemented yet. It would require communications.")
+    end
 end
 
 function Base.copyto!(a::PSparseMatrix,b::PSparseMatrix)
-    ## Think about the role
-    @assert a.assembled == b.assembled
-    if partition(axes(a,1)) === partition(axes(b,1)) && partition(axes(a,2)) === partition(axes(b,2))
-        map(copy!,partition(a),partition(b))
-    else
-        error("Trying to copy a OldPSparseMatrix into another one with a different data layout. This case is not implemented yet. It would require communications.")
-    end
+    map(copy!,partition(a),partition(b))
     a
 end
 
@@ -1781,6 +2015,11 @@ function LinearAlgebra.fillstored!(a::PSparseMatrix,v)
         LinearAlgebra.fillstored!(values,v)
     end
     a
+end
+
+function SparseArrays.nnz(a::PSparseMatrix)
+    ns = map(nnz,partition(a))
+    sum(ns)
 end
 
 # This function could be removed if IterativeSolvers was implemented in terms
@@ -2009,3 +2248,86 @@ function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
     c
 end
 
+
+## Test matrices
+
+function laplace_matrix(nodes_per_dir)
+    function is_boundary_node(node_1d,nodes_1d)
+        !(node_1d in 1:nodes_1d)
+    end
+    D = length(nodes_per_dir)
+    n = prod(nodes_per_dir)
+    node_to_cartesian_node = CartesianIndices(nodes_per_dir)
+    cartesian_node_to_node = LinearIndices(nodes_per_dir)
+    nnz = (2*D+1)*n
+    I = zeros(Int32,nnz)
+    J = zeros(Int32,nnz)
+    V = zeros(Float64,nnz)
+    t = 0
+    for node_i in 1:n
+        t += 1
+        I[t] = node_i
+        J[t] = node_i
+        V[t] = 2*D
+        cartesian_node_i = node_to_cartesian_node[node_i]
+        for d in 1:D
+            for i in (-1,1)
+                inc = ntuple(k->( k==d ? i : 0),Val(D))
+                cartesian_node_j = CartesianIndex(Tuple(cartesian_node_i) .+ inc)
+                boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                if boundary
+                    continue
+                end
+                node_j = cartesian_node_to_node[cartesian_node_j]
+                t += 1
+                I[t] = node_i
+                J[t] = node_j
+                V[t] = -1.0
+            end
+        end
+    end
+    sparse_matrix(I,J,V,n,n)
+end
+
+function laplace_matrix(nodes_per_dir,parts_per_dir,ranks)
+    function is_boundary_node(node_1d,nodes_1d)
+        !(node_1d in 1:nodes_1d)
+    end
+    D = length(nodes_per_dir)
+    n = prod(nodes_per_dir)
+    function setup(nodes)
+        node_to_cartesian_node = CartesianIndices(nodes_per_dir)
+        cartesian_node_to_node = LinearIndices(nodes_per_dir)
+        nnz = (2*D+1)*length(nodes)
+        myI = zeros(Int32,nnz)
+        myJ = zeros(Int32,nnz)
+        myV = zeros(Float64,nnz)
+        t = 0
+        for node_i in nodes
+            t += 1
+            myI[t] = node_i
+            myJ[t] = node_i
+            myV[t] = 2*D
+            cartesian_node_i = node_to_cartesian_node[node_i]
+            for d in 1:D
+                for i in (-1,1)
+                    inc = ntuple(k->( k==d ? i : 0),Val(D))
+                    cartesian_node_j = CartesianIndex(Tuple(cartesian_node_i) .+ inc)
+                    boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                    if boundary
+                        continue
+                    end
+                    node_j = cartesian_node_to_node[cartesian_node_j]
+                    t += 1
+                    myI[t] = node_i
+                    myJ[t] = node_j
+                    myV[t] = -1.0
+                end
+            end
+        end
+        @views myI[1:t],myJ[1:t],myV[1:t]
+    end
+    node_partition = uniform_partition(ranks,parts_per_dir,nodes_per_dir)
+    I,J,V = map(setup,node_partition) |> tuple_of_arrays
+    A = psparse(sparse,I,J,V,node_partition,node_partition) |> fetch
+end

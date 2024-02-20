@@ -90,6 +90,9 @@ function test_mat(T)
   A,Acache = sparse_matrix(I,J,V,m,n;reuse=true)
   sparse_matrix!(A,V,Acache)
 
+  d = dense_diag(A)
+  PartitionedArrays.sparse_diag_matrix(d,axes(A))
+
 end
 
 test_mat(SparseMatrixCSC{Float64,Int})

@@ -150,6 +150,14 @@ export own_own_values
 export ghost_ghost_values
 export psystem
 export psystem!
+export dense_diag
+export dense_diag!
+export rap
+export rap!
+export spmm
+export spmm!
+export spmtm
+export spmtm!
 include("p_sparse_matrix.jl")
 
 export PTimer

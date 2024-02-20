@@ -313,6 +313,37 @@ function p_sparse_matrix_tests(distribute)
     @test eltype(partition(C)) == eltype(partition(A))
     C = B-A
     @test eltype(partition(C)) == eltype(partition(A))
+
+    nodes_per_dir = (5,5)
+    parts_per_dir = (2,2)
+    A = PartitionedArrays.laplace_matrix(nodes_per_dir)
+    A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+    d = dense_diag(A)
+    dense_diag!(d,A)
+
+    nodes_per_dir = (5,5)
+    parts_per_dir = (2,2)
+    A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+
+    B = A*A
+    B = spmm(A,A)
+    B,cacheB = spmm(A,A;reuse=true)
+    spmm!(B,A,A,cacheB)
+
+    B = transpose(A)*A
+    B = spmtm(A,A)
+    B,cacheB = spmtm(A,A;reuse=true)
+    spmtm!(B,A,A,cacheB)
+
+    C = rap(transpose(A),A,A)
+    C,cacheC = rap(transpose(A),A,A;reuse=true)
+    rap!(C,transpose(A),A,A,cacheC)
+
+    r = pzeros(partition(axes(A,2)))
+    x = pones(partition(axes(A,1)))
+    mul!(r,transpose(A),x)
+
+    B = LinearAlgebra.I-A
     
 end
 

@@ -2,7 +2,7 @@
 
 julia_version = "1.10.0"
 manifest_format = "2.0"
-project_hash = "e37729e95710f39fa1cd840707ef95d2e3bbf22c"
+project_hash = "6cb04e0444d1618368044337280d73d6270dffbd"
 
 [[deps.ANSIColoredPrinters]]
 git-tree-sha1 = "574baf8110975760d391c710b6341da1afa48d8c"
@@ -313,7 +313,13 @@ version = "2.8.1"
 deps = ["CircularArrays", "Distances", "FillArrays", "IterativeSolvers", "LinearAlgebra", "MPI", "Printf", "Random", "SparseArrays", "SparseMatricesCSR"]
 path = ".."
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
-version = "0.3.4"
+version = "0.4.3"
+
+[[deps.PartitionedSolvers]]
+deps = ["IterativeSolvers", "LinearAlgebra", "PartitionedArrays", "Random", "SparseArrays"]
+path = "../extensions/PartitionedSolvers"
+uuid = "11b65f7f-80ac-401b-9ef2-3db765482d62"
+version = "0.1.0"
 
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
