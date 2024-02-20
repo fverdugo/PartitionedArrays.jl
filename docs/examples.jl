@@ -208,7 +208,40 @@ psparse!(A,V,cacheA) |> wait
 r = A*x - b
 norm(r)
 
+# # Distributed algebraic multigrid (AMG)
+#
+# So far, we have use a conjugate gradient method to solve the linear system. However, this is approach does not scale well
+# to larger problems and one needs to consider a preconditioner. A distributed algebraic multigrid (AMG) preconditioner is available in `PartitonedSolvers`, an extension
+# package of `PartitionedArrays` that provides parallel solvers for systems built with matrices and vectors from `PartitionedArrays`.
+#
+# First, let us solve a larger problem without a preconditioner. To this end we use function `laplace_matrix` that builds a Laplace matrix of
+# arbitrary size.
 
+using PartitionedArrays: laplace_matrix
+
+nodes_per_dir = (40,40,40)
+parts_per_dir = (2,2,1)
+nparts = prod(parts_per_dir)
+parts = LinearIndices((nparts,))
+A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+x_exact = pones(partition(axes(A,2)))
+b = A*x_exact
+
+# Now, we have a matrix and a rhs vector. Let us solve the system:
+
+x = similar(b,axes(A,2))
+x .= 0
+_, history = IterativeSolvers.cg!(x,A,b;log=true)
+history
+
+# Now solve the system while using an AMG preconditioner.
+
+using PartitionedSolvers: amg, preconditioner
+
+x .= 0
+Pl = preconditioner(amg(),x,A,b)
+_, history = IterativeSolvers.cg!(x,A,b;Pl,log=true)
+history
 
 
 
