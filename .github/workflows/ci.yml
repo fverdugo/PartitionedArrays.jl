@@ -73,6 +73,10 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/julia-buildpkg@v1
+      - run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(path="extensions/PartitionedSolvers")'
       - uses: julia-actions/julia-docdeploy@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
