@@ -11,8 +11,9 @@ code = quote
    import PartitionedArrays as pa
    params = {{{params}}}
    jobname = "{{jobname}}"
+   results_dir = "{{{resultsdir}}}"
    pa.with_mpi() do distribute
-       pb.experiment(pb.{{{function}}},jobname,distribute,params)
+       pb.experiment(pb.{{{function}}},jobname,distribute,params;results_dir)
    end
 end
 using MPI

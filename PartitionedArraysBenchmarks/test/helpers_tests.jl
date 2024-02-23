@@ -3,7 +3,7 @@ module HelpersTests
 import PartitionedArraysBenchmarks as pb
 using PartitionedArrays
 
-project = Base.active_project()
+results_dir = mkpath("results")
 
 params = (;
           nodes = 2,
@@ -15,8 +15,8 @@ params = (;
           nruns = 10
          )
 
-pb.experiment(pb.benchmark_spmv,"experiment",DebugArray,params)
+pb.experiment(pb.benchmark_spmv,"experiment",DebugArray,params;results_dir)
 
-pb.runjob(:bash,:benchmark_spmv,params;project)
+pb.runjob(:bash,:benchmark_spmv,params;results_dir)
 
 end  # module

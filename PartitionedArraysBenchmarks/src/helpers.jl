@@ -10,7 +10,10 @@ function runjob(cmd,args...;kwargs...)
     run(`$cmd $filename`)
 end
 
-function  create_jobfile(fname,params;time="00:30:00",project=".")
+function create_jobfile(fname,params;time="00:30:00",
+        results_dir = mkpath("results"),
+        project=Base.active_project()
+)
     jobname = "$(fname)_"*String(sprint(show,hash(params))[3:end])
     jobdict = Dict([
           "time" => time,
@@ -23,20 +26,22 @@ function  create_jobfile(fname,params;time="00:30:00",project=".")
           "params" => sprint(show,params),
           "function" => fname,
           "jobname" => jobname,
+          "resultsdir" => results_dir,
           "project" => project,
          ])
-    jobfile = jobname*".sh"
+    jobfile = joinpath(results_dir,jobname*".sh")
     open(jobfile,"w") do io
         render(io,template[],jobdict)
     end
     jobfile
 end
 
-function experiment(f,jobname,distribute,params)
+function experiment(f,jobname,distribute,params;results_dir)
     results_in_main = f(distribute,params)
     map_main(results_in_main) do results
         dict = Dict(map(p->(string(p[1])=>p[2]),collect(pairs(results))))
-        save(jobname*".jld2",dict)
+        jld2_file = joinpath(results_dir,jobname*".jld2")
+        save(jld2_file,dict)
     end
 end
 
