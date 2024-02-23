@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 PetscCall = "1194c000-87c4-4102-b4a0-a6217ec4849e"
 SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
