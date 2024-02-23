@@ -2289,7 +2289,7 @@ function laplace_matrix(nodes_per_dir)
     sparse_matrix(I,J,V,n,n)
 end
 
-function laplace_matrix(nodes_per_dir,parts_per_dir,ranks)
+function laplace_matrix(nodes_per_dir,parts_per_dir,ranks;compress=sparse_matrix)
     function is_boundary_node(node_1d,nodes_1d)
         !(node_1d in 1:nodes_1d)
     end
@@ -2329,5 +2329,5 @@ function laplace_matrix(nodes_per_dir,parts_per_dir,ranks)
     end
     node_partition = uniform_partition(ranks,parts_per_dir,nodes_per_dir)
     I,J,V = map(setup,node_partition) |> tuple_of_arrays
-    A = psparse(sparse,I,J,V,node_partition,node_partition) |> fetch
+    A = psparse(compress,I,J,V,node_partition,node_partition) |> fetch
 end
