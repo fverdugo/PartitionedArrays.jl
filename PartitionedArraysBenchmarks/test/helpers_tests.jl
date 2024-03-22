@@ -3,7 +3,8 @@ module HelpersTests
 import PartitionedArraysBenchmarks as pb
 using PartitionedArrays
 
-results_dir = mkpath("results")
+path = mkpath("results")
+filename = params -> joinpath(path,pb.jobname(params))
 
 params = (;
           nodes = 2,
@@ -22,8 +23,8 @@ params = (;
 #pb.symbol_dict(params) |> pb.jobparams |> display
 #pb.symbol_dict(params) |> pb.string_dict |> pb.jobparams |> display
 
-pb.experiment(pb.benchmark_spmv,"experiment",DebugArray,params;results_dir)
-pb.runjob(:bash,pb.string_dict(params);results_dir)
-pb.runjob(:bash,params;results_dir)
+pb.experiment(pb.benchmark_spmv,filename(params),DebugArray,params)
+pb.runjob(:bash,pb.string_dict(params);filename)
+pb.runjob(:bash,params;filename)
 
 end  # module

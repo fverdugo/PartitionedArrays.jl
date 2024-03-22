@@ -40,10 +40,10 @@ end
 
 function create_jobfile(params;
         time="00:30:00",
-        results_dir = mkpath("results"),
+        filename=jobname,
         project=Base.active_project()
 )
-    myjobname = jobname(params)
+    myjobname = filename(params)
     myparams = jobparams(params)
     jobdict = Dict([
           "time" => time,
@@ -56,21 +56,20 @@ function create_jobfile(params;
           "params" => sprint(show,myparams),
           "benchmark" => myparams.benchmark,
           "jobname" => myjobname,
-          "resultsdir" => results_dir,
           "project" => project,
          ])
-    jobfile = joinpath(results_dir,myjobname*".sh")
+    jobfile = myjobname*".sh"
     open(jobfile,"w") do io
         render(io,template[],jobdict)
     end
     jobfile
 end
 
-function experiment(f,jobname,distribute,params;results_dir)
+function experiment(f,jobname,distribute,params)
     results_in_main = f(distribute,params)
     map_main(results_in_main) do results
         dict = string_dict(results)
-        jld2_file = joinpath(results_dir,jobname*"_results.jld2")
+        jld2_file = jobname*"_results.jld2"
         save(jld2_file,dict)
     end
 end
