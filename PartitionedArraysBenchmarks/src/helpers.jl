@@ -10,26 +10,56 @@ function runjob(cmd,args...;kwargs...)
     run(`$cmd $filename`)
 end
 
-function create_jobfile(fname,params;time="00:30:00",
+function jobname(params)
+    String(sprint(show,hash(params))[3:end])
+end
+
+function jobparams(params::NamedTuple)
+    params
+end
+
+function jobparams(params::Dict)
+    (;symbol_dict(params)...)
+end
+
+function string_dict(dict::Dict{String})
+    dict
+end
+
+function string_dict(results)
+    Dict(map(p->(string(p[1])=>p[2]),collect(pairs(results))))
+end
+
+function symbol_dict(dict::Dict{Symbol})
+    dict
+end
+
+function symbol_dict(results)
+    Dict(map(p->(Symbol(string(p[1]))=>p[2]),collect(pairs(results))))
+end
+
+function create_jobfile(params;
+        time="00:30:00",
         results_dir = mkpath("results"),
         project=Base.active_project()
 )
-    jobname = "$(fname)_"*String(sprint(show,hash(params))[3:end])
+    myjobname = jobname(params)
+    myparams = jobparams(params)
     jobdict = Dict([
           "time" => time,
-          "nodes" => string(params.nodes),
-          "ntasks_per_node" => string(params.ntasks_per_node),
-          "output" => jobname*".o",
-          "error" =>  jobname*".e",
+          "nodes" => string(myparams.nodes),
+          "ntasks_per_node" => string(myparams.ntasks_per_node),
+          "output" => myjobname*".o",
+          "error" =>  myjobname*".e",
           "mpiexec" => "mpiexec",
-          "np" => string(params.np),
-          "params" => sprint(show,params),
-          "function" => fname,
-          "jobname" => jobname,
+          "np" => string(myparams.np),
+          "params" => sprint(show,myparams),
+          "benchmark" => myparams.benchmark,
+          "jobname" => myjobname,
           "resultsdir" => results_dir,
           "project" => project,
          ])
-    jobfile = joinpath(results_dir,jobname*".sh")
+    jobfile = joinpath(results_dir,myjobname*".sh")
     open(jobfile,"w") do io
         render(io,template[],jobdict)
     end
@@ -39,8 +69,8 @@ end
 function experiment(f,jobname,distribute,params;results_dir)
     results_in_main = f(distribute,params)
     map_main(results_in_main) do results
-        dict = Dict(map(p->(string(p[1])=>p[2]),collect(pairs(results))))
-        jld2_file = joinpath(results_dir,jobname*".jld2")
+        dict = string_dict(results)
+        jld2_file = joinpath(results_dir,jobname*"_results.jld2")
         save(jld2_file,dict)
     end
 end

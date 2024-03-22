@@ -12,11 +12,18 @@ params = (;
           method="PartitionedArrays",
           cells_per_dir = (10,10,10),
           parts_per_dir = (2,1,1),
-          nruns = 10
+          nruns = 10,
+          benchmark = :benchmark_spmv
          )
+#pb.string_dict(params) |> display
+#pb.symbol_dict(params) |> display
+#pb.symbol_dict(params) |> pb.string_dict |> display
+#pb.string_dict(params) |> pb.jobparams |> display
+#pb.symbol_dict(params) |> pb.jobparams |> display
+#pb.symbol_dict(params) |> pb.string_dict |> pb.jobparams |> display
 
 pb.experiment(pb.benchmark_spmv,"experiment",DebugArray,params;results_dir)
-
-pb.runjob(:bash,:benchmark_spmv,params;results_dir)
+pb.runjob(:bash,pb.string_dict(params);results_dir)
+pb.runjob(:bash,params;results_dir)
 
 end  # module
