@@ -20,7 +20,7 @@ function benchmark_spmv(distribute,params)
             b .= 0
             t[irun] =  @elapsed mul!(b,A,x)
         end
-    elseif method == "Pestc"
+    elseif method == "Petsc"
         PetscCall.init(finalize_atexit=false)
         mat = Ref{PetscCall.Mat}()
         vec_b = Ref{PetscCall.Vec}()
@@ -43,6 +43,8 @@ function benchmark_spmv(distribute,params)
         GC.@preserve ownership PetscCall.@check_error_code PetscCall.VecDestroy(vec_b)
         GC.@preserve ownership PetscCall.@check_error_code PetscCall.VecDestroy(vec_x)
         PetscCall.finalize()
+    else
+        error("unknown method $method")
     end
     ts_in_main = gather(map(p->t,parts))
     results_in_main = map_main(ts_in_main) do ts
