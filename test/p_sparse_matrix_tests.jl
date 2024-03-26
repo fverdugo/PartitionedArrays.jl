@@ -122,6 +122,10 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
+    B = copy(A)
+    @test reduce(&, map((a,b) -> nnz(a) == nnz(b),partition(A),partition(B)))
+    @test reduce(&, map((a,b) -> rowvals(a) == rowvals(b),partition(A),partition(B)))
+
     # New stuff
 
     n = 10
@@ -193,6 +197,7 @@ function p_sparse_matrix_tests(distribute)
     _A = similar(A)
     _A = similar(A,eltype(A))
     copy!(_A,A)
+    _A = copy(A)
 
     LinearAlgebra.fillstored!(A,1.0)
     fill!(x,3.0)
@@ -347,3 +352,4 @@ function p_sparse_matrix_tests(distribute)
     
 end
 
+p_sparse_matrix_tests(DebugArray)

@@ -311,6 +311,12 @@ function Base.similar(::Type{<:OldPSparseMatrix{V}},inds::Tuple{<:PRange,<:PRang
     OldPSparseMatrix(matrix_partition,partition(rows),partition(cols))
 end
 
+function Base.copy(a::OldPSparseMatrix)
+    mats = map(copy,partition(a))
+    cache = map(copy_cache,a.cache)
+    OldPSparseMatrix(mats,partition(axes(a,1)),partition(axes(a,2)),cache)
+end
+
 function Base.copy!(a::OldPSparseMatrix,b::OldPSparseMatrix)
     @assert size(a) == size(b)
     copyto!(a,b)
@@ -670,6 +676,15 @@ function Base.similar(a::AbstractSplitMatrix,::Type{T}) where T
     own_ghost = similar(a.blocks.own_ghost,T)
     ghost_own = similar(a.blocks.ghost_own,T)
     ghost_ghost = similar(a.blocks.ghost_ghost,T)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,a.row_permutation,a.col_permutation)
+end
+
+function Base.copy(a::AbstractSplitMatrix)
+    own_own = copy(a.blocks.own_own)
+    own_ghost = copy(a.blocks.own_ghost)
+    ghost_own = copy(a.blocks.ghost_own)
+    ghost_ghost = copy(a.blocks.ghost_ghost)
     blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
     split_matrix(blocks,a.row_permutation,a.col_permutation)
 end
@@ -1993,6 +2008,12 @@ function Base.similar(a::PSparseMatrix,::Type{T}) where T
     end
     rows, cols = axes(a)
     PSparseMatrix(matrix_partition,partition(rows),partition(cols),a.assembled)
+end
+
+function Base.copy(a::PSparseMatrix)
+    mats = map(copy,partition(a))
+    rows, cols = axes(a)
+    PSparseMatrix(mats,partition(rows),partition(cols),a.assembled)
 end
 
 function Base.copy!(a::PSparseMatrix,b::PSparseMatrix)
