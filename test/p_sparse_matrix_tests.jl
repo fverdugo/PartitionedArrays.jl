@@ -351,5 +351,3 @@ function p_sparse_matrix_tests(distribute)
     B = LinearAlgebra.I-A
     
 end
-
-p_sparse_matrix_tests(DebugArray)
