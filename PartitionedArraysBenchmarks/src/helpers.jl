@@ -1,9 +1,4 @@
 
-const template = Ref{String}()
-
-function __init__()
-    template[] = read(joinpath(@__DIR__,"jobtemplate.sh"),String)
-end
 
 function runjob(cmd,args...;kwargs...)
     filename = create_jobfile(args...;kwargs...)
@@ -38,29 +33,22 @@ function symbol_dict(results)
     Dict(map(p->(Symbol(string(p[1]))=>p[2]),collect(pairs(results))))
 end
 
-function create_jobfile(params;
-        time="00:30:00",
+function create_jobfile(template,params;
         filename=jobname,
         project=Base.active_project()
 )
     myjobname = filename(params)
     myparams = jobparams(params)
     jobdict = Dict([
-          "time" => time,
-          "nodes" => string(myparams.nodes),
-          "ntasks_per_node" => string(myparams.ntasks_per_node),
-          "output" => myjobname*".o",
-          "error" =>  myjobname*".e",
-          "mpiexec" => "mpiexec",
-          "np" => string(myparams.np),
-          "params" => sprint(show,myparams),
-          "benchmark" => myparams.benchmark,
-          "jobname" => myjobname,
-          "project" => project,
+          "__PARAMS__" => sprint(show,myparams),
+          "__JOBNAME__" => myjobname,
+          "__PROJECT__" => project,
          ])
+    params_string = Dict(map(p->(string(p[1])=>string(p[2])),collect(pairs(params))))
+    jobdict = merge(jobdict,params_string)
     jobfile = myjobname*".sh"
     open(jobfile,"w") do io
-        render(io,template[],jobdict)
+        render(io,template,jobdict)
     end
     jobfile
 end
