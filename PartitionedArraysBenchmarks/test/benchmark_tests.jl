@@ -8,6 +8,15 @@ cells_per_dir=(10,10,10)
 parts_per_dir=(1,1,1)
 nruns = 10
 
+params = (;nruns,cells_per_dir,parts_per_dir,method="sync",matrix="split-csc",T=Float64,Ti=Int)
+out = pa.with_mpi(distribute->pb.benchmark_spmv_detailed(distribute,params))
+display(out)
+xx
+params = (;nruns,cells_per_dir,parts_per_dir,method="async",matrix="split-csc",T=Float64,Ti=Int)
+out = pa.with_mpi(distribute->pb.benchmark_spmv_detailed(distribute,params))
+params = (;nruns,cells_per_dir,parts_per_dir,method="monolithic",matrix="split-csc",T=Float64,Ti=Int)
+out = pa.with_mpi(distribute->pb.benchmark_spmv_detailed(distribute,params))
+
 params = (;nruns,cells_per_dir,parts_per_dir,method="psprse")
 out = pa.with_mpi(distribute->pb.benchmark_psparse(distribute,params))
 
@@ -20,7 +29,7 @@ out = pa.with_mpi(distribute->pb.benchmark_psparse(distribute,params))
 params = (;nruns,cells_per_dir,parts_per_dir,method="PartitionedArrays")
 out = pa.with_mpi(distribute->pb.benchmark_spmv(distribute,params))
 
-params = (;nruns,cells_per_dir,parts_per_dir,method="Pestc")
+params = (;nruns,cells_per_dir,parts_per_dir,method="Petsc")
 out = pa.with_mpi(distribute->pb.benchmark_spmv(distribute,params))
 
 code = quote
@@ -32,7 +41,7 @@ code = quote
         nruns = 10
         params = (;nruns,cells_per_dir,parts_per_dir,method="PartitionedArrays")
         out = pb.benchmark_spmv(distribute,params)
-        params = (;nruns,cells_per_dir,parts_per_dir,method="Pestc")
+        params = (;nruns,cells_per_dir,parts_per_dir,method="Petsc")
         out = pb.benchmark_spmv(distribute,params)
         params = (;nruns,cells_per_dir,parts_per_dir,method="psprse")
         out = pb.benchmark_psparse(distribute,params)
