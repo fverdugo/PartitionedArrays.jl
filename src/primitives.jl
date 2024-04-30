@@ -49,31 +49,13 @@ julia> b,c = tuple_of_arrays(a)
 ```
 """
 function tuple_of_arrays(a)
-    function first_and_tail(a)
-        x = map(first,a)
-        y = map(Base.tail,a)
-        x, y
+    if length(first(a)) == 0
+        return ()
+    else
+        x = map(first, a)
+        y = map(Base.tail, a)
+        return (x, tuple_of_arrays(y)...)
     end
-    function take(a,::Type{Tuple{T}} where T)
-        x = map(first,a)
-        (x,)
-    end
-    function take(a,::Type{Tuple{A,B}} where {A,B})
-        x, y = first_and_tail(a)
-        t1, = tuple_of_arrays(y)
-        (x,t1)
-    end
-    function take(a,::Type{Tuple{A,B,C}} where {A,B,C})
-        x, y = first_and_tail(a)
-        t1,t2 = tuple_of_arrays(y)
-        (x,t1,t2)
-    end
-    # this one is type instable, why? Previous methods for take are for circumvent this issue.
-    function take(a,::Type)
-        x, y = first_and_tail(a)
-        (x,tuple_of_arrays(y)...)
-    end
-    take(a,eltype(a))
 end
 
 
