@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Function `centralize` for sparse matrix.
+- `multicast` for arbitrary types.
 
 ## [0.4.4] - 2024-02-20
 
