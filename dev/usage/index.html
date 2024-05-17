@@ -41,7 +41,82 @@ with_mpi() do distribute
             error(&quot;I have crashed&quot;)
         end
     end
-end</code></pre><p>Essentially, <code>with_mpi(f)</code> calls <code>f(distribute_with_mpi)</code> in a <code>try</code>-<code>catch</code> block. If some error is cached,  <code>MPI.Abort</code> will be called, safely finishing all the MPI processes, also the ones that did not experienced the error.</p><h2 id="Benchmarking-distributed-codes"><a class="docs-heading-anchor" href="#Benchmarking-distributed-codes">Benchmarking distributed codes</a><a id="Benchmarking-distributed-codes-1"></a><a class="docs-heading-anchor-permalink" href="#Benchmarking-distributed-codes" title="Permalink"></a></h2><p>When using MPI, the computational time to run some code can be different for each one of the processes. Usually, one measures the time for each process and computes some statistics of the resulting values. To this end, the library provides a special timer type called <a href="../reference/ptimer/#PartitionedArrays.PTimer"><code>PTimer</code></a>. In the following example we force different computation times at each of the processes by sleeping a value proportional to the rank id. When displayed, the instance of <a href="../reference/ptimer/#PartitionedArrays.PTimer"><code>PTimer</code></a> shows some statistics of the times over the different processes.</p><pre><code class="language-julia hljs">using PartitionedArrays
+end</code></pre><p>Essentially, <code>with_mpi(f)</code> calls <code>f(distribute_with_mpi)</code> in a <code>try</code>-<code>catch</code> block. If some error is cached,  <code>MPI.Abort</code> will be called, safely finishing all the MPI processes, also the ones that did not experienced the error.</p><h2 id="Benchmarking-distributed-codes"><a class="docs-heading-anchor" href="#Benchmarking-distributed-codes">Benchmarking distributed codes</a><a id="Benchmarking-distributed-codes-1"></a><a class="docs-heading-anchor-permalink" href="#Benchmarking-distributed-codes" title="Permalink"></a></h2><p>When using MPI, the computational time to run some code can be different for each one of the processes. Usually, one measures the time for each process and computes some statistics of the resulting values. This is done by doing time measurements with the tool of your choice and then <code>gather</code>ing the results on the root for further analysis. Note that this is possible thanks to the changes in version 0.4.1 that allow one to use  <code>gather</code> on arbitrary objects.</p><p>In the following example, we force different computation times at each of the processes by sleeping a value proportional to the rank id. We gather all the timings in the main process and compute some statistics:</p><pre><code class="language-julia hljs">using PartitionedArrays
+using Statistics
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = @elapsed map(ranks) do rank
+        sleep(rank)
+    end
+    ts = gather(map(rank-&gt;t,ranks))
+    map_main(ts) do ts
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end</code></pre><pre><code class="nohighlight hljs">ts = [1.001268313, 2.0023204, 3.001216396]
+maximum(ts) = 3.001216396
+minimum(ts) = 1.001268313
+Statistics.mean(ts) = 2.001601703</code></pre><p>This mechanism also works for the other back-ends. For sequential ones, it provides the time spend by all parts combined. Note how we define <code>t</code> (outside the call to <code>map</code>) and the object passed to <code>gather</code>.</p><pre><code class="language-julia hljs">using PartitionedArrays
+using Statistics
+with_debug() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = @elapsed map(ranks) do rank
+        sleep(rank)
+    end
+    ts = gather(map(rank-&gt;t,ranks))
+    map_main(ts) do ts
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end;</code></pre><pre><code class="nohighlight hljs">ts = [6.009726399, 6.009726399, 6.009726399]
+maximum(ts) = 6.009726399
+minimum(ts) = 6.009726399
+Statistics.mean(ts) = 6.009726398999999</code></pre><p>We can also consider more sophisticated ways of measuring the times, e.g., with <a href="https://github.com/KristofferC/TimerOutputs.jl">TimerOutputs</a>.</p><pre><code class="language-julia hljs">using PartitionedArrays
+using Statistics
+using TimerOutputs
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    to = TimerOutput()
+    @timeit to &quot;phase 1&quot; map(ranks) do rank
+        sleep(rank)
+    end
+    @timeit to &quot;phase 2&quot; map(ranks) do rank
+        sleep(2*rank)
+    end
+    tos = gather(map(rank-&gt;to,ranks))
+    map_main(tos) do tos
+        # check the timings on the first rank
+        display(tos[1])
+        # compute statistics for phase 1
+        ts = map(tos) do to
+            TimerOutputs.time(to[&quot;phase 1&quot;])
+        end
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end</code></pre><pre><code class="nohighlight hljs"> ────────────────────────────────────────────────────────────────────
+                            Time                    Allocations      
+                   ───────────────────────   ────────────────────────
+ Tot / % measured:      10.3s /  29.3%           44.9MiB /   0.0%    
+
+ Section   ncalls     time    %tot     avg     alloc    %tot      avg
+ ────────────────────────────────────────────────────────────────────
+ phase 2        1    2.00s   66.6%   2.00s      120B   50.0%     120B
+ phase 1        1    1.00s   33.4%   1.00s      120B   50.0%     120B
+ ────────────────────────────────────────────────────────────────────
+ts = [1002323746, 2001614329, 3004363808]
+maximum(ts) = 3004363808
+minimum(ts) = 1002323746
+Statistics.mean(ts) = 2.0027672943333333e9</code></pre><p>In addition, the library provides a special timer type called <a href="../reference/ptimer/#PartitionedArrays.PTimer"><code>PTimer</code></a>.</p><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p><code>PTimer</code> has been deprecated. Do time measurements with the tool of your choice and then <code>gather</code> the results on the root for further analysis (see above).</p></div></div><p>In the following example we force different computation times at each of the processes by sleeping a value proportional to the rank id. When displayed, the instance of <a href="../reference/ptimer/#PartitionedArrays.PTimer"><code>PTimer</code></a> shows some statistics of the times over the different processes.</p><pre><code class="language-julia hljs">using PartitionedArrays
 with_mpi() do distribute
     np = 3
     ranks = distribute(LinearIndices((np,)))
@@ -56,7 +131,7 @@ end</code></pre><pre><code class="nohighlight hljs">─────────�
 Section         max         min         avg
 ───────────────────────────────────────────
 Sleep     3.021e+00   1.021e+00   2.021e+00
-───────────────────────────────────────────</code></pre><p>This mechanism also works for the other back-ends. For sequential ones, it provides the type spend by all parts combined.</p><pre><code class="language-julia hljs">using PartitionedArrays
+───────────────────────────────────────────</code></pre><p>This mechanism also works for the other back-ends. For sequential ones, it provides the time spend by all parts combined.</p><pre><code class="language-julia hljs">using PartitionedArrays
 with_debug() do distribute
     np = 3
     ranks = distribute(LinearIndices((np,)))
@@ -71,4 +146,4 @@ end</code></pre><pre><code class="nohighlight hljs">─────────�
 Section         max         min         avg
 ───────────────────────────────────────────
 Sleep     6.010e+00   6.010e+00   6.010e+00
-───────────────────────────────────────────</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../examples/">Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.2.1 on <span class="colophon-date" title="Sunday 12 May 2024 08:26">Sunday 12 May 2024</span>. Using Julia version 1.10.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+───────────────────────────────────────────</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../examples/">Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.2.1 on <span class="colophon-date" title="Friday 17 May 2024 17:47">Friday 17 May 2024</span>. Using Julia version 1.10.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
