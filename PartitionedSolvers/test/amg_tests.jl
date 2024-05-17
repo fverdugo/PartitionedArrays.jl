@@ -65,11 +65,9 @@ Pl = preconditioner(amg(;fine_params),y,A,b)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
-
-
 # Now in parallel
 
-parts_per_dir = (1,2)
+parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
@@ -91,6 +89,7 @@ finalize!(solver)(S)
 
 # Now with a nullspace
 
+solver = amg()
 O = attach_nullspace(A,default_nullspace(A))
 S = setup(solver)(y,O,b)
 solve!(solver)(y,S,b)
