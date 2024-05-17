@@ -392,10 +392,19 @@ function multicast_impl!(
     @assert rcv.comm === snd.comm
     comm = snd.comm
     root = source - 1
-    if MPI.Comm_rank(comm) == root
-        rcv.item = snd.item
+    if isbitstype(T)
+        if MPI.Comm_rank(comm) == root
+            rcv.item = snd.item
+        end
+        MPI.Bcast!(rcv.item_ref,root,comm)
+    else
+        if MPI.Comm_rank(comm) == root
+            rcv.item_ref[] = MPI.bcast(snd.item,comm;root)
+        else
+            rcv.item_ref[] = MPI.bcast(nothing,comm;root)
+        end
     end
-    MPI.Bcast!(rcv.item_ref,root,comm)
+    rcv
 end
 
 function multicast_impl!(
@@ -408,6 +417,7 @@ function multicast_impl!(
         rcv.item = snd.item
     end
     MPI.Bcast!(rcv.item,root,comm)
+    rcv
 end
 
 function scan!(op,b::MPIArray,a::MPIArray;init,type)

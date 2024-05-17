@@ -313,11 +313,11 @@ version = "2.8.1"
 deps = ["CircularArrays", "Distances", "FillArrays", "IterativeSolvers", "LinearAlgebra", "MPI", "Printf", "Random", "SparseArrays", "SparseMatricesCSR"]
 path = ".."
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
-version = "0.4.3"
+version = "0.4.5"
 
 [[deps.PartitionedSolvers]]
 deps = ["IterativeSolvers", "LinearAlgebra", "PartitionedArrays", "Random", "SparseArrays"]
-path = "../extensions/PartitionedSolvers"
+path = "../PartitionedSolvers"
 uuid = "11b65f7f-80ac-401b-9ef2-3db765482d62"
 version = "0.1.0"
 

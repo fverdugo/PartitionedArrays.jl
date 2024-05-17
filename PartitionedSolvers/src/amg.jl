@@ -369,9 +369,11 @@ function amg_setup(x,operator,b,amg_params)
         end
         r = similar(b)
         rc = similar(r,axes(Ac,2)) # we need ghost ids for the mul!(rc,R,r)
+        rc2 = similar(r,axes(P,2)) # TODO
         e = similar(x)
         ec = similar(e,axes(Ac,2))
-        level_setup = (;R,P,r,rc,e,ec,operator,coarse_operator,pre_setup,pos_setup,coarse_operator_setup)
+        ec2 = similar(e,axes(P,2)) # TODO
+        level_setup = (;R,P,r,rc,rc2,e,ec,ec2,operator,coarse_operator,pre_setup,pos_setup,coarse_operator_setup)
         x = ec
         b = rc
         operator = coarse_operator
@@ -400,15 +402,17 @@ function amg_cycle!(x,setup,b,level)
     level_params = amg_params.fine_params[level]
     level_setup = setup.fine_levels[level]
     (;pre_smoother,pos_smoother,cycle) = level_params
-    (;R,P,r,rc,e,ec,operator,coarse_operator,pre_setup,pos_setup) = level_setup
+    (;R,P,r,rc,rc2,e,ec,ec2,operator,coarse_operator,pre_setup,pos_setup) = level_setup
     solve!(pre_smoother)(x,pre_setup,b)
     A = matrix(operator)
     mul!(r,A,x)
     r .= b .- r
-    mul!(rc,R,r)
+    mul!(rc2,R,r)
+    rc .= rc2
     fill!(ec,zero(eltype(ec)))
     cycle(ec,setup,rc,level+1)
-    mul!(e,P,ec)
+    ec2 .= ec
+    mul!(e,P,ec2)
     x .+= e
     solve!(pos_smoother)(x,pos_setup,b)
     x
