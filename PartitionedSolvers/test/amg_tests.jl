@@ -119,4 +119,20 @@ Pl = preconditioner(solver,y,A,b)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
+
+println("----")
+nodes_per_dir = (40,40,40)
+parts_per_dir = (2,2,1)
+nparts = prod(parts_per_dir)
+parts = LinearIndices((nparts,))
+A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+x_exact = pones(partition(axes(A,2)))
+b = A*x_exact
+x = similar(b,axes(A,2))
+x .= 0
+Pl = preconditioner(amg(),x,A,b)
+_, history = cg!(x,A,b;Pl,log=true)
+display(history)
+
+
 end

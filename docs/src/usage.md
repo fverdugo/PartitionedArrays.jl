@@ -140,8 +140,124 @@ the error.
 
 When using MPI, the computational time to run some code can be different for each one of
 the processes. Usually, one measures the time for each process and computes some statistics
-of the resulting values. To this end, the library provides a special timer type called
-[`PTimer`](@ref).
+of the resulting values. This is done by doing time measurements with the tool of your choice and then `gather`ing the results
+on the root for further analysis. Note that this is possible thanks to the changes in version 0.4.1
+that allow one to use  `gather` on arbitrary objects.
+
+In the following example, we force different computation times at each of the processes
+by sleeping a value proportional to the rank id. We gather all the timings in the main process and compute some statistics:
+
+```julia
+using PartitionedArrays
+using Statistics
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = @elapsed map(ranks) do rank
+        sleep(rank)
+    end
+    ts = gather(map(rank->t,ranks))
+    map_main(ts) do ts
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end
+```
+
+```
+ts = [1.001268313, 2.0023204, 3.001216396]
+maximum(ts) = 3.001216396
+minimum(ts) = 1.001268313
+Statistics.mean(ts) = 2.001601703
+```
+
+This mechanism also works for the other back-ends. For sequential ones, it provides the time
+spend by all parts combined. Note how we define `t` (outside the call to `map`) and the object passed to `gather`.
+
+```julia
+using PartitionedArrays
+using Statistics
+with_debug() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = @elapsed map(ranks) do rank
+        sleep(rank)
+    end
+    ts = gather(map(rank->t,ranks))
+    map_main(ts) do ts
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end;
+```
+
+```
+ts = [6.009726399, 6.009726399, 6.009726399]
+maximum(ts) = 6.009726399
+minimum(ts) = 6.009726399
+Statistics.mean(ts) = 6.009726398999999
+```
+
+We can also consider more sophisticated ways of measuring the times, e.g., with [TimerOutputs](https://github.com/KristofferC/TimerOutputs.jl).
+
+```julia
+using PartitionedArrays
+using Statistics
+using TimerOutputs
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    to = TimerOutput()
+    @timeit to "phase 1" map(ranks) do rank
+        sleep(rank)
+    end
+    @timeit to "phase 2" map(ranks) do rank
+        sleep(2*rank)
+    end
+    tos = gather(map(rank->to,ranks))
+    map_main(tos) do tos
+        # check the timings on the first rank
+        display(tos[1])
+        # compute statistics for phase 1
+        ts = map(tos) do to
+            TimerOutputs.time(to["phase 1"])
+        end
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end
+```
+
+```
+ ────────────────────────────────────────────────────────────────────
+                            Time                    Allocations      
+                   ───────────────────────   ────────────────────────
+ Tot / % measured:      10.3s /  29.3%           44.9MiB /   0.0%    
+
+ Section   ncalls     time    %tot     avg     alloc    %tot      avg
+ ────────────────────────────────────────────────────────────────────
+ phase 2        1    2.00s   66.6%   2.00s      120B   50.0%     120B
+ phase 1        1    1.00s   33.4%   1.00s      120B   50.0%     120B
+ ────────────────────────────────────────────────────────────────────
+ts = [1002323746, 2001614329, 3004363808]
+maximum(ts) = 3004363808
+minimum(ts) = 1002323746
+Statistics.mean(ts) = 2.0027672943333333e9
+```
+
+In addition, the library provides a special timer type called [`PTimer`](@ref).
+
+!!! note
+    `PTimer` has been deprecated. Do time measurements with the tool of your choice and then `gather` the results
+    on the root for further analysis (see above).
+
+
 In the following example we force different computation times at each of the processes
 by sleeping a value proportional to the rank id.
 When displayed, the instance of [`PTimer`](@ref) shows some statistics of the
@@ -170,7 +286,7 @@ Sleep     3.021e+00   1.021e+00   2.021e+00
 ───────────────────────────────────────────
 ```
 
-This mechanism also works for the other back-ends. For sequential ones, it provides the type
+This mechanism also works for the other back-ends. For sequential ones, it provides the time
 spend by all parts combined.
 
 ```julia
