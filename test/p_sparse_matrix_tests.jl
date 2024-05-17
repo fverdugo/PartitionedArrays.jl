@@ -157,7 +157,9 @@ function p_sparse_matrix_tests(distribute)
     A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=false) |> fetch
     A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=true) |> fetch
     A = psparse(I,J,V,row_partition,col_partition) |> fetch
-    display(A)
+    centralize(A) |> display
+    B = A*A
+    @test centralize(B) == centralize(A)*centralize(A)
     # TODO Assembly in non-split_format format not yet implemented
     #A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=true) |> fetch
     
@@ -252,7 +254,6 @@ function p_sparse_matrix_tests(distribute)
     r = A*x-y
     map(i->fill!(i,100),ghost_values(r))
     @test norm(r) < 1.0e-9
-    display(A)
 
     rows_trivial = trivial_partition(parts,n)
     cols_trivial = rows_trivial
@@ -331,18 +332,30 @@ function p_sparse_matrix_tests(distribute)
     A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
 
     B = A*A
+    A_seq = centralize(A)
+    @test centralize(B) ≈ A_seq*A_seq
+
     B = spmm(A,A)
+    @test centralize(B) ≈ A_seq*A_seq
     B,cacheB = spmm(A,A;reuse=true)
     spmm!(B,A,A,cacheB)
+    @test centralize(B) ≈ A_seq*A_seq
 
     B = transpose(A)*A
+    @test centralize(B) ≈ transpose(A_seq)*A_seq
+
     B = spmtm(A,A)
     B,cacheB = spmtm(A,A;reuse=true)
+    @test centralize(B) ≈ transpose(A_seq)*A_seq
     spmtm!(B,A,A,cacheB)
+    @test centralize(B) ≈ transpose(A_seq)*A_seq
 
     C = rap(transpose(A),A,A)
+    @test centralize(C) ≈ transpose(A_seq)*A_seq*A_seq
     C,cacheC = rap(transpose(A),A,A;reuse=true)
+    @test centralize(C) ≈ transpose(A_seq)*A_seq*A_seq
     rap!(C,transpose(A),A,A,cacheC)
+    @test centralize(C) ≈ transpose(A_seq)*A_seq*A_seq
 
     r = pzeros(partition(axes(A,2)))
     x = pones(partition(axes(A,1)))
