@@ -22,6 +22,8 @@ S = setup(solver)(y,A,b)
 solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
 solve!(solver)(y,S,b)
+y .= 0
+solve!(solver)(y,S,b;zero_guess=true)
 finalize!(solver)(S)
 
 amg_statistics(S) |> display

@@ -64,7 +64,7 @@ end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
     fill!(x,zero(eltype(x)))
-    solve!(P.solver)(x,P.solver_setup,b)
+    solve!(P.solver)(x,P.solver_setup,b;zero_guess=true)
     x
 end
 

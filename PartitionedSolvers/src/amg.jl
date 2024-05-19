@@ -386,13 +386,14 @@ function amg_setup(x,operator,b,amg_params)
     (;nlevels,fine_levels,coarse_level,amg_params)
 end
 
-function amg_solve!(x,setup,b)
+function amg_solve!(x,setup,b;zero_guess=false)
     level=1
     amg_cycle!(x,setup,b,level)
     x
 end
 
 function amg_cycle!(x,setup,b,level)
+    # TODO if zero_guess == true skip the first SpMV
     amg_params = setup.amg_params
     if level == setup.nlevels
         coarse_solver = amg_params.coarse_params.coarse_solver

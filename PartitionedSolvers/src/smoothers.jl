@@ -2,14 +2,14 @@
 function lu_solver()
     setup(x,op,b) = lu(matrix(op))
     setup!(state,op) = lu!(state,matrix(op))
-    solve! = ldiv!
+    solve!(args...;zero_guess=false) = ldiv!(args...)
     linear_solver(;setup,solve!,setup!)
 end
 
 function jacobi_correction()
     setup(x,op,b) = dense_diag!(similar(b),matrix(op))
     setup!(state,op) = dense_diag!(state,matrix(op))
-    function solve!(x,state,b)
+    function solve!(x,state,b;zero_guess=false)
         x .= state .\ b
     end
     linear_solver(;setup,setup!,solve!)
@@ -30,7 +30,8 @@ function richardson(solver;iters,omega=1)
         preconditioner!(P,O)
         state
     end
-    function solve!(x,state,b)
+    function solve!(x,state,b;zero_guess=false)
+        # TODO if zero_guess == true skip the first SpMV
         (r,dx,P,A_ref) = state
         A = A_ref[]
         for iter in 1:iters
@@ -85,7 +86,7 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    function solve!(x,state,b)
+    function solve!(x,state,b;zero_guess=false)
         (diagA,A_ref) = state
         A = A_ref[]
         n = length(b)
@@ -137,7 +138,7 @@ function additive_schwarz_correction(local_solver)
         end
         (local_setups,parallel)
     end
-    function solve!(x,(local_setups,parallel),b)
+    function solve!(x,(local_setups,parallel),b;zero_guess=false)
         if PartitionedArrays.val_parameter(parallel)
             map(PartitionedSolvers.solve!(local_solver),own_values(x),local_setups,own_values(b))
         else
