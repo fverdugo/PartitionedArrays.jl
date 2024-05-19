@@ -10,8 +10,9 @@ export setup!
 export finalize!
 export AbstractLinearSolver
 export linear_solver
-export attach_nullspace
 export default_nullspace
+export matrix_properties
+export default_matrix_properties
 export preconditioner
 export matrix
 export nullspace

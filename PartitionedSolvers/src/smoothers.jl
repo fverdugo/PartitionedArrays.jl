@@ -1,14 +1,16 @@
+# TODO define functions lu_solver_setup, etc to make solvers
+# extensible wrt new matrix properties
 
 function lu_solver()
-    setup(x,op,b) = lu(matrix(op))
-    setup!(state,op) = lu!(state,matrix(op))
+    setup(x,A,b,props=nothing) = lu(A)
+    setup!(state,A,props=nothing) = lu!(state,A)
     solve!(args...;zero_guess=false) = ldiv!(args...)
     linear_solver(;setup,solve!,setup!)
 end
 
 function jacobi_correction()
-    setup(x,op,b) = dense_diag!(similar(b),matrix(op))
-    setup!(state,op) = dense_diag!(state,matrix(op))
+    setup(x,A,b,props=nothing) = dense_diag!(similar(b),A)
+    setup!(state,A,props=nothing) = dense_diag!(state,A)
     function solve!(x,state,b;zero_guess=false)
         x .= state .\ b
     end
@@ -16,18 +18,17 @@ function jacobi_correction()
 end
 
 function richardson(solver;iters,omega=1)
-    function setup(x,O,b)
-        A = matrix(O)
+    function setup(x,A,b,props=nothing)
         A_ref = Ref(A)
         r = similar(b)
         dx = similar(x,axes(A,2))
-        P = preconditioner(solver,dx,O,r)
+        P = preconditioner(solver,dx,A,r,props)
         state = (r,dx,P,A_ref)
     end
-    function setup!(state,O)
+    function setup!(state,A,props=nothing)
         (r,dx,P,A_ref) = state
-        A_ref[] = matrix(O)
-        preconditioner!(P,O)
+        A_ref[] = A
+        preconditioner!(P,A,props)
         state
     end
     function solve!(x,state,b;zero_guess=false)
@@ -57,15 +58,13 @@ end
 
 function gauss_seidel(;iters=1,sweep=:symmetric)
     @assert sweep in (:forward,:backward,:symmetric)
-    function setup(x,op,b)
-        A = matrix(op)
+    function setup(x,A,b,props=nothing)
         diagA = dense_diag!(similar(b),A)
         A_ref = Ref(A)
         (diagA,A_ref)
     end
-    function setup!(state,op)
+    function setup!(state,A,props=nothing)
         (diagA,A_ref) = state
-        A = matrix(op)
         dense_diag!(diagA,A)
         A_ref[] = A
         state
@@ -107,52 +106,69 @@ function additive_schwarz(local_solver;iters=1)
     richardson(additive_schwarz_correction(local_solver);iters)
 end
 
+struct AdditiveSchwarzSetup{A}
+    local_setups::A
+end
+
+function local_matrix_properties(A,props::MatrixProperties)
+    ns = map(i->own_values(i),nullspace(props))
+    B = map(vcat,ns...)
+    map(ns) do ns
+        matrix_properties(;nullspace=ns)
+    end
+end
+
+function local_matrix_properties(A,props::Nothing)
+    map(i->nothing,partition(A))
+end
+
 function additive_schwarz_correction(local_solver)
-    function build_local_operators(O::MatrixWithNullspace)
-        A = matrix(O)
-        ns = map(i->own_values(i),nullspace(O))
-        B = map(vcat,ns...)
-        map(attach_nullspace,own_own_values(A),B)
+    # Fall back for sequential matrices
+    function setup(x,A,b,props=nothing)
+        PartitionedSolvers.setup(local_solver)(x,A,b,props)
     end
-    function build_local_operators(A)
-        own_own_values(matrix(A))
+    function setup!(state,A,props=nothing)
+        PartitionedSolvers.setup!(local_solver)(state,A,props)
     end
-    is_parallel(A::PSparseMatrix) = Val(true)
-    is_parallel(A) = Val(false)
-    function setup(x,O,b)
-        parallel = is_parallel(matrix(O))
-        if PartitionedArrays.val_parameter(parallel)
-            local_O = build_local_operators(O)
-            local_setups = map(PartitionedSolvers.setup(local_solver),own_values(x),local_O,own_values(b))
-        else
-            local_setups = PartitionedSolvers.setup(local_solver)(x,O,b)
-        end
-        (local_setups,parallel)
-    end
-    function setup!((local_setups,parallel),O)
-        if PartitionedArrays.val_parameter(parallel)
-            local_O = build_local_operators(O)
-            map(PartitionedSolvers.setup!(local_solver),local_setups,local_O)
-        else
-            PartitionedSolvers.setup!(local_solver)(local_setups,O)
-        end
-        (local_setups,parallel)
-    end
-    function solve!(x,(local_setups,parallel),b;zero_guess=false)
-        if PartitionedArrays.val_parameter(parallel)
-            map(PartitionedSolvers.solve!(local_solver),own_values(x),local_setups,own_values(b))
-        else
-            PartitionedSolvers.solve!(local_solver)(x,local_setups,b)
-        end
+    function solve!(x,state,b;zero_guess=false)
+        PartitionedSolvers.solve!(local_solver)(x,state,b)
         x
     end
-    function finalize!((local_setups,parallel))
-        if PartitionedArrays.val_parameter(parallel)
-            map(PartitionedSolvers.finalize!(local_solver),local_setups)
-        else
-            PartitionedSolvers.finalize!(local_solver)(local_setups)
-        end
+    function finalize!(state)
+        PartitionedSolvers.finalize!(local_solver)(state)
         nothing
+    end
+    # For parallel matrices
+    function setup(x,A::PSparseMatrix,b,props=nothing)
+        map(
+            PartitionedSolvers.setup(local_solver),
+            own_values(x),
+            own_own_values(A),
+            own_values(b),
+            local_matrix_properties(A,props),
+           ) |> AdditiveSchwarzSetup
+    end
+    function setup!(state::AdditiveSchwarzSetup,A,props=nothing)
+        map(
+            PartitionedSolvers.setup!(local_solver),
+            state.local_setups,
+            own_own_values(A),
+            local_matrix_properties(A,props),
+           )
+    end
+    function solve!(x,state::AdditiveSchwarzSetup,b;zero_guess=false)
+        map(
+            PartitionedSolvers.solve!(local_solver),
+            own_values(x),
+            state.local_setups,
+            own_values(b))
+        x
+    end
+    function finalize!(state::AdditiveSchwarzSetup)
+        map(
+            PartitionedSolvers.finalize!(local_solver),
+            state.local_setups)
+            nothing
     end
     linear_solver(;setup,setup!,solve!,finalize!)
 end

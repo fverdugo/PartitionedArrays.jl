@@ -1,17 +1,17 @@
 
-function attach_nullspace(A,ns)
-    MatrixWithNullspace(A,ns)
+struct MatrixProperties{A}
+    nullspace::A
 end
 
-struct MatrixWithNullspace{A,B}
-    matrix::A
-    nullspace::B
-end
-matrix(a::MatrixWithNullspace) = a.matrix
-nullspace(a::MatrixWithNullspace) = a.nullspace
+nullspace(a::MatrixProperties) = a.nullspace
 
-matrix(a) = a
-nullspace(a) = default_nullspace(a)
+function matrix_properties(;nullspace)
+    MatrixProperties(nullspace)
+end
+
+function default_matrix_properties(A;nullspace=default_nullspace(A))
+    matrix_properties(;nullspace)
+end
 
 function default_nullspace(A)
     T = eltype(A)
@@ -52,13 +52,13 @@ struct Preconditioner{A,B}
     solver_setup::B
 end
 
-function preconditioner(solver,x,A,b)
-    solver_setup = setup(solver)(x,A,b)
+function preconditioner(solver,x,A,b,props=nothing)
+    solver_setup = setup(solver)(x,A,b,props)
     Preconditioner(solver,solver_setup)
 end
 
-function preconditioner!(P::Preconditioner,A)
-    setup!(P.solver)(P.solver_setup,A)
+function preconditioner!(P::Preconditioner,A,props=nothing)
+    setup!(P.solver)(P.solver_setup,A,props)
     P
 end
 

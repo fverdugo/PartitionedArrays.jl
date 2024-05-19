@@ -47,9 +47,8 @@ coarse_params = (;
 solver = amg(;fine_params,coarse_params)
 
 # Now with a nullspace
-
-O = attach_nullspace(A,default_nullspace(A))
-S = setup(solver)(y,O,b)
+A_properties = matrix_properties(;nullspace=default_nullspace(A))
+S = setup(solver)(y,A,b,A_properties)
 solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
 solve!(solver)(y,S,b)
@@ -92,8 +91,8 @@ finalize!(solver)(S)
 # Now with a nullspace
 
 solver = amg()
-O = attach_nullspace(A,default_nullspace(A))
-S = setup(solver)(y,O,b)
+A_properties = matrix_properties(;nullspace=default_nullspace(A))
+S = setup(solver)(y,A,b,A_properties)
 solve!(solver)(y,S,b)
 setup!(solver)(S,2*A)
 solve!(solver)(y,S,b)
@@ -122,7 +121,6 @@ y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
 
-println("----")
 nodes_per_dir = (40,40,40)
 parts_per_dir = (2,2,1)
 nparts = prod(parts_per_dir)
