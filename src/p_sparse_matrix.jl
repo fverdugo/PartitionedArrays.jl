@@ -1668,7 +1668,7 @@ function psparse_consistent_impl(
         n_ghost_cols = ghost_length(cols_co)
         TA = typeof(A.blocks.ghost_own)
         own_own = A.blocks.own_own
-        own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols)
+        own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols) # TODO this can be improved
         ghost_own = compresscoo(TA,I_rcv_own,J_rcv_own,V_rcv_own,n_ghost_rows,n_own_cols)
         ghost_ghost = compresscoo(TA,I_rcv_ghost,J_rcv_ghost,V_rcv_ghost,n_ghost_rows,n_ghost_cols)
         K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
@@ -1743,6 +1743,10 @@ function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
         setcoofast!(B.blocks.ghost_ghost,V_rcv_ghost,K_ghost)
         B
     end
+    map(own_own_values(B),own_own_values(A)) do b,a
+        msg = "consistent!(B,A,cache) can only be called if B was obtained as B,cache = consistent(A)|>fetch"
+        @assert a === b msg
+    end
     map(setup_snd,partition(A),cache)
     parts_snd = map(i->i.parts_snd,cache)
     parts_rcv = map(i->i.parts_rcv,cache)
@@ -1750,6 +1754,11 @@ function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     V_rcv = map(i->i.V_rcv,cache)
     graph = ExchangeGraph(parts_snd,parts_rcv)
     t = exchange!(V_rcv,V_snd,graph)
+    map(own_ghost_values(B),own_ghost_values(A)) do b,a
+        if nonzeros(b) !== nonzeros(a)
+            copy!(nonzeros(b),nonzeros(a))
+        end
+    end
     @async begin
         wait(t)
         map(setup_rcv,partition(B),cache)

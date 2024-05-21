@@ -327,35 +327,52 @@ function p_sparse_matrix_tests(distribute)
     d = dense_diag(A)
     dense_diag!(d,A)
 
-    nodes_per_dir = (5,5)
+    nodes_per_dir = (2,2)
     parts_per_dir = (2,2)
     A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
-
-    B = A*A
     A_seq = centralize(A)
-    @test centralize(B) ≈ A_seq*A_seq
+    Z = 2*A
+    Z_seq = centralize(Z)
 
-    B = spmm(A,A)
-    @test centralize(B) ≈ A_seq*A_seq
-    B,cacheB = spmm(A,A;reuse=true)
-    spmm!(B,A,A,cacheB)
-    @test centralize(B) ≈ A_seq*A_seq
+    B = Z*A
+    @test centralize(B) ≈ Z_seq*A_seq
 
-    B = transpose(A)*A
-    @test centralize(B) ≈ transpose(A_seq)*A_seq
+    B = spmm(Z,A)
+    @test centralize(B) ≈ Z_seq*A_seq
+    B,cacheB = spmm(Z,A;reuse=true)
+    map(partition(A)) do A
+        nonzeros(A.blocks.own_own) .*= 4
+        nonzeros(A.blocks.own_ghost) .*= 4
+    end
+    A_seq = centralize(A)
+    spmm!(B,Z,A,cacheB)
+    @test centralize(B) ≈ Z_seq*(A_seq)
 
-    B = spmtm(A,A)
-    B,cacheB = spmtm(A,A;reuse=true)
-    @test centralize(B) ≈ transpose(A_seq)*A_seq
-    spmtm!(B,A,A,cacheB)
-    @test centralize(B) ≈ transpose(A_seq)*A_seq
+    B = transpose(Z)*A
+    @test centralize(B) ≈ transpose(Z_seq)*A_seq
 
-    C = rap(transpose(A),A,A)
-    @test centralize(C) ≈ transpose(A_seq)*A_seq*A_seq
-    C,cacheC = rap(transpose(A),A,A;reuse=true)
-    @test centralize(C) ≈ transpose(A_seq)*A_seq*A_seq
-    rap!(C,transpose(A),A,A,cacheC)
-    @test centralize(C) ≈ transpose(A_seq)*A_seq*A_seq
+    B = spmtm(Z,A)
+    B,cacheB = spmtm(Z,A;reuse=true)
+    @test centralize(B) ≈ transpose(Z_seq)*A_seq
+    map(partition(A)) do A
+        nonzeros(A.blocks.own_own) .*= 4
+        nonzeros(A.blocks.own_ghost) .*= 4
+    end
+    A_seq = centralize(A)
+    spmtm!(B,Z,A,cacheB)
+    @test centralize(B) ≈ transpose(Z_seq)*A_seq
+
+    C = rap(transpose(A),Z,A)
+    @test centralize(C) ≈ transpose(A_seq)*Z_seq*A_seq
+    C,cacheC = rap(transpose(A),Z,A;reuse=true)
+    @test centralize(C) ≈ transpose(A_seq)*Z_seq*A_seq
+    map(partition(A)) do A
+        nonzeros(A.blocks.own_own) .*= 4
+        nonzeros(A.blocks.own_ghost) .*= 4
+    end
+    A_seq = centralize(A)
+    rap!(C,transpose(A),Z,A,cacheC)
+    @test centralize(C) ≈ transpose(A_seq)*Z_seq*A_seq
 
     r = pzeros(partition(axes(A,2)))
     x = pones(partition(axes(A,1)))
