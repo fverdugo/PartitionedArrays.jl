@@ -327,7 +327,7 @@ function p_sparse_matrix_tests(distribute)
     d = dense_diag(A)
     dense_diag!(d,A)
 
-    nodes_per_dir = (2,2)
+    nodes_per_dir = (5,5)
     parts_per_dir = (2,2)
     A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
     A_seq = centralize(A)
