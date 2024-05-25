@@ -49,7 +49,7 @@ solver = amg(;fine_params,coarse_params)
 B = default_nullspace(A)
 S = setup(solver,y,A,b;nullspace=B)
 solve!(y,S,b)
-update!(S,2*A)
+update!(S,2*A;nullspace=B)
 solve!(y,S,b)
 finalize!(S)
 
