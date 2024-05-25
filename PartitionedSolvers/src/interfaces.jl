@@ -1,18 +1,4 @@
 
-function attach_nullspace(A,ns)
-    MatrixWithNullspace(A,ns)
-end
-
-struct MatrixWithNullspace{A,B}
-    matrix::A
-    nullspace::B
-end
-matrix(a::MatrixWithNullspace) = a.matrix
-nullspace(a::MatrixWithNullspace) = a.nullspace
-
-matrix(a) = a
-nullspace(a) = default_nullspace(a)
-
 function default_nullspace(A)
     T = eltype(A)
     [ones(T,size(A,2))]
@@ -42,33 +28,48 @@ struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
     finalize!::D
 end
 
-setup(solver::LinearSolver) = solver.setup
-setup!(solver::LinearSolver) = solver.setup!
-solve!(solver::LinearSolver) = solver.solve!
-finalize!(solver::LinearSolver) = solver.finalize!
-
 struct Preconditioner{A,B}
     solver::A
     solver_setup::B
 end
 
-function preconditioner(solver,x,A,b)
-    solver_setup = setup(solver)(x,A,b)
+function setup_options(;nullspace=nothing)
+    options = (;nullspace)
+end
+
+function nullspace(options)
+    options.nullspace
+end
+
+function setup(solver::LinearSolver,x,A,b;kwargs...)
+    options = setup_options(;kwargs...)
+    solver_setup = solver.setup(x,A,b,options)
     Preconditioner(solver,solver_setup)
 end
 
-function preconditioner!(P::Preconditioner,A)
-    setup!(P.solver)(P.solver_setup,A)
+function setup!(P::Preconditioner,A;kwargs...)
+    options = setup_options(;kwargs...)
+    P.solver.setup!(P.solver_setup,A,options)
     P
+end
+
+function solve_options(;zero_guess=false)
+    options = (;zero_guess)
+end
+
+function solve!(x,P::Preconditioner,b;kwargs...)
+    options = solve_options(;kwargs...)
+    P.solver.solve!(x,P.solver_setup,b,options)
+    x
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
     fill!(x,zero(eltype(x)))
-    solve!(P.solver)(x,P.solver_setup,b)
+    solve!(x,P,b;zero_guess=true)
     x
 end
 
 function finalize!(P::Preconditioner)
-    PartitionedSolvers.finalize!(P.solver)(P.solver_setup)
+    P.solver.finalize!(P.solver_setup)
 end
 
