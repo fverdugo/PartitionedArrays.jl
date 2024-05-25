@@ -21,7 +21,7 @@ S = setup(solver,y,A,b)
 solve!(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-setup!(S,2*A)
+update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(S)
@@ -33,7 +33,7 @@ S = setup(solver,y,A,b)
 solve!(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-setup!(S,2*A)
+update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(S)
@@ -45,7 +45,7 @@ S = setup(solver,y,A,b)
 solve!(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-setup!(S,2*A)
+update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(S)
@@ -55,7 +55,7 @@ y = similar(x)
 y .= 0
 S = setup(solver,y,A,b)
 solve!(y,S,b)
-setup!(S,2*A)
+update!(S,2*A)
 solve!(y,S,b)
 finalize!(S)
 
@@ -64,7 +64,7 @@ y = similar(x)
 y .= 0
 S = setup(solver,y,A,b)
 solve!(y,S,b)
-setup!(S,2*A)
+update!(S,2*A)
 solve!(y,S,b)
 finalize!(S)
 

@@ -337,10 +337,10 @@ function amg(;
         coarse_params=amg_coarse_params(),)
     amg_params = (;fine_params,coarse_params)
     setup(x,O,b,options) = amg_setup(x,O,b,nullspace(options),amg_params)
-    setup! = amg_setup!
+    update! = amg_update!
     solve! = amg_solve!
     finalize! = amg_finalize!
-    linear_solver(;setup,setup!,solve!,finalize!)
+    linear_solver(;setup,update!,solve!,finalize!)
 end
 
 function amg_setup(x,A,b,::Nothing,amg_params)
@@ -459,7 +459,7 @@ end
     amg_cycle!(args...)
 end
 
-function amg_setup!(setup,A,options)
+function amg_update!(setup,A,options)
     amg_params = setup.amg_params
     nlevels = setup.nlevels
     for level in 1:(nlevels-1)
@@ -468,13 +468,13 @@ function amg_setup!(setup,A,options)
         (;coarsening) = level_params
         _, coarsen! = coarsening
         (;R,P,A,Ac,Ac_setup,pre_setup,pos_setup) = level_setup
-        setup!(pre_setup,A)
-        setup!(pos_setup,A)
+        update!(pre_setup,A)
+        update!(pos_setup,A)
         coarsen!(A,Ac,R,P,Ac_setup)
         A = Ac
     end
     coarse_solver_setup = setup.coarse_level.coarse_solver_setup
-    setup!(coarse_solver_setup,A)
+    update!(coarse_solver_setup,A)
     setup
 end
 

@@ -1,18 +1,18 @@
 
 function lu_solver()
     setup(x,op,b,options) = lu(op)
-    setup!(state,op,options) = lu!(state,op)
+    update!(state,op,options) = lu!(state,op)
     solve!(x,P,b,options) = ldiv!(x,P,b)
-    linear_solver(;setup,solve!,setup!)
+    linear_solver(;setup,solve!,update!)
 end
 
 function jacobi_correction()
     setup(x,op,b,options) = dense_diag!(similar(b),op)
-    setup!(state,op,options) = dense_diag!(state,op)
+    update!(state,op,options) = dense_diag!(state,op)
     function solve!(x,state,b,options)
         x .= state .\ b
     end
-    linear_solver(;setup,setup!,solve!)
+    linear_solver(;setup,update!,solve!)
 end
 
 function richardson(solver;iters,omega=1)
@@ -23,10 +23,10 @@ function richardson(solver;iters,omega=1)
         P = PartitionedSolvers.setup(solver,dx,A,r)
         state = (r,dx,P,A_ref)
     end
-    function setup!(state,A,options)
+    function update!(state,A,options)
         (r,dx,P,A_ref) = state
         A_ref[] = A
-        PartitionedSolvers.setup!(P,A)
+        PartitionedSolvers.update!(P,A)
         state
     end
     function solve!(x,state,b,options)
@@ -45,7 +45,7 @@ function richardson(solver;iters,omega=1)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    linear_solver(;setup,update!,solve!,finalize!)
 end
 
 function jacobi(;kwargs...)
@@ -60,7 +60,7 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         A_ref = Ref(A)
         (diagA,A_ref)
     end
-    function setup!(state,A,options)
+    function update!(state,A,options)
         (diagA,A_ref) = state
         dense_diag!(diagA,A)
         A_ref[] = A
@@ -96,7 +96,7 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    linear_solver(;setup,setup!,solve!)
+    linear_solver(;setup,update!,solve!)
 end
 
 function additive_schwarz(local_solver;iters=1)
@@ -137,9 +137,9 @@ function additive_schwarz_correction(local_solver)
             local_setup_options(A,options),
            ) |> AdditiveSchwarzSetup
     end
-    function setup!(state::AdditiveSchwarzSetup,A,options)
+    function update!(state::AdditiveSchwarzSetup,A,options)
         map(
-            local_solver.setup!,
+            local_solver.update!,
             state.local_setups,
             own_own_values(A),
             local_setup_options(A,options),
@@ -165,8 +165,8 @@ function additive_schwarz_correction(local_solver)
     function setup(x,A,b,options)
         local_solver.setup(x,A,b,options)
     end
-    function setup!(state,A,options)
-        local_solver.setup!(state,A,options)
+    function update!(state,A,options)
+        local_solver.update!(state,A,options)
     end
     function solve!(x,state,b,options)
         local_solver.solve!(x,state,b,options)
@@ -176,6 +176,6 @@ function additive_schwarz_correction(local_solver)
         local_solver.finalize!(state)
         nothing
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    linear_solver(;setup,update!,solve!,finalize!)
 end
 

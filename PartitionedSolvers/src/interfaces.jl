@@ -15,16 +15,16 @@ abstract type AbstractLinearSolver end
 function linear_solver(;
         setup,
         solve!,
-        setup!,
+        update!,
         finalize! = ls_setup->nothing,
     )
-    LinearSolver(setup,solve!,setup!,finalize!)
+    LinearSolver(setup,solve!,update!,finalize!)
 end
 
 struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
     setup::A
     solve!::B
-    setup!::C
+    update!::C
     finalize!::D
 end
 
@@ -47,9 +47,9 @@ function setup(solver::LinearSolver,x,A,b;kwargs...)
     Preconditioner(solver,solver_setup)
 end
 
-function setup!(P::Preconditioner,A;kwargs...)
+function update!(P::Preconditioner,A;kwargs...)
     options = setup_options(;kwargs...)
-    P.solver.setup!(P.solver_setup,A,options)
+    P.solver.update!(P.solver_setup,A,options)
     P
 end
 
