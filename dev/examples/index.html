@@ -20,17 +20,17 @@ a_snd = map(ranks) do rank
         [ Int[] ]
     end
 end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Vector{Int64}}}:
- [[27, 10, 27], [5, 7, 17], [20, 20, 4], [19, 28, 21]]
+ [[17, 29, 26], [28, 13, 7], [3, 20, 10], [1, 28, 5]]
  [[]]
  [[]]
  [[]]</code></pre><p>Note that only the first entry contains meaningful data in previous output.</p><pre><code class="language-julia hljs">a_rcv = scatter(a_snd,source=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Int64}}:
- [27, 10, 27]
- [5, 7, 17]
- [20, 20, 4]
- [19, 28, 21]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
+ [17, 29, 26]
+ [28, 13, 7]
+ [3, 20, 10]
+ [1, 28, 5]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
  2
- 3
- 0
+ 2
+ 1
  2</code></pre><p>Finally we reduce the partial sums.</p><pre><code class="language-julia hljs">b_rcv = reduction(+,b_snd,init=0,destination=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
  7
  0
@@ -162,9 +162,9 @@ b = A*x_exact</code></pre><pre class="documenter-example-output"><code class="no
 </code></pre><p>Now, we have a matrix and a rhs vector. Let us solve the system:</p><pre><code class="language-julia hljs">x = similar(b,axes(A,2))
 x .= 0
 _, history = IterativeSolvers.cg!(x,A,b;log=true)
-history</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Converged after 100 iterations.</code></pre><p>Now solve the system while using an AMG preconditioner.</p><pre><code class="language-julia hljs">using PartitionedSolvers: amg, preconditioner
+history</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Converged after 100 iterations.</code></pre><p>Now solve the system while using an AMG preconditioner.</p><pre><code class="language-julia hljs">using PartitionedSolvers
 
 x .= 0
-Pl = preconditioner(amg(),x,A,b)
+Pl = setup(amg(),x,A,b)
 _, history = IterativeSolvers.cg!(x,A,b;Pl,log=true)
-history</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Converged after 10 iterations.</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../reference/backends/">Back-ends »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.2.1 on <span class="colophon-date" title="Saturday 25 May 2024 15:35">Saturday 25 May 2024</span>. Using Julia version 1.10.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+history</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Converged after 10 iterations.</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../reference/backends/">Back-ends »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.2.1 on <span class="colophon-date" title="Sunday 26 May 2024 05:40">Sunday 26 May 2024</span>. Using Julia version 1.10.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
