@@ -6,14 +6,11 @@ using LinearAlgebra
 
 export setup
 export solve!
-export setup!
+export update!
 export finalize!
 export AbstractLinearSolver
 export linear_solver
-export attach_nullspace
 export default_nullspace
-export preconditioner
-export matrix
 export nullspace
 include("interfaces.jl")
 
