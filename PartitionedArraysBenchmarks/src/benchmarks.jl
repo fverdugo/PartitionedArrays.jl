@@ -53,6 +53,92 @@ function benchmark_spmv(distribute,params)
     end
 end
 
+function benchmark_spmv_detailed(distribute,params)
+    function muladd!(b,A,x)
+        T = eltype(A)
+        o = one(T)
+        mul!(b,A,x,o,o)
+    end
+    function spmv_sync!(b,A,x)
+        t_consistent = @elapsed task = consistent!(x)
+        t_wait  = @elapsed wait(task)
+        t_mul = @elapsed map(mul!,own_values(b),own_own_values(A),own_values(x))
+        t_muladd = @elapsed map(muladd!,own_values(b),own_ghost_values(A),ghost_values(x))
+        t_total = t_consistent + t_wait + t_mul + t_muladd
+        (t_consistent,t_wait,t_mul,t_muladd,t_total)
+    end
+    function spmv_async!(b,A,x)
+        t_consistent = @elapsed task = consistent!(x)
+        t_mul = @elapsed map(mul!,own_values(b),own_own_values(A),own_values(x))
+        t_wait  = @elapsed wait(task)
+        t_muladd = @elapsed map(muladd!,own_values(b),own_ghost_values(A),ghost_values(x))
+        t_total = t_consistent + t_wait + t_mul + t_muladd
+        (t_consistent,t_wait,t_mul,t_muladd,t_total)
+    end
+    function spmv_monolithic!(b,A,x)
+        t_consistent = @elapsed task = consistent!(x)
+        t_wait  = @elapsed wait(task)
+        t_mul = @elapsed map(mul!,partition(b),partition(A),partition(x))
+        t_muladd = 0.0
+        t_total = t_consistent + t_wait + t_mul + t_muladd
+        (t_consistent,t_wait,t_mul,t_muladd,t_total)
+    end
+    parts_per_dir = params.parts_per_dir
+    cells_per_dir = params.cells_per_dir
+    method = params.method
+    nruns = params.nruns
+    np = prod(parts_per_dir)
+    parts = distribute(LinearIndices((np,)))
+    Ti = params.Ti
+    T = params.T
+    psparse_args = coo_scalar_fem(cells_per_dir,parts_per_dir,parts,T,Ti)
+    @assert params.matrix == "split-csc"
+    A = psparse(psparse_args...) |> fetch
+    cols = axes(A,2)
+    rows = axes(A,1)
+    x = pones(T,partition(cols))
+    b = similar(x,rows)
+    t = Vector{NTuple{5,Float64}}(undef,nruns)
+    if method == "sync"
+        for irun in 1:nruns
+            b .= 0
+            t[irun] =  spmv_sync!(b,A,x)
+        end
+    elseif method == "async"
+        for irun in 1:nruns
+            b .= 0
+            t[irun] =  spmv_async!(b,A,x)
+        end
+    elseif method == "monolithic"
+        for irun in 1:nruns
+            b .= 0
+            t[irun] =  spmv_monolithic!(b,A,x)
+        end
+    else
+        error("unknown method $method")
+    end
+    function gettiming(ts,field)
+        dict = Dict(
+            :t_consistent=>1,
+            :t_wait=>2,
+            :t_mul=>3,
+            :t_muladd=>4,
+            :t_total=>5
+           )
+        map(t->map(ti->ti[dict[field]],t),ts)
+    end
+    ts_in_main = gather(map(p->t,parts))
+    results_in_main = map_main(ts_in_main) do ts
+        t_consistent = gettiming(ts,:t_consistent)
+        t_wait = gettiming(ts,:t_wait)
+        t_mul = gettiming(ts,:t_mul)
+        t_muladd = gettiming(ts,:t_muladd)
+        t_total = gettiming(ts,:t_total)
+        results = (;t_consistent,t_wait,t_mul,t_muladd,t_total,params...)
+        results
+    end
+end
+
 function benchmark_psparse(distribute,params)
     parts_per_dir = params.parts_per_dir
     cells_per_dir = params.cells_per_dir
