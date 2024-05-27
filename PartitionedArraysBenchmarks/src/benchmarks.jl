@@ -320,7 +320,7 @@ function coo_scalar_fem(cells_per_dir,parts_per_dir,parts,::Type{T},::Type{Ti}) 
                     dof_j = local_dof_to_dof[local_dof_j]
                     p += 1
                     myI[p] = dof_i
-                    myI[p] = dof_j
+                    myJ[p] = dof_j
                 end
             end
         end
