@@ -17,55 +17,57 @@ b = A*x
 
 solver = lu_solver()
 y = similar(x)
-S = setup(solver)(y,A,b)
-solve!(solver)(y,S,b)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
-finalize!(solver)(S)
+finalize!(S)
 
 solver = richardson(lu_solver(),iters=1)
 y = similar(x)
 y .= 0
-S = setup(solver)(y,A,b)
-solve!(solver)(y,S,b)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
-finalize!(solver)(S)
+finalize!(S)
 
 solver = jacobi(;iters=1000)
 y = similar(x)
 y .= 0
-S = setup(solver)(y,A,b)
-solve!(solver)(y,S,b)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
 tol = 1.e-8
 @test norm(y-x)/norm(x) < tol
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
-finalize!(solver)(S)
+finalize!(S)
 
 solver = additive_schwarz(lu_solver())
 y = similar(x)
 y .= 0
-S = setup(solver)(y,A,b)
-solve!(solver)(y,S,b)
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
-finalize!(solver)(S)
+S = setup(solver,y,A,b)
+solve!(y,S,b;zero_guess=true)
+solve!(y,S,b)
+ldiv!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
+finalize!(S)
 
 solver = additive_schwarz(gauss_seidel(;iters=1))
 y = similar(x)
 y .= 0
-S = setup(solver)(y,A,b)
-solve!(solver)(y,S,b)
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
-finalize!(solver)(S)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
+finalize!(S)
 
 end #module

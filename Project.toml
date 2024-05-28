@@ -1,7 +1,7 @@
 name = "PartitionedArrays"
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
-version = "0.4.4"
+version = "0.4.6"
 
 [deps]
 CircularArrays = "7a955b69-7140-5f4e-a0ed-f168c5e2e749"

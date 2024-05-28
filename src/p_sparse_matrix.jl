@@ -311,6 +311,12 @@ function Base.similar(::Type{<:OldPSparseMatrix{V}},inds::Tuple{<:PRange,<:PRang
     OldPSparseMatrix(matrix_partition,partition(rows),partition(cols))
 end
 
+function Base.copy(a::OldPSparseMatrix)
+    mats = map(copy,partition(a))
+    cache = map(copy_cache,a.cache)
+    OldPSparseMatrix(mats,partition(axes(a,1)),partition(axes(a,2)),cache)
+end
+
 function Base.copy!(a::OldPSparseMatrix,b::OldPSparseMatrix)
     @assert size(a) == size(b)
     copyto!(a,b)
@@ -670,6 +676,15 @@ function Base.similar(a::AbstractSplitMatrix,::Type{T}) where T
     own_ghost = similar(a.blocks.own_ghost,T)
     ghost_own = similar(a.blocks.ghost_own,T)
     ghost_ghost = similar(a.blocks.ghost_ghost,T)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,a.row_permutation,a.col_permutation)
+end
+
+function Base.copy(a::AbstractSplitMatrix)
+    own_own = copy(a.blocks.own_own)
+    own_ghost = copy(a.blocks.own_ghost)
+    ghost_own = copy(a.blocks.ghost_own)
+    ghost_ghost = copy(a.blocks.ghost_ghost)
     blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
     split_matrix(blocks,a.row_permutation,a.col_permutation)
 end
@@ -1556,26 +1571,37 @@ function psparse_consistent_impl(
         own_to_global_row = own_to_global(rows_co)
         own_to_global_col = own_to_global(cols_fa)
         ghost_to_global_col = ghost_to_global(cols_fa)
-        li_to_p = zeros(Int32,size(A,1))
+        nl = size(A,1)
+        li_to_ps_ptrs = zeros(Int32,nl+1)
         for p in 1:length(lids_snd)
-            li_to_p[lids_snd[p]] .= p
+            for li in lids_snd[p]
+                li_to_ps_ptrs[li+1] += 1
+            end
         end
+        length_to_ptrs!(li_to_ps_ptrs)
+        ndata = li_to_ps_ptrs[end]-1
+        li_to_ps_data = zeros(Int32,ndata)
+        for p in 1:length(lids_snd)
+            for li in lids_snd[p]
+                q = li_to_ps_ptrs[li]
+                li_to_ps_data[q] = p
+                li_to_ps_ptrs[li] = q + 1
+            end
+        end
+        rewind_ptrs!(li_to_ps_ptrs)
+        li_to_ps = JaggedArray(li_to_ps_data,li_to_ps_ptrs)
         ptrs = zeros(Int32,length(parts_snd)+1)
         for (i,j,v) in nziterator(A.blocks.own_own)
             li = own_to_local_row[i]
-            p = li_to_p[li]
-            if p == 0
-                continue
+            for p in li_to_ps[li]
+                ptrs[p+1] += 1
             end
-            ptrs[p+1] += 1
         end
         for (i,j,v) in nziterator(A.blocks.own_ghost)
             li = own_to_local_row[i]
-            p = li_to_p[li]
-            if p == 0
-                continue
+            for p in li_to_ps[li]
+                ptrs[p+1] += 1
             end
-            ptrs[p+1] += 1
         end
         length_to_ptrs!(ptrs)
         ndata = ptrs[end]-1
@@ -1586,30 +1612,26 @@ function psparse_consistent_impl(
         k_snd = JaggedArray(zeros(Int32,ndata),ptrs)
         for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_own))
             li = own_to_local_row[i]
-            p = li_to_p[li]
-            if p == 0
-                continue
+            for p in li_to_ps[li]
+                q = ptrs[p]
+                I_snd.data[q] = own_to_global_row[i]
+                J_snd.data[q] = own_to_global_col[j]
+                V_snd.data[q] = v
+                k_snd.data[q] = k
+                ptrs[p] += 1
             end
-            q = ptrs[p]
-            I_snd.data[q] = own_to_global_row[i]
-            J_snd.data[q] = own_to_global_col[j]
-            V_snd.data[q] = v
-            k_snd.data[q] = k
-            ptrs[p] += 1
         end
         nnz_own_own = nnz(A.blocks.own_own)
         for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_ghost))
             li = own_to_local_row[i]
-            p = li_to_p[li]
-            if p == 0
-                continue
+            for p in li_to_ps[li]
+                q = ptrs[p]
+                I_snd.data[q] = own_to_global_row[i]
+                J_snd.data[q] = ghost_to_global_col[j]
+                V_snd.data[q] = v
+                k_snd.data[q] = k+nnz_own_own
+                ptrs[p] += 1
             end
-            q = ptrs[p]
-            I_snd.data[q] = own_to_global_row[i]
-            J_snd.data[q] = ghost_to_global_col[j]
-            V_snd.data[q] = v
-            k_snd.data[q] = k+nnz_own_own
-            ptrs[p] += 1
         end
         rewind_ptrs!(ptrs)
         cache_snd = (;parts_snd,lids_snd,I_snd,J_snd,V_snd,k_snd)
@@ -1619,12 +1641,12 @@ function psparse_consistent_impl(
         cache_rcv = (;parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
         cache_rcv
     end
-    function finalize(A,cache_snd,cache_rcv,rows_co,cols_fa)
+    function finalize(A,cache_snd,cache_rcv,rows_co,cols_fa,cols_co)
         I_rcv_data = cache_rcv.I_rcv.data
         J_rcv_data = cache_rcv.J_rcv.data
         V_rcv_data = cache_rcv.V_rcv.data
-        global_to_own_col = global_to_own(cols_fa)
-        global_to_ghost_col = global_to_ghost(cols_fa)
+        global_to_own_col = global_to_own(cols_co)
+        global_to_ghost_col = global_to_ghost(cols_co)
         is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
         is_ghost = findall(j->global_to_ghost_col[j]!=0,J_rcv_data)
         I_rcv_own = I_rcv_data[is_own]
@@ -1635,20 +1657,24 @@ function psparse_consistent_impl(
         V_rcv_ghost = V_rcv_data[is_ghost]
         map_global_to_ghost!(I_rcv_own,rows_co)
         map_global_to_ghost!(I_rcv_ghost,rows_co)
-        map_global_to_own!(J_rcv_own,cols_fa)
-        map_global_to_ghost!(J_rcv_ghost,cols_fa)
-        own_own = A.blocks.own_own
-        own_ghost = A.blocks.own_ghost
+        map_global_to_own!(J_rcv_own,cols_co)
+        map_global_to_ghost!(J_rcv_ghost,cols_co)
+        I2,J2,V2 = findnz(A.blocks.own_ghost)
+        map_ghost_to_global!(J2,cols_fa)
+        map_global_to_ghost!(J2,cols_co)
+        n_own_rows = own_length(rows_co)
         n_ghost_rows = ghost_length(rows_co)
-        n_own_cols = own_length(cols_fa)
-        n_ghost_cols = ghost_length(cols_fa)
+        n_own_cols = own_length(cols_co)
+        n_ghost_cols = ghost_length(cols_co)
         TA = typeof(A.blocks.ghost_own)
+        own_own = A.blocks.own_own
+        own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols) # TODO this can be improved
         ghost_own = compresscoo(TA,I_rcv_own,J_rcv_own,V_rcv_own,n_ghost_rows,n_own_cols)
         ghost_ghost = compresscoo(TA,I_rcv_ghost,J_rcv_ghost,V_rcv_ghost,n_ghost_rows,n_ghost_cols)
         K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
         K_ghost = precompute_nzindex(ghost_ghost,I_rcv_ghost,J_rcv_ghost)
         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = split_matrix(blocks,local_permutation(rows_co),local_permutation(cols_fa))
+        values = split_matrix(blocks,local_permutation(rows_co),local_permutation(cols_co))
         k_snd = cache_snd.k_snd
         V_snd = cache_snd.V_snd
         V_rcv = cache_rcv.V_rcv
@@ -1675,9 +1701,12 @@ function psparse_consistent_impl(
         I_rcv = fetch(t_I)
         J_rcv = fetch(t_J)
         V_rcv = fetch(t_V)
+        J_rcv_data = map(x->x.data,J_rcv)
+        J_rcv_owner = find_owner(cols_fa,J_rcv_data)
+        cols_co = map(union_ghost,cols_fa,J_rcv_data,J_rcv_owner)
         cache_rcv = map(setup_rcv,parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
-        values,cache = map(finalize,partition(A),cache_snd,cache_rcv,rows_co,cols_fa) |> tuple_of_arrays
-        B = PSparseMatrix(values,rows_co,cols_fa,A.assembled)
+        values,cache = map(finalize,partition(A),cache_snd,cache_rcv,rows_co,cols_fa,cols_co) |> tuple_of_arrays
+        B = PSparseMatrix(values,rows_co,cols_co,A.assembled)
         if val_parameter(reuse) == false
             B
         else
@@ -1714,6 +1743,10 @@ function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
         setcoofast!(B.blocks.ghost_ghost,V_rcv_ghost,K_ghost)
         B
     end
+    map(own_own_values(B),own_own_values(A)) do b,a
+        msg = "consistent!(B,A,cache) can only be called if B was obtained as B,cache = consistent(A)|>fetch"
+        @assert a === b msg
+    end
     map(setup_snd,partition(A),cache)
     parts_snd = map(i->i.parts_snd,cache)
     parts_rcv = map(i->i.parts_rcv,cache)
@@ -1721,6 +1754,11 @@ function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     V_rcv = map(i->i.V_rcv,cache)
     graph = ExchangeGraph(parts_snd,parts_rcv)
     t = exchange!(V_rcv,V_snd,graph)
+    map(own_ghost_values(B),own_ghost_values(A)) do b,a
+        if nonzeros(b) !== nonzeros(a)
+            copy!(nonzeros(b),nonzeros(a))
+        end
+    end
     @async begin
         wait(t)
         map(setup_rcv,partition(B),cache)
@@ -1917,7 +1955,7 @@ function spmm(A::PSparseMatrix,B::PSparseMatrix;reuse=Val(false))
     C,cacheC = consistent(B,col_partition;reuse=true) |> fetch
     D_partition,cacheD = map((args...)->spmm(args...;reuse=true),partition(A),partition(C)) |> tuple_of_arrays
     assembled = true
-    D = PSparseMatrix(D_partition,partition(axes(A,1)),partition(axes(B,2)),assembled)
+    D = PSparseMatrix(D_partition,partition(axes(A,1)),partition(axes(C,2)),assembled)
     if val_parameter(reuse)
         cache = (C,cacheC,cacheD)
         return D,cache
@@ -1995,6 +2033,12 @@ function Base.similar(a::PSparseMatrix,::Type{T}) where T
     PSparseMatrix(matrix_partition,partition(rows),partition(cols),a.assembled)
 end
 
+function Base.copy(a::PSparseMatrix)
+    mats = map(copy,partition(a))
+    rows, cols = axes(a)
+    PSparseMatrix(mats,partition(rows),partition(cols),a.assembled)
+end
+
 function Base.copy!(a::PSparseMatrix,b::PSparseMatrix)
     @assert size(a) == size(b)
     @assert a.assembled == b.assembled
@@ -2035,6 +2079,7 @@ end
     repartition(A::PSparseMatrix,new_rows,new_cols;reuse=false)
 """
 function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
+    @assert A.assembled "repartition on a sub-assembled matrix not implemented yet"
     function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
         I1,J1,V1 = findnz(A_own_own)
         I2,J2,V2 = findnz(A_own_ghost)
@@ -2123,6 +2168,15 @@ function repartition!(B::PSparseMatrix,c::PVector,A::PSparseMatrix,b::PVector,ca
         wait(t2)
         B,c
     end
+end
+
+function centralize(A::PSparseMatrix)
+    m,n = size(A)
+    ranks = linear_indices(partition(A))
+    rows_trivial = trivial_partition(ranks,m)
+    cols_trivial = trivial_partition(ranks,n)
+    a_in_main = repartition(A,rows_trivial,cols_trivial) |> fetch
+    own_own_values(a_in_main) |> multicast |> getany
 end
 
 """

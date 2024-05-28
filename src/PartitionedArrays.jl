@@ -158,6 +158,7 @@ export spmm
 export spmm!
 export spmtm
 export spmtm!
+export centralize
 include("p_sparse_matrix.jl")
 
 export PTimer

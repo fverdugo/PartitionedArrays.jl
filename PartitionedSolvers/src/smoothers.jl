@@ -1,36 +1,35 @@
 
 function lu_solver()
-    setup(x,op,b) = lu(matrix(op))
-    setup!(state,op) = lu!(state,matrix(op))
-    solve! = ldiv!
-    linear_solver(;setup,solve!,setup!)
+    setup(x,op,b,options) = lu(op)
+    update!(state,op,options) = lu!(state,op)
+    solve!(x,P,b,options) = ldiv!(x,P,b)
+    linear_solver(;setup,solve!,update!)
 end
 
 function jacobi_correction()
-    setup(x,op,b) = dense_diag!(similar(b),matrix(op))
-    setup!(state,op) = dense_diag!(state,matrix(op))
-    function solve!(x,state,b)
+    setup(x,op,b,options) = dense_diag!(similar(b),op)
+    update!(state,op,options) = dense_diag!(state,op)
+    function solve!(x,state,b,options)
         x .= state .\ b
     end
-    linear_solver(;setup,setup!,solve!)
+    linear_solver(;setup,update!,solve!)
 end
 
 function richardson(solver;iters,omega=1)
-    function setup(x,O,b)
-        A = matrix(O)
+    function setup(x,A,b,options)
         A_ref = Ref(A)
         r = similar(b)
         dx = similar(x,axes(A,2))
-        P = preconditioner(solver,dx,O,r)
+        P = PartitionedSolvers.setup(solver,dx,A,r)
         state = (r,dx,P,A_ref)
     end
-    function setup!(state,O)
+    function update!(state,A,options)
         (r,dx,P,A_ref) = state
-        A_ref[] = matrix(O)
-        preconditioner!(P,O)
+        A_ref[] = A
+        PartitionedSolvers.update!(P,A)
         state
     end
-    function solve!(x,state,b)
+    function solve!(x,state,b,options)
         (r,dx,P,A_ref) = state
         A = A_ref[]
         for iter in 1:iters
@@ -46,7 +45,7 @@ function richardson(solver;iters,omega=1)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    linear_solver(;setup,update!,solve!,finalize!)
 end
 
 function jacobi(;kwargs...)
@@ -56,15 +55,13 @@ end
 
 function gauss_seidel(;iters=1,sweep=:symmetric)
     @assert sweep in (:forward,:backward,:symmetric)
-    function setup(x,op,b)
-        A = matrix(op)
+    function setup(x,A,b,options)
         diagA = dense_diag!(similar(b),A)
         A_ref = Ref(A)
         (diagA,A_ref)
     end
-    function setup!(state,op)
+    function update!(state,A,options)
         (diagA,A_ref) = state
-        A = matrix(op)
         dense_diag!(diagA,A)
         A_ref[] = A
         state
@@ -85,7 +82,7 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    function solve!(x,state,b)
+    function solve!(x,state,b,options)
         (diagA,A_ref) = state
         A = A_ref[]
         n = length(b)
@@ -99,60 +96,86 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    linear_solver(;setup,setup!,solve!)
+    linear_solver(;setup,update!,solve!)
 end
 
 function additive_schwarz(local_solver;iters=1)
     richardson(additive_schwarz_correction(local_solver);iters)
 end
 
+function local_setup_options(A,options)
+    if nullspace(options) !== nothing
+        ns = map(i->own_values(i),nullspace(options))
+        map(ns) do ns
+            setup_options(;nullspace=ns)
+        end
+    else
+        map(partition(A)) do A
+            options
+        end
+    end
+end
+
+function local_solver_options(A,options)
+    map(partition(A)) do A
+        options
+    end
+end
+
+struct AdditiveSchwarzSetup{A}
+    local_setups::A
+end
+
 function additive_schwarz_correction(local_solver)
-    function build_local_operators(O::MatrixWithNullspace)
-        A = matrix(O)
-        ns = map(i->own_values(i),nullspace(O))
-        B = map(vcat,ns...)
-        map(attach_nullspace,own_own_values(A),B)
+    # For parallel matrices
+    function setup(x,A::PSparseMatrix,b,options)
+        map(
+            local_solver.setup,
+            own_values(x),
+            own_own_values(A),
+            own_values(b),
+            local_setup_options(A,options),
+           ) |> AdditiveSchwarzSetup
     end
-    function build_local_operators(A)
-        own_own_values(matrix(A))
+    function update!(state::AdditiveSchwarzSetup,A,options)
+        map(
+            local_solver.update!,
+            state.local_setups,
+            own_own_values(A),
+            local_setup_options(A,options),
+           )
     end
-    is_parallel(A::PSparseMatrix) = Val(true)
-    is_parallel(A) = Val(false)
-    function setup(x,O,b)
-        parallel = is_parallel(matrix(O))
-        if PartitionedArrays.val_parameter(parallel)
-            local_O = build_local_operators(O)
-            local_setups = map(PartitionedSolvers.setup(local_solver),own_values(x),local_O,own_values(b))
-        else
-            local_setups = PartitionedSolvers.setup(local_solver)(x,O,b)
-        end
-        (local_setups,parallel)
-    end
-    function setup!((local_setups,parallel),O)
-        if PartitionedArrays.val_parameter(parallel)
-            local_O = build_local_operators(O)
-            map(PartitionedSolvers.setup!(local_solver),local_setups,local_O)
-        else
-            PartitionedSolvers.setup!(local_solver)(local_setups,O)
-        end
-        (local_setups,parallel)
-    end
-    function solve!(x,(local_setups,parallel),b)
-        if PartitionedArrays.val_parameter(parallel)
-            map(PartitionedSolvers.solve!(local_solver),own_values(x),local_setups,own_values(b))
-        else
-            PartitionedSolvers.solve!(local_solver)(x,local_setups,b)
-        end
+    function solve!(x,state::AdditiveSchwarzSetup,b,options)
+        map(
+            local_solver.solve!,
+            own_values(x),
+            state.local_setups,
+            own_values(b),
+            local_solver_options(b,options)
+           )
         x
     end
-    function finalize!((local_setups,parallel))
-        if PartitionedArrays.val_parameter(parallel)
-            map(PartitionedSolvers.finalize!(local_solver),local_setups)
-        else
-            PartitionedSolvers.finalize!(local_solver)(local_setups)
-        end
+    function finalize!(state::AdditiveSchwarzSetup)
+        map(
+            local_solver.finalize!,
+            state.local_setups)
         nothing
     end
-    linear_solver(;setup,setup!,solve!,finalize!)
+    # Fall back for sequential matrices
+    function setup(x,A,b,options)
+        local_solver.setup(x,A,b,options)
+    end
+    function update!(state,A,options)
+        local_solver.update!(state,A,options)
+    end
+    function solve!(x,state,b,options)
+        local_solver.solve!(x,state,b,options)
+        x
+    end
+    function finalize!(state)
+        local_solver.finalize!(state)
+        nothing
+    end
+    linear_solver(;setup,update!,solve!,finalize!)
 end
 

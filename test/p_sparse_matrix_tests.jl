@@ -122,6 +122,10 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     display(A)
 
+    B = copy(A)
+    @test reduce(&, map((a,b) -> nnz(a) == nnz(b),partition(A),partition(B)))
+    @test reduce(&, map((a,b) -> rowvals(a) == rowvals(b),partition(A),partition(B)))
+
     # New stuff
 
     n = 10
@@ -153,7 +157,9 @@ function p_sparse_matrix_tests(distribute)
     A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=false) |> fetch
     A = psparse(I,J,V,row_partition,col_partition,split_format=true,assemble=true) |> fetch
     A = psparse(I,J,V,row_partition,col_partition) |> fetch
-    display(A)
+    centralize(A) |> display
+    B = A*A
+    @test centralize(B) == centralize(A)*centralize(A)
     # TODO Assembly in non-split_format format not yet implemented
     #A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=true) |> fetch
     
@@ -193,6 +199,7 @@ function p_sparse_matrix_tests(distribute)
     _A = similar(A)
     _A = similar(A,eltype(A))
     copy!(_A,A)
+    _A = copy(A)
 
     LinearAlgebra.fillstored!(A,1.0)
     fill!(x,3.0)
@@ -247,7 +254,6 @@ function p_sparse_matrix_tests(distribute)
     r = A*x-y
     map(i->fill!(i,100),ghost_values(r))
     @test norm(r) < 1.0e-9
-    display(A)
 
     rows_trivial = trivial_partition(parts,n)
     cols_trivial = rows_trivial
@@ -324,20 +330,49 @@ function p_sparse_matrix_tests(distribute)
     nodes_per_dir = (5,5)
     parts_per_dir = (2,2)
     A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+    A_seq = centralize(A)
+    Z = 2*A
+    Z_seq = centralize(Z)
 
-    B = A*A
-    B = spmm(A,A)
-    B,cacheB = spmm(A,A;reuse=true)
-    spmm!(B,A,A,cacheB)
+    B = Z*A
+    @test centralize(B) ≈ Z_seq*A_seq
 
-    B = transpose(A)*A
-    B = spmtm(A,A)
-    B,cacheB = spmtm(A,A;reuse=true)
-    spmtm!(B,A,A,cacheB)
+    B = spmm(Z,A)
+    @test centralize(B) ≈ Z_seq*A_seq
+    B,cacheB = spmm(Z,A;reuse=true)
+    map(partition(A)) do A
+        nonzeros(A.blocks.own_own) .*= 4
+        nonzeros(A.blocks.own_ghost) .*= 4
+    end
+    A_seq = centralize(A)
+    spmm!(B,Z,A,cacheB)
+    @test centralize(B) ≈ Z_seq*(A_seq)
 
-    C = rap(transpose(A),A,A)
-    C,cacheC = rap(transpose(A),A,A;reuse=true)
-    rap!(C,transpose(A),A,A,cacheC)
+    B = transpose(Z)*A
+    @test centralize(B) ≈ transpose(Z_seq)*A_seq
+
+    B = spmtm(Z,A)
+    B,cacheB = spmtm(Z,A;reuse=true)
+    @test centralize(B) ≈ transpose(Z_seq)*A_seq
+    map(partition(A)) do A
+        nonzeros(A.blocks.own_own) .*= 4
+        nonzeros(A.blocks.own_ghost) .*= 4
+    end
+    A_seq = centralize(A)
+    spmtm!(B,Z,A,cacheB)
+    @test centralize(B) ≈ transpose(Z_seq)*A_seq
+
+    C = rap(transpose(A),Z,A)
+    @test centralize(C) ≈ transpose(A_seq)*Z_seq*A_seq
+    C,cacheC = rap(transpose(A),Z,A;reuse=true)
+    @test centralize(C) ≈ transpose(A_seq)*Z_seq*A_seq
+    map(partition(A)) do A
+        nonzeros(A.blocks.own_own) .*= 4
+        nonzeros(A.blocks.own_ghost) .*= 4
+    end
+    A_seq = centralize(A)
+    rap!(C,transpose(A),Z,A,cacheC)
+    @test centralize(C) ≈ transpose(A_seq)*Z_seq*A_seq
 
     r = pzeros(partition(axes(A,2)))
     x = pones(partition(axes(A,1)))
@@ -346,4 +381,3 @@ function p_sparse_matrix_tests(distribute)
     B = LinearAlgebra.I-A
     
 end
-

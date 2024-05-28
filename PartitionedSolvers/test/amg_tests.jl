@@ -18,11 +18,11 @@ y = similar(x)
 y .= 0
 
 solver = amg()
-S = setup(solver)(y,A,b)
-solve!(solver)(y,S,b)
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
-finalize!(solver)(S)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
+finalize!(S)
 
 amg_statistics(S) |> display
 
@@ -46,12 +46,12 @@ solver = amg(;fine_params,coarse_params)
 
 # Now with a nullspace
 
-O = attach_nullspace(A,default_nullspace(A))
-S = setup(solver)(y,O,b)
-solve!(solver)(y,S,b)
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
-finalize!(solver)(S)
+B = default_nullspace(A)
+S = setup(solver,y,A,b;nullspace=B)
+solve!(y,S,b)
+update!(S,2*A;nullspace=B)
+solve!(y,S,b)
+finalize!(S)
 
 # Now as a preconditioner
 
@@ -61,15 +61,13 @@ level_params = amg_level_params(;
 
 fine_params = amg_fine_params(;level_params)
 
-Pl = preconditioner(amg(;fine_params),y,A,b)
+Pl = setup(amg(;fine_params),y,A,b;nullspace=B)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
-
-
 # Now in parallel
 
-parts_per_dir = (1,2)
+parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
@@ -82,21 +80,22 @@ y = similar(x)
 y .= 0
 
 solver = amg()
-S = setup(solver)(y,A,b)
+S = setup(solver,y,A,b)
 amg_statistics(S) |> display
-solve!(solver)(y,S,b)
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
-finalize!(solver)(S)
+solve!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
+finalize!(S)
 
 # Now with a nullspace
 
-O = attach_nullspace(A,default_nullspace(A))
-S = setup(solver)(y,O,b)
-solve!(solver)(y,S,b)
-setup!(solver)(S,2*A)
-solve!(solver)(y,S,b)
-finalize!(solver)(S)
+B = default_nullspace(A)
+solver = amg()
+S = setup(solver,y,A,b;nullspace=B)
+solve!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
+finalize!(S)
 
 level_params = amg_level_params(;
     pre_smoother = jacobi(;iters=1,omega=2/3),
@@ -109,15 +108,21 @@ fine_params = amg_fine_params(;
 
 solver = amg(;fine_params)
 
-Pl = preconditioner(solver,y,A,b)
+Pl = setup(solver,y,A,b;nullspace=B)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
-
-solver = amg()
-
-Pl = preconditioner(solver,y,A,b)
-y .= 0
-cg!(y,A,b;Pl,verbose=true)
+nodes_per_dir = (40,40,40)
+parts_per_dir = (2,2,1)
+nparts = prod(parts_per_dir)
+parts = LinearIndices((nparts,))
+A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+x_exact = pones(partition(axes(A,2)))
+b = A*x_exact
+x = similar(b,axes(A,2))
+x .= 0
+Pl = setup(amg(),x,A,b)
+_, history = cg!(x,A,b;Pl,log=true)
+display(history)
 
 end
