@@ -53,6 +53,142 @@ function benchmark_spmv(distribute,params)
     end
 end
 
+function consistent2!(v::PVector)
+    t_sync = @elapsed begin
+        vector_partition = partition(v)
+        cache_for_assemble = v.cache
+        cache_for_consistent = map(reverse,cache_for_assemble)
+        function setup_snd!(cache,values)
+            local_indices_snd = cache.local_indices_snd
+            for (p,lid) in enumerate(local_indices_snd.data)
+                cache.buffer_snd.data[p] = values[lid]
+            end
+        end
+        t_snd = @elapsed map(setup_snd!,cache_for_consistent,vector_partition)
+        buffer_snd = map(cache->cache.buffer_snd,cache_for_consistent)
+        buffer_rcv = map(cache->cache.buffer_rcv,cache_for_consistent)
+        neighbors_snd = map(cache->cache.neighbors_snd,cache_for_consistent)
+        neighbors_rcv = map(cache->cache.neighbors_rcv,cache_for_consistent)
+        graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+        t_exchange = @elapsed t = exchange!(buffer_rcv,buffer_snd,graph)
+    end
+    t_wait_exchange = 0.0
+    t_rcv = 0.0
+    t_async = @elapsed begin
+        tr = @async begin
+            t_wait_exchange = @elapsed wait(t)
+            function setup_rcv!(cache,values)
+                local_indices_rcv = cache.local_indices_rcv
+                for (p,lid) in enumerate(local_indices_rcv.data)
+                    values[lid] = cache.buffer_rcv.data[p]
+                end
+            end
+            t_rcv = @elapsed map(setup_rcv!,cache_for_consistent,vector_partition)
+            nothing
+        end
+    end
+    timings = (;t_snd,t_rcv,t_exchange,t_wait_exchange,t_sync,t_async)
+    tr, timings
+end
+
+muladd!(y,A,x) = mul!(y,A,x,1,1)
+function spmv!(b,A,x)
+    t_spmv = @elapsed begin
+        t_consistent = @elapsed t,timeings_consistent = consistent2!(x)
+        t_mul = @elapsed map(mul!,own_values(b),own_own_values(A),own_values(x))
+        t_wait_consistent = @elapsed wait(t)
+        t_muladd = @elapsed map(muladd!,own_values(b),own_ghost_values(A),ghost_values(x))
+    end
+    (;t_spmv,t_consistent,t_mul,t_wait_consistent,t_muladd,timeings_consistent...)
+end
+
+function spmv_petsc!(b,A,x)
+    t1 = @elapsed begin
+        mat = Ref{PetscCall.Mat}()
+        vec_b = Ref{PetscCall.Vec}()
+        vec_x = Ref{PetscCall.Vec}()
+        parts = linear_indices(partition(x))
+        petsc_comm = PetscCall.setup_petsc_comm(parts)
+        args_A = PetscCall.MatCreateMPIAIJWithSplitArrays_args(A,petsc_comm)
+        args_b = PetscCall.VecCreateMPIWithArray_args(copy(b),petsc_comm)
+        args_x = PetscCall.VecCreateMPIWithArray_args(copy(x),petsc_comm)
+        ownership = (args_A,args_b,args_x)
+        PetscCall.@check_error_code PetscCall.MatCreateMPIAIJWithSplitArrays(args_A...,mat)
+        PetscCall.@check_error_code PetscCall.MatAssemblyBegin(mat[],PetscCall.MAT_FINAL_ASSEMBLY)
+        PetscCall.@check_error_code PetscCall.MatAssemblyEnd(mat[],PetscCall.MAT_FINAL_ASSEMBLY)
+        PetscCall.@check_error_code PetscCall.VecCreateMPIWithArray(args_b...,vec_b)
+        PetscCall.@check_error_code PetscCall.VecCreateMPIWithArray(args_x...,vec_x)
+    end
+    MPI.Barrier(MPI.COMM_WORLD)
+    t2 = @elapsed PetscCall.@check_error_code PetscCall.MatMult(mat[],vec_x[],vec_b[])
+    t3 = @elapsed PetscCall.VecCreateMPIWithArray_args_reversed!(b,args_b)
+    t4 = @elapsed begin
+        GC.@preserve ownership PetscCall.@check_error_code PetscCall.MatDestroy(mat)
+        GC.@preserve ownership PetscCall.@check_error_code PetscCall.VecDestroy(vec_b)
+        GC.@preserve ownership PetscCall.@check_error_code PetscCall.VecDestroy(vec_x)
+    end
+    (;
+     t_julia_to_petsc=t1,
+     t_spmv_petsc=t2,
+     t_petsc_to_julia=t3,
+     t_cleanup=t4)
+end
+
+function vec_to_nt(ts)
+    t = first(ts)
+    d = (;)
+    data = map(keys(t)) do k
+        k=>map(t2->getproperty(t2,k),ts)
+    end
+    d = (;data...)
+    d
+end
+
+function benchmark_spmv_2(distribute,params)
+    if ! PetscCall.initialized()
+        PetscCall.init(finalize_atexit=false)
+    end
+    parts_per_dir = params.parts_per_dir
+    cells_per_dir = params.cells_per_dir
+    nruns = params.nruns
+    np = prod(parts_per_dir)
+    parts = distribute(LinearIndices((np,)))
+    Ti = PetscCall.PetscInt
+    T = PetscCall.PetscScalar
+    psparse_args = coo_scalar_fem(cells_per_dir,parts_per_dir,parts,T,Ti)
+    A = psparse(psparse_args...) |> fetch
+    cols = axes(A,2)
+    rows = axes(A,1)
+    x = pones(PetscCall.PetscScalar,partition(cols))
+    b1 = similar(x,rows)
+    b2 = similar(x,rows)
+    spmv!(b1,A,x)
+    spmv_petsc!(b2,A,x)
+    c = b1-b2
+    rel_error = norm(c)/norm(b1)
+    ts1 = Vector{Any}(undef,nruns)
+    for irun in 1:nruns
+        MPI.Barrier(MPI.COMM_WORLD)
+        t1 = spmv!(b1,A,x)
+        ts1[irun] = t1
+    end
+    ts2 = Vector{Any}(undef,nruns)
+    for irun in 1:nruns
+        t2 = spmv_petsc!(b2,A,x)
+        ts2[irun] = t2
+    end
+    ts = map(ts1,ts2) do t1,t2
+        (;t1...,t2...)
+    end
+    results = (;rel_error,vec_to_nt(ts)...)
+    results_gather = gather(map(rank->results,parts))
+    results_in_main = map_main(results_gather) do results
+        (;vec_to_nt(results)...,params...)
+    end
+    results_in_main
+end
+
+
 function benchmark_spmv_detailed(distribute,params)
     function muladd!(b,A,x)
         T = eltype(A)

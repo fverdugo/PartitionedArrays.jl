@@ -1,5 +1,6 @@
 module PartitionedArraysBenchmarks
 
+using MPI
 using PartitionedArrays
 using PartitionedArrays: laplace_matrix, local_permutation
 using PetscCall
