@@ -120,6 +120,8 @@ function spmv_petsc!(b,A,x)
         PetscCall.@check_error_code PetscCall.VecCreateMPIWithArray(args_x...,vec_x)
     end
     MPI.Barrier(MPI.COMM_WORLD)
+    t5 = @elapsed PetscCall.@check_error_code PetscCall.MatMult(mat[],vec_x[],vec_b[])
+    MPI.Barrier(MPI.COMM_WORLD)
     t2 = @elapsed PetscCall.@check_error_code PetscCall.MatMult(mat[],vec_x[],vec_b[])
     t3 = @elapsed PetscCall.VecCreateMPIWithArray_args_reversed!(b,args_b)
     t4 = @elapsed begin
@@ -131,7 +133,9 @@ function spmv_petsc!(b,A,x)
      t_julia_to_petsc=t1,
      t_spmv_petsc=t2,
      t_petsc_to_julia=t3,
-     t_cleanup=t4)
+     t_cleanup=t4,
+     t_spmv_petsc_first=t5,
+    )
 end
 
 function vec_to_nt(ts)
