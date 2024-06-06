@@ -318,45 +318,44 @@ Now we can call the main function, which calls the parallel Jacobi method, using
 
 Finally the whole syntax is copied in a Julia `quote` block and run with `mpiexec`.
 
-````@example jacobi_tutorial
+```julia
 code = quote
-    using PartitionedArrays
+   using PartitionedArrays
 
-    function main(distribute)
-        function jacobi_par(n,niters,p)
-            ranks = distribute(LinearIndices((p,)))
-            ghost = true
-            row_partition = uniform_partition(ranks,p,n,ghost)
-            u = pzeros(Float64,row_partition)
-            map(partition(u)) do my_u
-                my_u[1] = 1
-                my_u[end] = -1
-            end
-            u_new = copy(u)
-            for iter in 1:niters
-                t = consistent!(u)
-                wait(t)
-                map(partition(u),partition(u_new)) do my_u, my_u_new
-                    my_n = length(my_u)
-                    for i in 2:(my_n-1)
-                        my_u_new[i] = 0.5*(my_u[i-1]+my_u[i+1])
-                    end
-                end
-                u, u_new = u_new, u
-            end
-            u
-        end
-    u = jacobi_par(10,100,3)
-    display(partition(u))
-    end # main
+   function main(distribute)
+       function jacobi_par(n,niters,p)
+           ranks = distribute(LinearIndices((p,)))
+           ghost = true
+           row_partition = uniform_partition(ranks,p,n,ghost)
+           u = pzeros(Float64,row_partition)
+           map(partition(u)) do my_u
+               my_u[1] = 1
+               my_u[end] = -1
+           end
+           u_new = copy(u)
+           for iter in 1:niters
+               t = consistent!(u)
+               wait(t)
+               map(partition(u),partition(u_new)) do my_u, my_u_new
+                   my_n = length(my_u)
+                   for i in 2:(my_n-1)
+                       my_u_new[i] = 0.5*(my_u[i-1]+my_u[i+1])
+                   end
+              end
+              u, u_new = u_new, u
+           end
+           u
+       end
+   u = jacobi_par(10,100,3)
+   display(partition(u))
+   end # main
 
-    with_mpi(main)
+   with_mpi(main)
 
-    end # quote
+   end # quote
 
 run(`$(mpiexec()) -np 3  julia --project=. -e $code`);
-nothing #hide
-````
+```
 
 ---
 
