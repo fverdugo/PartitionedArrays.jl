@@ -18,7 +18,9 @@ makedocs(
         "Introduction" => "index.md",
         "usage.md",
         "examples.md",
-        "jacobi_tutorial.md",
+        "Tutorials" =>[
+            "jacobi_tutorial.md",
+        ],        
         "Reference" =>[
                        "reference/backends.md",
                        "reference/arraymethods.md",

@@ -2,9 +2,9 @@
 EditURL = "../jacobi_tutorial.jl"
 ```
 
-# Getting started
+# Jacobi method
 
-Welcome to this "Getting Started" tutorial on using the PartitionedArrays.jl package. In this guide, you'll learn how to implement a parallel version of the one-dimensional Jacobi method using PartitionedArrays. Before you start, please make sure to have installed the following packages:
+In this tutorial, you'll learn how to implement a parallel version of the one-dimensional Jacobi method using PartitionedArrays. Before you start, please make sure to have installed the following packages:
 ```julia
 using Pkg
 Pkg.add("PartitionedArrays")
@@ -101,12 +101,13 @@ Thus, the algorithm is usually implemented following two main phases at each ite
 
 ## Parallel version
 Next, we will implement a parallelized version of Jacobi method using partitioned arrays. The parallel function will take the number of processes $p$ as an additional argument.
+```julia
+function jacobi_par(n,niters,p)
+  # TODO
+end
+```
 
 ````@example jacobi_tutorial
-function jacobi_par(n,niters,p)
-
-end
-
 using PartitionedArrays
 ````
 
@@ -115,7 +116,8 @@ Define the grid size `n` and the number of iterations `niters`. We also specify 
 ````@example jacobi_tutorial
 n = 10
 niters = 100
-p = 3
+p = 3;
+nothing #hide
 ````
 
 The following line creates an array of Julia type `LinearIndices`. This array holds linear indices of a specified range and shape ([documentation](https://docs.julialang.org/en/v1/base/arrays/#Base.LinearIndices)).
@@ -134,9 +136,14 @@ ranks = DebugArray(LinearIndices((p,)))
 ````
 
 To demonstrate that `DebugArray` emulates the limitations of `MPIArray`, run the following code. It is expected to throw an error, since indexing is not permitted.
-```julia
-ranks[1]
-```
+
+````@example jacobi_tutorial
+try
+    ranks[1]
+catch e
+    println(e)
+end
+````
 
 ### Partition the data
 
@@ -180,10 +187,15 @@ u = pzeros(Float64,row_partition)
 ````
 
 Note that, like `DebugArray`, a `PVector` represents an array whose elements are distributed (i.e. partitioned) across processes, and indexing is disabled here as well. Therefore, the following examples are expected to raise an error.
-```julia
-u[1]
-u[end]
-```
+
+````@example jacobi_tutorial
+try
+    u[1]
+    u[end]
+catch e
+    println(e)
+end
+````
 
 To view the local values of a partitioned vector, use method `partition` or `local_values`.
 
@@ -192,23 +204,24 @@ partition(u)
 ````
 
 Partition returns a `DebugArray`, so again indexing, such as in the following examples, is not permitted.
-```julia
-partition(u)[1][1]
-partition(u)[end][end]
-```
+
+````@example jacobi_tutorial
+try
+    partition(u)[1][1]
+    partition(u)[end][end]
+catch e
+    println(e)
+end
+````
 
 ### Initialize boundary conditions
-The values of the partition are still all 0, so next we need to set the correct boundary conditions.
-```julia
-u[1] = -1
-u[end] = 1
-```
+The values of the partition are still all 0, so next we need to set the correct boundary conditions: $u(0) = -1$ and $u(L)= 1$.
+
 
 Since `PVector` is distributed, one process cannot access the values that are owned by other processes, so we need to find a different approach. Each process can set the boundary conditions locally. This is possible with the following piece of code. Using Julia function `map`, the function `set_bcs` is executed locally by each process on its locally available part of `partition(u)`. These local partitions are standard Julia `Vector`s and are allowed to be indexed.
 
 ````@example jacobi_tutorial
 function set_bcs(my_u,rank)
-    @show rank
     if rank == 1
        my_u[1] = 1
     end
@@ -234,7 +247,6 @@ Remember that to perform the Jacobi update, alternate writing to one data struct
 
 ````@example jacobi_tutorial
 u_new = copy(u)
-
 partition(u_new)
 ````
 
