@@ -326,7 +326,8 @@ The command `mpiexec` launches MPI and `-np` specifies the number of processes. 
 run(`$(mpiexec()) -np 3 julia --project=. filename.jl`)
 ```
 ### The MPI mode
-Now we can call the main function, which calls the parallel Jacobi method, using `with_mpi(f)`. This expression calls function `f` "in MPI mode". Essentially, `with_mpi(f)` calls function `f` with function argument `distribute_with_mpi`. The function `distribute_with_mpi` in turn creates an `MPIArray` from a given collection and distributes its items over the ranks of the given MPI communicator `comm`. (If `comm` is not specified, the standard communicator `MPI.COMM_WORLD` is used.) The difference to the debug mode is that now a real distributed `MPIArray` is used where before `DebugArray` was employed. To switch back to debug mode, simply replace `with_mpi` with `with_debug`.
+Now we can call the main function, which calls the parallel Jacobi method, using `with_mpi(main)`. This expression calls function `main` "in MPI mode". Essentially, `with_mpi(main)` calls function `main` with function argument `distribute_with_mpi`. The function `distribute_with_mpi` in turn creates an `MPIArray` from a given collection and distributes its items over the ranks of the given MPI communicator `comm`. (If `comm` is not specified, the standard communicator `MPI.COMM_WORLD` is used.)
+The difference to the debug mode is that now a real distributed `MPIArray` is used where before `DebugArray` was employed. To switch back to debug mode, simply replace `with_mpi` with `with_debug`.
 
 Finally the whole syntax is copied in a Julia `quote` block and run with `mpiexec`.
 
