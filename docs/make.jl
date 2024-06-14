@@ -3,8 +3,10 @@ using Literate
 using PartitionedArrays
 
 examples_jl  = joinpath(@__DIR__,"examples.jl")
+jabobi_tutorial_jl  = joinpath(@__DIR__,"jacobi_tutorial.jl")
 src_dir = joinpath(@__DIR__,"src") 
 Literate.markdown(examples_jl,src_dir)
+Literate.markdown(jabobi_tutorial_jl, src_dir)
 
 makedocs(
     sitename = "PartitionedArrays.jl",
@@ -16,6 +18,9 @@ makedocs(
         "Introduction" => "index.md",
         "usage.md",
         "examples.md",
+        "Tutorials" =>[
+            "jacobi_tutorial.md",
+        ],        
         "Reference" =>[
                        "reference/backends.md",
                        "reference/arraymethods.md",
