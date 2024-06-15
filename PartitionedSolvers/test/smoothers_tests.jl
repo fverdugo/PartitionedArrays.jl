@@ -26,6 +26,17 @@ solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 finalize!(S)
 
+solver = linear_solver(LinearAlgebra.lu)
+y = similar(x)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
+tol = 1.e-8
+@test norm(y-x)/norm(x) < tol
+update!(S,2*A)
+solve!(y,S,b)
+@test norm(y-x/2)/norm(x/2) < tol
+finalize!(S)
+
 solver = richardson(lu_solver(),iters=1)
 y = similar(x)
 y .= 0

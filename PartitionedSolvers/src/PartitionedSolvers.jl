@@ -3,6 +3,7 @@ module PartitionedSolvers
 using PartitionedArrays
 using SparseArrays
 using LinearAlgebra
+using IterativeSolvers
 
 export setup
 export solve!

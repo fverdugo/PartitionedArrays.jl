@@ -6,6 +6,7 @@ using PartitionedSolvers
 using LinearAlgebra
 using Test
 using IterativeSolvers: cg!
+import IterativeSolvers
 
 # First with a sequential matrix
 nodes_per_dir = (100,100)
@@ -64,6 +65,12 @@ fine_params = amg_fine_params(;level_params)
 Pl = setup(amg(;fine_params),y,A,b;nullspace=B)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
+
+solver = linear_solver(IterativeSolvers.cg;Pl=amg(;fine_params),verbose=true)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
 
 # Now in parallel
 
