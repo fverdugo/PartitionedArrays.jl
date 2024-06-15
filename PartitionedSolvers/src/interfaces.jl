@@ -28,6 +28,10 @@ struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
     finalize!::D
 end
 
+function linear_solver(s::LinearSolver)
+    s
+end
+
 struct Preconditioner{A,B}
     solver::A
     solver_setup::B
