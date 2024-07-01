@@ -306,6 +306,105 @@ function smoothed_aggregation(;
     (coarsen, coarsen!)
 end
 
+function smoothed_aggregation_with_block_size(;
+    epsilon = 0,
+    approximate_omega = omega_for_1d_laplace,
+    tentative_prolongator = tentative_prolongator_for_laplace,
+    repartition_threshold = 2000,
+    block_size = 1,
+    )
+    function coarsen(A,B)
+        # build strength graph
+        G = strength_graph(A, block_size=block_size, theta=epsilon)
+        diagG = dense_diag(G)
+        node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
+        # compute dof_to_aggregate, dof_aggregates
+        n_nullspace_vecs = length(B)
+        P0 = constant_prolongator(dof_to_aggregate, dof_aggregates,n_nullspace_vecs)
+        P0,Bc = tentative_prolongator(P0,B) # changes needed here
+        P = smoothed_prolongator(A,P0,diagG;approximate_omega) #changes needed here
+        R = transpose(P)
+        Ac,cache = rap(R,A,P;reuse=true)
+        Ac,Bc,R,P,cache,repartition_threshold = enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)#maybe changes here
+        Ac,Bc,R,P,cache
+    end
+    function coarsen!(A,Ac,R,P,cache)
+        rap!(Ac,R,A,P,cache)
+        Ac,R,P,cache
+    end
+    (coarsen, coarsen!)
+end
+
+function getblock!(B,A,ids_i,ids_j)
+    for (j,J) in enumerate(ids_j)
+        for (i,I) in enumerate(ids_i)
+            B[i,j] = A[I,J]
+        end
+    end
+end
+
+function strength_graph(A::AbstractSparseMatrix, block_size::Integer; theta = 0)
+
+    if block_size < 1 
+        error("Block size must be equal to or larger than 1.")
+    end
+
+    if A.n != A.m 
+        error("Matrix must be square.")
+    end
+
+    if A.n % block_size != 0
+        error("Matrix size must be multiple of block size.")
+    end
+
+    if block_size == 1
+        return A
+    end
+
+    if theta < 0
+        error("Expected a positive theta.")
+    end
+
+    n_dofs = A.m 
+    nnodes = Integer(n_dofs/block_size)
+    B = zeros(block_size,block_size)
+    diag_norms = zeros(nnodes)
+    
+    I = Int[]
+    J = Int[]
+    V = Float64[]
+
+    for i_node in 1:nnodes
+        i_dofs = ((i_node-1)*block_size+1) : i_node*block_size 
+        getblock!(B,A,i_dofs,i_dofs)
+        diag_norms[i_node] = norm(B)
+        if theta <= 1 
+            push!(I, i_node)
+            push!(J, i_node)
+            push!(V, 1.0)
+        end
+    end
+
+    for j_node in 1:nnodes
+        for i_node in 1:nnodes
+            if j_node != i_node
+                i_dofs = ((i_node-1)*block_size+1) : i_node*block_size 
+                j_dofs = ((j_node-1)*block_size+1) : j_node*block_size 
+                getblock!(B,A,i_dofs,j_dofs)
+                # Calculate strength according to https://github.com/pyamg/pyamg/blob/e1fe54c93be1029c02ddcf84c2338a607b088703/pyamg/strength.py#L275 
+                if norm(B) >= theta * sqrt(diag_norms[i_node] * diag_norms[j_node])
+                    push!(I, i_node)
+                    push!(J, j_node)
+                    push!(V, 1.0)
+                end
+            end 
+        end
+    end
+  
+    G = sparse(I, J, V, nnodes, nnodes)
+    G
+end 
+
 function amg_level_params(;
     pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
     coarsening = smoothed_aggregation(;),
