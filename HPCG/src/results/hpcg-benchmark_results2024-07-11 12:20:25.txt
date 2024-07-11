@@ -1,0 +1,65 @@
+########## Problem Summary  ##########
+Number of Procs: 4
+Setup time: 54.87067767
+Number of Equations: 4499456
+Number of Nonzero Terms: 119934040
+
+Problem geometry:
+npx: 2
+npy: 2
+npz: 1
+gnx: 208
+gny: 208
+gnz: 104
+nx: 104
+ny: 104
+nz: 104
+
+########## Iterations Summary  ##########
+Reference CG iterations per set = 50
+Optimized CG iterations per set = 50
+Total number of reference iterations = 100
+Optimized CG iterations per set = 100
+
+########## Reproducibility Summary  ##########
+Scaled residual mean = 3.825208525637166e-5
+Scaled residual variance = 0.0
+
+########## Performance Summary (times in sec) ##########
+Benchmark Time Summary:
+Optimization phase = 0.0
+DDOT = 1.1621227489999995
+WAXPBY = 1.3852366830000005
+SpMV = 16.407750645999997
+MG = 105.33620143999998
+Total = 124.29180615199996
+
+Floating Point Operations:
+Raw DDOT = 2.717671424e9
+Raw WAXPBY = 2.717671424e9
+Raw SpMV = 2.446654416e10
+Raw MG = 1.366213408e11
+Total = 1.66523227808e11
+Total with convergence overhead = 1.66523227808e11
+
+GB/s Summary:
+Raw Read B/W = 10.846907060882764
+Raw println B/W = 2.753482627724234
+Raw Total B/W = 13.600389688606997
+Total with convergence and optimization phase overhead = 12.496989099385084
+
+GFLOP/s Summary:
+Raw DDOT = 2.338540766316245
+Raw WAXPBY = 1.9618823680833748
+Raw SpMV = 1.4911577270931184
+Raw MG = 1.2970027296628897
+Raw Total = 1.339776393661494
+Total with convergence overhead =1.339776393661494
+Total with convergence and optimization phase overhead = 1.2310802389160107
+
+User Optimization Overheads:
+Optimization phase time (sec) = 0.0
+Optimization phase time vs reference SpMV+MG time = NaN
+
+HPCG result is VALID with a GFLOP/s rating of: 1.2310802389160107
+Results are valid but execution time (sec) is 124.29180615199996

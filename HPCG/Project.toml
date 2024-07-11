@@ -1,0 +1,4 @@
+name = "HPCG"
+uuid = "5866a22f-5779-4002-bd23-89cf5f53f760"
+authors = ["Reinier van Elderen <reiniervanelderen@hotmail.com>"]
+version = "0.1.0"
