@@ -808,6 +808,15 @@ function allocate_exchange_impl(snd,graph,::Type{T}) where T<:AbstractVector
     rcv
 end
 
+function setup_exchange(rcv,snd,graph)
+    T = eltype(eltype(snd))
+    setup_exchange_impl!(rcv,snd,graph,T)
+end
+
+function setup_exchange_impl!(rcv,snd,graph,T)
+    nothing
+end
+
 """
     exchange!(rcv,snd,graph::ExchangeGraph) -> Task
 
@@ -816,16 +825,16 @@ returns immediately and returns a task that produces `rcv` with the updated valu
 Use `fetch` to get the updated version of `rcv`.
 The input `rcv` can be allocated with [`allocate_exchange`](@ref).
 """
-function exchange!(rcv,snd,graph::ExchangeGraph)
+function exchange!(rcv,snd,graph::ExchangeGraph,setup=setup_exchange(rcv,snd,graph))
     T = eltype(eltype(snd))
-    exchange_impl!(rcv,snd,graph,T)
+    exchange_impl!(rcv,snd,graph,setup,T)
 end
 
 function exchange_fetch!(rcv,snd,graph::ExchangeGraph)
     fetch(exchange!(rcv,snd,graph))
 end
 
-function exchange_impl!(rcv,snd,graph,::Type{T}) where T
+function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T
     @assert is_consistent(graph)
     snd_ids = graph.snd
     rcv_ids = graph.rcv
@@ -840,7 +849,7 @@ function exchange_impl!(rcv,snd,graph,::Type{T}) where T
     @async rcv
 end
 
-function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
+function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T<:AbstractVector
     @assert is_consistent(graph)
     @assert eltype(rcv) <: JaggedArray
     snd_ids = graph.snd

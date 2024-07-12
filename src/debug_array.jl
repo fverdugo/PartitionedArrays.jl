@@ -170,11 +170,12 @@ function exchange_impl!(
     rcv::DebugArray,
     snd::DebugArray,
     graph::ExchangeGraph{<:DebugArray},
+    setup,
     ::Type{T}) where T
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
     @async begin
         yield() # This is to make more likely to have errors if we don't wait
-        exchange_impl!(rcv.items,snd.items,g,T) |> wait
+        exchange_impl!(rcv.items,snd.items,g,setup,T) |> wait
         rcv
     end
 end
@@ -183,11 +184,12 @@ function exchange_impl!(
     rcv::DebugArray,
     snd::DebugArray,
     graph::ExchangeGraph{<:DebugArray},
+    setup,
     ::Type{T}) where T <: AbstractVector
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
     @async begin
         yield() # This is to make more likely to have errors if we don't wait
-        exchange_impl!(rcv.items,snd.items,g,T) |> wait
+        exchange_impl!(rcv.items,snd.items,g,setup,T) |> wait
         rcv
     end
 end
