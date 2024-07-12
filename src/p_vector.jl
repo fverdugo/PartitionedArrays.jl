@@ -349,8 +349,8 @@ function assemble_impl!(f,vector_partition,cache,::Type{<:VectorAssemblyCache})
     end |> tuple_of_arrays
     graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
     t = exchange!(buffer_rcv,buffer_snd,graph)
-    # Fill values from rcv buffer asynchronously
-    @async begin
+    # Fill values from rcv buffer fake_asynchronously
+    @fake_async begin
         wait(t)
         map(vector_partition,cache) do values,cache
             local_indices_rcv = cache.local_indices_rcv
@@ -411,7 +411,7 @@ end
 
 function assemble!(o,a::PVector)
     t = assemble!(o,partition(a),a.cache)
-    @async begin
+    @fake_async begin
         wait(t)
         map(ghost_values(a)) do a
             fill!(a,zero(eltype(a)))
@@ -460,7 +460,7 @@ julia> local_values(a)
 function consistent!(a::PVector)
     cache = map(reverse,a.cache)
     t = assemble!(insert,partition(a),cache)
-    @async begin
+    @fake_async begin
         wait(t)
         a
     end
@@ -620,7 +620,7 @@ function pvector(f,I,V,rows;
         if assemble
             t = PartitionedArrays.assemble(A,rows;reuse=true)
         else
-            t = @async A, nothing
+            t = @fake_async A, nothing
         end
     elseif subassembled
         if assembled_rows === nothing
@@ -641,7 +641,7 @@ function pvector(f,I,V,rows;
         if assemble
             t = PartitionedArrays.assemble(A,assembled_rows;reuse=true)
         else
-            t = @async A, nothing
+            t = @fake_async A, nothing
         end
     elseif assembled
         rows_fa = rows
@@ -656,17 +656,17 @@ function pvector(f,I,V,rows;
             map(map_local_to_global!,I,rows_fa)
         end
         A = PVector(values_fa,rows_fa)
-        t = @async A, nothing
+        t = @fake_async A, nothing
     else
         error("This line should not be reached")
     end
     if val_parameter(reuse) == false
-        return @async begin
+        return @fake_async begin
             B, cacheB = fetch(t)
             B
         end
     else
-        return @async begin
+        return @fake_async begin
             B, cacheB = fetch(t)
             cache = (A,cacheB,assemble,assembled,K) 
             (B, cache)
@@ -685,7 +685,7 @@ function pvector!(B,V,cache)
     if !assembled && assemble
         t = PartitionedArrays.assemble!(B,A,cacheB)
     else
-        t = @async B
+        t = @fake_async B
     end
 end
 
@@ -994,7 +994,7 @@ function assemble(v::PVector,rows;reuse=Val(false))
     w = similar(v,PRange(rows))
     v2 = copy(v)
     t = assemble!(v2)
-    @async begin
+    @fake_async begin
         wait(t)
         w .= v2
         if val_parameter(reuse)
@@ -1016,7 +1016,7 @@ function assemble!(w::PVector,v::PVector,cache)
     v2 = cache
     copy!(v2,v)
     t = assemble!(v2)
-    @async begin
+    @fake_async begin
         wait(t)
         w .= v2
         w
@@ -1033,7 +1033,7 @@ function consistent(v::PVector,rows;reuse=Val(false))
     w = similar(v,PRange(rows))
     w .= v
     t = consistent!(w)
-    @async begin
+    @fake_async begin
         wait(t)
         if val_parameter(reuse)
             w,nothing
@@ -1049,7 +1049,7 @@ end
 function consistent!(w::PVector,v::PVector,cache)
     w .= v
     t = consistent!(w)
-    @async begin
+    @fake_async begin
         wait(t)
         w
     end
@@ -1075,7 +1075,7 @@ function repartition(v::PVector,new_partition;reuse=Val(false))
     w = similar(v,PRange(new_partition))
     cache = repartition_cache(v,new_partition)
     t = repartition!(w,v,cache)
-    @async begin
+    @fake_async begin
         wait(t)
         if val_parameter(reuse) == true
             w, cache
@@ -1103,7 +1103,7 @@ function repartition!(w::PVector,v::PVector,cache;reversed=false)
         fill!(v_sa,0)
         map(setindex!,partition(v_sa),V,I)
         t = assemble!(v_sa)
-        return @async begin
+        return @fake_async begin
             wait(t)
             w .= v_sa
             w
@@ -1111,7 +1111,7 @@ function repartition!(w::PVector,v::PVector,cache;reversed=false)
     else
         v_sa .= v
         t = consistent!(v_sa)
-        return @async begin
+        return @fake_async begin
             wait(t)
             map(partition(v_sa),partition(w),I) do v_sa,w,I
                 for k in 1:length(I)

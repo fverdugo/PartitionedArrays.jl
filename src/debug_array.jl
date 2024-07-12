@@ -173,7 +173,7 @@ function exchange_impl!(
     setup,
     ::Type{T}) where T
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    @async begin
+    @fake_async begin
         yield() # This is to make more likely to have errors if we don't wait
         exchange_impl!(rcv.items,snd.items,g,setup,T) |> wait
         rcv
@@ -187,7 +187,7 @@ function exchange_impl!(
     setup,
     ::Type{T}) where T <: AbstractVector
     g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    @async begin
+    @fake_async begin
         yield() # This is to make more likely to have errors if we don't wait
         exchange_impl!(rcv.items,snd.items,g,setup,T) |> wait
         rcv

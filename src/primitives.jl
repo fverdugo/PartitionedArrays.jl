@@ -97,7 +97,7 @@ function tuple_of_arrays(a)
 end
 
 # We don't need a real task since MPI already is able to do
-# asynchronous (nonblocking) operations.
+# fake_asynchronous (nonblocking) operations.
 # We want to avoid heap allocations of standard tasks.
 struct FakeTask{T} # TODO possibly rename
     work::T
@@ -843,7 +843,7 @@ end
 """
     exchange!(rcv,snd,graph::ExchangeGraph) -> Task
 
-In-place and asynchronous version of [`exchange`](@ref). This function
+In-place and fake_asynchronous version of [`exchange`](@ref). This function
 returns immediately and returns a task that produces `rcv` with the updated values.
 Use `fetch` to get the updated version of `rcv`.
 The input `rcv` can be allocated with [`allocate_exchange`](@ref).
@@ -869,7 +869,7 @@ function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T
             rcv[rcv_id][i] = snd[snd_id][j]
         end
     end
-    @async rcv
+    @fake_async rcv
 end
 
 function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T<:AbstractVector
@@ -893,6 +893,6 @@ function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T<:AbstractVector
             end
         end
     end
-    @async rcv
+    @fake_async rcv
 end
 

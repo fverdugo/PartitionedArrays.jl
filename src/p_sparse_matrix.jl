@@ -198,7 +198,7 @@ end
 
 function assemble!(o,a::OldPSparseMatrix)
     t = assemble!(o,partition(a),a.cache)
-    @async begin
+    @fake_async begin
         wait(t)
         map(ghost_values(a)) do a
             LinearAlgebra.fillstored!(a,zero(eltype(a)))
@@ -279,7 +279,7 @@ function assemble_coo!(I,J,V,row_partition)
     t1 = exchange(gi_snd,graph)
     t2 = exchange(gj_snd,graph)
     t3 = exchange(v_snd,graph)
-    @async begin
+    @fake_async begin
         gi_rcv = fetch(t1)
         gj_rcv = fetch(t2)
         v_rcv = fetch(t3)
@@ -406,7 +406,7 @@ function old_psparse!(f,I,J,V,row_partition,col_partition;discover_rows=true,dis
         row_partition = map(union_ghost,row_partition,I,I_owner)
     end
     t = assemble_coo!(I,J,V,row_partition)
-    @async begin
+    @fake_async begin
         wait(t)
         if discover_cols
             J_owner = find_owner(col_partition,J)
@@ -1199,7 +1199,7 @@ function psparse(f,I,J,V,rows,cols;
         if assemble
             t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
         else
-            t = @async B,cacheB
+            t = @fake_async B,cacheB
         end
     elseif subassembled
         rows_sa = rows
@@ -1228,7 +1228,7 @@ function psparse(f,I,J,V,rows,cols;
         if assemble
             t = PartitionedArrays.assemble(B,assembled_rows;reuse=true,assembly_neighbors_options_cols)
         else
-            t = @async B,cacheB
+            t = @fake_async B,cacheB
         end
     elseif assembled
         rows_fa = rows
@@ -1251,17 +1251,17 @@ function psparse(f,I,J,V,rows,cols;
         else
             B,cacheB = A,nothing
         end
-        t = @async B,cacheB
+        t = @fake_async B,cacheB
     else
         error("This line should not be reached")
     end
     if val_parameter(reuse) == false
-        return @async begin
+        return @fake_async begin
             C, cacheC = fetch(t)
             C
         end
     else
-        return @async begin
+        return @fake_async begin
             C, cacheC = fetch(t)
             cache = (A,B,K,cacheB,cacheC,split_format,assembled) 
             (C, cache)
@@ -1284,7 +1284,7 @@ function psparse!(C,V,cache)
     if !assembled && C.assembled
         t = PartitionedArrays.assemble!(C,B,cacheC)
     else
-        t = @async C
+        t = @fake_async C
     end
 end
 
@@ -1461,7 +1461,7 @@ function psparse_assemble_impl(
     t_I = exchange(I_snd,graph)
     t_J = exchange(J_snd,graph)
     t_V = exchange(V_snd,graph)
-    @async begin
+    @fake_async begin
         I_rcv = fetch(t_I)
         J_rcv = fetch(t_J)
         V_rcv = fetch(t_V)
@@ -1535,7 +1535,7 @@ function psparse_assemble_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     graph = ExchangeGraph(parts_snd,parts_rcv)
     t = exchange!(V_rcv,V_snd,graph)
     map(setup_sa,partition(B),partition(A),cache)
-    @async begin
+    @fake_async begin
         wait(t)
         map(setup_rcv,partition(B),cache)
         B
@@ -1697,7 +1697,7 @@ function psparse_consistent_impl(
     t_I = exchange(I_snd,graph)
     t_J = exchange(J_snd,graph)
     t_V = exchange(V_snd,graph)
-    @async begin
+    @fake_async begin
         I_rcv = fetch(t_I)
         J_rcv = fetch(t_J)
         V_rcv = fetch(t_V)
@@ -1759,7 +1759,7 @@ function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
             copy!(nonzeros(b),nonzeros(a))
         end
     end
-    @async begin
+    @fake_async begin
         wait(t)
         map(setup_rcv,partition(B),cache)
         B
@@ -2099,7 +2099,7 @@ function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
     # TODO this one does not preserve the local storage layout of A
     t = psparse(I,J,V,new_rows,new_cols;reuse=true)
-    @async begin
+    @fake_async begin
         B,cacheB = fetch(t)
         if val_parameter(reuse) == false
             B
@@ -2137,7 +2137,7 @@ function repartition(A::PSparseMatrix,b::PVector,new_rows,new_cols;reuse=Val(fal
     # for the moment. It can be optimized.
     t1 = repartition(A,new_rows,new_cols;reuse=true)
     t2 = repartition(b,new_rows;reuse=true)
-    @async begin
+    @fake_async begin
         B,cacheB = fetch(t1)
         c,cachec = fetch(t2)
         if val_parameter(reuse)
@@ -2163,7 +2163,7 @@ function repartition!(B::PSparseMatrix,c::PVector,A::PSparseMatrix,b::PVector,ca
     (cacheB,cachec) = cache
     t1 = repartition!(B,A,cacheB)
     t2 = repartition!(c,b,cachec)
-    @async begin
+    @fake_async begin
         wait(t1)
         wait(t2)
         B,c
@@ -2222,7 +2222,7 @@ function psystem(I,J,V,I2,V2,rows,cols;
             assembled_rows,
             reuse=true)
 
-    @async begin
+    @fake_async begin
         A,cacheA = fetch(t1)
         b,cacheb = fetch(t2)
         if val_parameter(reuse)
@@ -2241,7 +2241,7 @@ function psystem!(A,b,V,V2,cache)
     (cacheA,cacheb) = cache
     t1 = psparse!(A,V,cacheA)
     t2 = pvector!(b,V2,cacheb)
-    @async begin
+    @fake_async begin
         wait(t1)
         wait(t2)
         (A,b)
