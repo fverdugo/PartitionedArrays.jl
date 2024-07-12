@@ -352,7 +352,7 @@ function assemble_impl!(f,vector_partition,cache::VectorAssemblyCache)
     buffer_snd=cache.buffer_snd
     buffer_rcv=cache.buffer_rcv
     exchange_setup=cache.exchange_setup
-    map(vector_partition,local_indices_snd,buffer_snd) do values,local_indices_snd,buffer_snd
+    foreach(vector_partition,local_indices_snd,buffer_snd) do values,local_indices_snd,buffer_snd
         for (p,lid) in enumerate(local_indices_snd.data)
             buffer_snd.data[p] = values[lid]
         end
@@ -362,7 +362,7 @@ function assemble_impl!(f,vector_partition,cache::VectorAssemblyCache)
     # Fill values from rcv buffer fake_asynchronously
     @fake_async begin
         wait(t)
-        map(vector_partition,local_indices_rcv,buffer_rcv) do values,local_indices_rcv,buffer_rcv
+        foreach(vector_partition,local_indices_rcv,buffer_rcv) do values,local_indices_rcv,buffer_rcv
             for (p,lid) in enumerate(local_indices_rcv.data)
                 values[lid] = f(values[lid],buffer_rcv.data[p])
             end

@@ -222,6 +222,14 @@ function Base.map(f,args::Vararg{MPIArray,N}) where N
     MPIArray(item,a.comm,a.size)
 end
 
+function Base.foreach(f,args::Vararg{MPIArray,N}) where N
+    a = first(args)
+    # The assert causes allocations
+    #@assert all(i->size(a)==size(i),args)
+    f(map(i->i.item_ref[],args)...)
+    nothing
+end
+
 function Base.map(f,a::MPIArray)
     item = f(a.item_ref[])
     MPIArray(item,a.comm,a.size)

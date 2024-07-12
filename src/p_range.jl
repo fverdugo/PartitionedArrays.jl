@@ -1556,27 +1556,29 @@ struct LocalIndicesWithConstantBlockSize{N} <: AbstractLocalIndices
     n::NTuple{N,Int}
     ghost::GhostIndices
     assembly_cache::AssemblyCache
+    ranges::NTuple{N,UnitRange{Int}}
     function LocalIndicesWithConstantBlockSize(
             p::CartesianIndex{N},
             np::NTuple{N,Int},
             n::NTuple{N,Int},
             ghost::GhostIndices) where N
-        new{N}(p, np, n, ghost, AssemblyCache())
+            ranges = map(local_range,Tuple(p),np,n)
+        new{N}(p, np, n, ghost, AssemblyCache(),ranges)
     end
 end
 assembly_cache(a::LocalIndicesWithConstantBlockSize) = a.assembly_cache
 
-function Base.getproperty(a::LocalIndicesWithConstantBlockSize, sym::Symbol)
-    if sym === :ranges
-        map(local_range,Tuple(a.p),a.np,a.n)
-    else
-        getfield(a,sym)
-    end
-end
-
-function Base.propertynames(x::LocalIndicesWithConstantBlockSize, private::Bool=false)
-  (fieldnames(typeof(x))...,:ranges)
-end
+#function Base.getproperty(a::LocalIndicesWithConstantBlockSize, sym::Symbol)
+#    if sym === :ranges
+#        map(local_range,Tuple(a.p),a.np,a.n)
+#    else
+#        getfield(a,sym)
+#    end
+#end
+#
+#function Base.propertynames(x::LocalIndicesWithConstantBlockSize, private::Bool=false)
+#  (fieldnames(typeof(x))...,:ranges)
+#end
 
 function replace_ghost(a::LocalIndicesWithConstantBlockSize,ghost::GhostIndices)
     LocalIndicesWithConstantBlockSize(a.p,a.np,a.n,ghost)

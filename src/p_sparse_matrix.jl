@@ -1822,14 +1822,14 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     # Start the exchange
     t = consistent!(b)
     # Meanwhile, process the owned blocks
-    map(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
+    foreach(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
         if β != 1
             β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
         end
         mul!(co,aoo,bo,α,1)
     end
     if ! a.assembled
-        map(ghost_values(c),ghost_own_values(a),own_values(b)) do ch,aho,bo
+        foreach(ghost_values(c),ghost_own_values(a),own_values(b)) do ch,aho,bo
             if β != 1
                 β != 0 ? rmul!(ch, β) : fill!(ch,zero(eltype(ch)))
             end
@@ -1839,11 +1839,11 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β
     # Wait for the exchange to finish
     wait(t)
     # process the ghost block
-    map(own_values(c),own_ghost_values(a),ghost_values(b)) do co,aoh,bh
+    foreach(own_values(c),own_ghost_values(a),ghost_values(b)) do co,aoh,bh
         mul!(co,aoh,bh,α,1)
     end
     if ! a.assembled
-        map(ghost_values(c),ghost_ghost_values(a),ghost_values(b)) do ch,ahh,bh
+        foreach(ghost_values(c),ghost_ghost_values(a),ghost_values(b)) do ch,ahh,bh
             mul!(ch,ahh,bh,α,1)
         end
         assemble!(c) |> wait
@@ -1854,13 +1854,13 @@ end
 function LinearAlgebra.mul!(c::PVector,at::Transpose{T,<:PSparseMatrix} where T,b::PVector,α::Number,β::Number)
     a = at.parent
     @assert a.assembled
-    map(ghost_values(c),own_ghost_values(a),own_values(b)) do ch,aoh,bo
+    foreach(ghost_values(c),own_ghost_values(a),own_values(b)) do ch,aoh,bo
         fill!(ch,zero(eltype(ch)))
         atoh = transpose(aoh)
         mul!(ch,atoh,bo,α,1)
     end
     t = assemble!(c)
-    map(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
+    foreach(own_values(c),own_own_values(a),own_values(b)) do co,aoo,bo
         if β != 1
             β != 0 ? rmul!(co, β) : fill!(co,zero(eltype(co)))
         end

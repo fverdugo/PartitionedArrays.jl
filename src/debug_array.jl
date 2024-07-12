@@ -108,6 +108,11 @@ function Base.map(f,args::DebugArray...)
     DebugArray(map(f,map(i->i.items,args)...))
 end
 
+function Base.foreach(f,args::DebugArray...)
+    foreach(f,map(i->i.items,args)...)
+    nothing
+end
+
 function Base.map!(f,r::DebugArray,args::DebugArray...)
     map!(f,r.items,map(i->i.items,args)...)
     r
