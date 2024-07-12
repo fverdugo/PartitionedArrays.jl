@@ -238,13 +238,14 @@ function p_vector_cache(vector_partition,index_partition)
     p_vector_cache_impl(eltype(vector_partition),vector_partition,index_partition)
 end
 
-struct VectorAssemblyCache{T}
-    neighbors_snd::Vector{Int32}
-    neighbors_rcv::Vector{Int32}
-    local_indices_snd::JaggedArray{Int32,Int32}
-    local_indices_rcv::JaggedArray{Int32,Int32}
-    buffer_snd::JaggedArray{T,Int32}
-    buffer_rcv::JaggedArray{T,Int32}
+struct VectorAssemblyCache{A,B,C,D}
+    neighbors_snd::A
+    neighbors_rcv::A
+    local_indices_snd::B
+    local_indices_rcv::B
+    buffer_snd::C
+    buffer_rcv::C
+    exchange_setup::D
 end
 function Base.reverse(a::VectorAssemblyCache)
     VectorAssemblyCache(
@@ -253,24 +254,30 @@ function Base.reverse(a::VectorAssemblyCache)
                     a.local_indices_rcv,
                     a.local_indices_snd,
                     a.buffer_rcv,
-                    a.buffer_snd)
+                    a.buffer_snd,
+                    a.exchange_setup,
+                   )
 end
 function copy_cache(a::VectorAssemblyCache)
-    buffer_snd = JaggedArray(copy(a.buffer_snd.data),a.buffer_snd.ptrs)
-    buffer_rcv = JaggedArray(copy(a.buffer_rcv.data),a.buffer_rcv.ptrs)
+    buffer_snd = deepcopy(a.buffer_snd) # TODO ugly
+    buffer_rcv = deepcopy(a.buffer_rcv)
     VectorAssemblyCache(
                     a.neighbors_snd,
                     a.neighbors_rcv,
                     a.local_indices_snd,
                     a.local_indices_rcv,
                     buffer_snd,
-                    buffer_rcv)
+                    buffer_rcv,
+                    a.exchange_setup
+                   )
 end
 function p_vector_cache_impl(::Type,vector_partition,index_partition)
     neighbors_snd,neighbors_rcv= assembly_neighbors(index_partition)
     indices_snd,indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
     buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,indices_snd,indices_rcv) |> tuple_of_arrays
-    map(VectorAssemblyCache,neighbors_snd,neighbors_rcv,indices_snd,indices_rcv,buffers_snd,buffers_rcv)
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    exchange_setup = setup_exchange(buffers_rcv,buffers_snd,graph)
+    VectorAssemblyCache(neighbors_snd,neighbors_rcv,indices_snd,indices_rcv,buffers_snd,buffers_rcv,exchange_setup)
 end
 function assembly_buffers(values,local_indices_snd,local_indices_rcv)
     T = eltype(values)
@@ -283,8 +290,8 @@ function assembly_buffers(values,local_indices_snd,local_indices_rcv)
     buffer_snd, buffer_rcv
 end
 
-struct JaggedArrayAssemblyCache{T}
-    cache::VectorAssemblyCache{T}
+struct JaggedArrayAssemblyCache{T<:VectorAssemblyCache}
+    cache::T
 end
 Base.reverse(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(reverse(a.cache))
 copy_cache(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(copy_cache(a.cache))
@@ -321,49 +328,51 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
         rewind_ptrs!(ptrs)
         JaggedArray(data,ptrs)
     end
-    neighbors = assembly_neighbors(index_partition)
-    local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors...)
+    neighbors_snd,neighbors_rcv = assembly_neighbors(index_partition)
+    local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
     p_snd = map(data_index_snd,local_indices_snd,vector_partition)
     p_rcv = map(data_index_snd,local_indices_rcv,vector_partition)
     data = map(getdata,vector_partition)
-    buffers = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
-    cache = map(VectorAssemblyCache,neighbors...,p_snd,p_rcv,buffers...)
-    map(JaggedArrayAssemblyCache,cache)
+    buffer_snd, buffer_rcv = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    exchange_setup = setup_exchange(buffer_rcv,buffer_snd,graph)
+    cache = VectorAssemblyCache(neighbors_snd,neighbors_rcv,p_snd,p_rcv,buffer_snd,buffer_rcv)
+    JaggedArrayAssemblyCache(cache)
 end
-
 
 function assemble!(f,vector_partition,cache)
-    assemble_impl!(f,vector_partition,cache,eltype(cache))
+    assemble_impl!(f,vector_partition,cache)
 end
 
-function assemble_impl!(f,vector_partition,cache,::Type{<:VectorAssemblyCache})
-    buffer_snd = map(vector_partition,cache) do values,cache
-        local_indices_snd = cache.local_indices_snd
+function assemble_impl!(f,vector_partition,cache::VectorAssemblyCache)
+    local_indices_snd=cache.local_indices_snd
+    local_indices_rcv=cache.local_indices_rcv
+    neighbors_snd=cache.neighbors_snd
+    neighbors_rcv=cache.neighbors_rcv
+    buffer_snd=cache.buffer_snd
+    buffer_rcv=cache.buffer_rcv
+    exchange_setup=cache.exchange_setup
+    map(vector_partition,local_indices_snd,buffer_snd) do values,local_indices_snd,buffer_snd
         for (p,lid) in enumerate(local_indices_snd.data)
-            cache.buffer_snd.data[p] = values[lid]
+            buffer_snd.data[p] = values[lid]
         end
-        cache.buffer_snd
     end
-    neighbors_snd, neighbors_rcv, buffer_rcv = map(cache) do cache
-        cache.neighbors_snd, cache.neighbors_rcv, cache.buffer_rcv
-    end |> tuple_of_arrays
     graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
-    t = exchange!(buffer_rcv,buffer_snd,graph)
+    t = exchange!(buffer_rcv,buffer_snd,graph,exchange_setup)
     # Fill values from rcv buffer fake_asynchronously
     @fake_async begin
         wait(t)
-        map(vector_partition,cache) do values,cache
-            local_indices_rcv = cache.local_indices_rcv
+        map(vector_partition,local_indices_rcv,buffer_rcv) do values,local_indices_rcv,buffer_rcv
             for (p,lid) in enumerate(local_indices_rcv.data)
-                values[lid] = f(values[lid],cache.buffer_rcv.data[p])
+                values[lid] = f(values[lid],buffer_rcv.data[p])
             end
         end
         nothing
     end
 end
 
-function assemble_impl!(f,vector_partition,cache,::Type{<:JaggedArrayAssemblyCache})
-    vcache = map(i->i.cache,cache)
+function assemble_impl!(f,vector_partition,cache::JaggedArrayAssemblyCache)
+    vcache = cache.cache
     data = map(getdata,vector_partition)
     assemble!(f,data,vcache)
 end
@@ -458,7 +467,7 @@ julia> local_values(a)
 ```
 """
 function consistent!(a::PVector)
-    cache = map(reverse,a.cache)
+    cache = reverse(a.cache)
     t = assemble!(insert,partition(a),cache)
     @fake_async begin
         wait(t)

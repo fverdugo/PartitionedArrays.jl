@@ -502,7 +502,7 @@ function Base.all(p::Function,a::MPIArray)
     all(b)
 end
 
-function setup_exchange_impl!(
+function setup_exchange_impl(
     rcv::MPIArray,
     snd::MPIArray,
     graph::ExchangeGraph{<:MPIArray},

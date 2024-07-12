@@ -833,10 +833,10 @@ end
 
 function setup_exchange(rcv,snd,graph)
     T = eltype(eltype(snd))
-    setup_exchange_impl!(rcv,snd,graph,T)
+    setup_exchange_impl(rcv,snd,graph,T)
 end
 
-function setup_exchange_impl!(rcv,snd,graph,T)
+function setup_exchange_impl(rcv,snd,graph,T)
     nothing
 end
 
