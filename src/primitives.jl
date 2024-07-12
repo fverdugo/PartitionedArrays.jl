@@ -96,6 +96,29 @@ function tuple_of_arrays(a)
     take(a,eltype(a))
 end
 
+# We don't need a real task since MPI already is able to do
+# asynchronous (nonblocking) operations.
+# We want to avoid heap allocations of standard tasks.
+struct FakeTask{T} # TODO possibly rename
+    work::T
+end
+
+function Base.wait(t::FakeTask)
+    t.work()
+    t
+end
+
+function Base.fetch(t::FakeTask)
+    t.work()
+end
+
+macro fake_async(expr) # TODO possibly rename
+    quote
+        FakeTask() do
+            $expr
+        end
+    end |> esc
+end
 
 """
 """

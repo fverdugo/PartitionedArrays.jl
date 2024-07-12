@@ -511,7 +511,7 @@ function setup_exchange_impl!(
     @assert graph.rcv.comm === graph.rcv.comm
     @assert graph.rcv.comm === graph.snd.comm
     comm = graph.rcv.comm
-    nreqs = length(graph.rcv.item) + length(graph.snd.item)
+    nreqs = length(graph.rcv.item_ref[]) + length(graph.snd.item_ref[])
     req_all = MPI.UnsafeMultiRequest(nreqs)
     req_all
 end
@@ -530,27 +530,23 @@ function exchange_impl!(
     req_all = setup
     ireq = 0
     state = (snd,rcv)
-    for (i,id_rcv) in enumerate(graph.rcv.item)
+    for (i,id_rcv) in enumerate(graph.rcv.item_ref[])
         rank_rcv = id_rcv-1
-        buff_rcv = view(rcv.item,i:i)
+        buff_rcv = view(rcv.item_ref[],i:i)
         ireq += 1
         GC.@preserve state MPI.Irecv!(buff_rcv,comm,req_all[ireq];source=rank_rcv,tag=EXCHANGE_IMPL_TAG)
     end
-    for (i,id_snd) in enumerate(graph.snd.item)
+    for (i,id_snd) in enumerate(graph.snd.item_ref[])
         rank_snd = id_snd-1
-        buff_snd = view(snd.item,i:i)
+        buff_snd = view(snd.item_ref[],i:i)
         ireq += 1
         GC.@preserve state MPI.Isend(buff_snd,comm,req_all[ireq];dest=rank_snd,tag=EXCHANGE_IMPL_TAG)
     end
-    @async begin
-        @static if isdefined(MPI,:Testall)
-            GC.@preserve state while ! MPI.Testall(req_all)
-                yield()
-            end
+    @fake_async begin
+        @static if isdefined(MPI,:Waitall)
+            GC.@preserve state MPI.Waitall(req_all)
         else
-            GC.@preserve state while ! MPI.Testall!(req_all)[1]
-                yield()
-            end
+            GC.@preserve state MPI.Waitall!(req_all)
         end
         rcv
     end
@@ -567,36 +563,31 @@ function exchange_impl!(
     @assert graph.rcv.comm === graph.rcv.comm
     @assert graph.rcv.comm === graph.snd.comm
     comm = graph.rcv.comm
-    req_all = MPI.Request[]
-    data_snd = JaggedArray(snd.item)
-    data_rcv = rcv.item
+    data_snd = JaggedArray(snd.item_ref[])
+    data_rcv = rcv.item_ref[]
     @assert isa(data_rcv,JaggedArray)
     req_all = setup
     ireq = 0
     state = (snd,rcv)
-    for (i,id_rcv) in enumerate(graph.rcv.item)
+    for (i,id_rcv) in enumerate(graph.rcv.item_ref[])
         rank_rcv = id_rcv-1
         ptrs_rcv = data_rcv.ptrs
         buff_rcv = view(data_rcv.data,ptrs_rcv[i]:(ptrs_rcv[i+1]-1))
         ireq += 1
         GC.@preserve state MPI.Irecv!(buff_rcv,comm,req_all[ireq];source=rank_rcv,tag=EXCHANGE_IMPL_TAG)
     end
-    for (i,id_snd) in enumerate(graph.snd.item)
+    for (i,id_snd) in enumerate(graph.snd.item_ref[])
         rank_snd = id_snd-1
         ptrs_snd = data_snd.ptrs
         buff_snd = view(data_snd.data,ptrs_snd[i]:(ptrs_snd[i+1]-1))
         ireq += 1
         GC.@preserve state MPI.Isend(buff_snd,comm,req_all[ireq];dest=rank_snd,tag=EXCHANGE_IMPL_TAG)
     end
-    @async begin
-        @static if isdefined(MPI,:Testall)
-            GC.@preserve state while ! MPI.Testall(req_all)
-                yield()
-            end
+    @fake_async begin
+        @static if isdefined(MPI,:Waitall)
+            GC.@preserve state MPI.Waitall(req_all)
         else
-            GC.@preserve state while ! MPI.Testall!(req_all)[1]
-                yield()
-            end
+            GC.@preserve state MPI.Waitall!(req_all)
         end
         rcv
     end
