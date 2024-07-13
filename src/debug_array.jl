@@ -130,10 +130,10 @@ function Base.all(p::Function,a::DebugArray)
     all(b)
 end
 
-function allocate_gather_impl(snd::DebugArray,destination)
-    rcv = allocate_gather_impl(snd.items,destination)
-    DebugArray(rcv)
-end
+#function allocate_gather_impl(snd::DebugArray,destination)
+#    rcv = allocate_gather_impl(snd.items,destination)
+#    DebugArray(rcv)
+#end
 
 function gather_impl!(
     rcv::DebugArray, snd::DebugArray,
@@ -141,39 +141,57 @@ function gather_impl!(
     gather_impl!(rcv.items,snd.items,destination)
 end
 
-function setup_scatter_impl(snd::DebugArray,source)
-    setup_scatter_impl(snd.items,source)
-end
+#function setup_scatter_impl(snd::DebugArray,source)
+#    setup_scatter_impl(snd.items,source)
+#end
 
-function scatter_impl(snd::DebugArray,source,setup)
-    rcv = scatter_impl(snd.items,source,setup)
+function scatter_impl(snd::DebugArray,source)
+    rcv = scatter_impl(snd.items,source)
     DebugArray(rcv)
 end
 
-function setup_multicast_impl(snd::DebugArray,source)
-    setup_multicast_impl(snd.items,source)
+function scatter_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T
+    error("In place scatter only for vectors")
 end
 
-function multicast_impl(snd::DebugArray,source,setup)
-    rcv = multicast_impl(snd.items,source,setup)
+function scatter_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T<:AbstractVector
+    scatter_impl!(rcv.items,snd.items,source)
+    rcv
+end
+
+#function setup_multicast_impl(snd::DebugArray,source)
+#    setup_multicast_impl(snd.items,source)
+#end
+
+function multicast_impl(snd::DebugArray,source)
+    rcv = multicast_impl(snd.items,source)
     DebugArray(rcv)
 end
 
-function setup_scatter_impl(op,a::DebugArray,init,type)
-    setup_scatter_impl(op,a.items,init,type)
+function multicast_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T
+    error("In place multicast only for vectors")
 end
 
-function scan_impl(op,a::DebugArray,init,type,setup)
-    b = scan_impl(op,a.items,init,type,setup)
+function multicast_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T<:AbstractVector
+    multicast_impl!(rcv.items,snd.items,source)
+    rcv
+end
+
+#function setup_scatter_impl(op,a::DebugArray,init,type)
+#    setup_scatter_impl(op,a.items,init,type)
+#end
+
+function scan_impl(op,a::DebugArray,init,type)
+    b = scan_impl(op,a.items,init,type)
     DebugArray(b)
 end
 
-function setup_reduction_impl(op,a::DebugArray,destination)
-    setup_reduction_impl(op,a.items,destination)
-end
+#function setup_reduction_impl(op,a::DebugArray,destination)
+#    setup_reduction_impl(op,a.items,destination)
+#end
 
-function reduction_impl(op,a::DebugArray,destination,setup;kwargs...)
-    b = reduction_impl(op,a.items,destination,setup;kwargs...)
+function reduction_impl(op,a::DebugArray,destination;kwargs...)
+    b = reduction_impl(op,a.items,destination;kwargs...)
     DebugArray(b)
 end
 

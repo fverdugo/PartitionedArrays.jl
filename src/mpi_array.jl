@@ -347,9 +347,11 @@ function gather_impl!(
     rcv
 end
 
-function scatter_impl!(
-    rcv::MPIArray,snd::MPIArray,
-    source,::Type{T}) where T
+function setup_scatter_impl(snd::MPIArray,source,::Type{T}) where T
+    item_ref = Ref{T}()
+end
+
+function scatter_impl(snd::MPIArray,source,::Type{T}) where T
     comm = snd.comm
     root = source - 1
     @assert source !== :all "All to all not implemented"
@@ -358,19 +360,25 @@ function scatter_impl!(
         @assert eltype(snd.item) == typeof(rcv.item)
         if MPI.Comm_rank(comm) == root
             snd_buffer = MPI.UBuffer(snd.item,1)
-            rcv.item = snd.item[source]
+            rcv_item = snd.item[source]
             MPI.Scatter!(snd_buffer,MPI.IN_PLACE,root,comm)
         else
+            item_ref = setup
             MPI.Scatter!(nothing,rcv.item_ref,root,comm)
+            rcv_item = item_ref[]
         end
     else
         if MPI.Comm_rank(comm) == root
-            rcv.item = MPI.scatter(snd.item,comm;root)
+            rcv_item = MPI.scatter(snd.item,comm;root)
         else
-            rcv.item = MPI.scatter(nothing,comm;root)
+            rcv_item = MPI.scatter(nothing,comm;root)
         end
     end
-    rcv
+    rcv = MPIArray(rcv_item,comm,snd.size)
+end
+
+function setup_scatter_impl(snd::MPIArray,source,::Type{T}) where T <:AbstractVector
+    nothing
 end
 
 function scatter_impl!(

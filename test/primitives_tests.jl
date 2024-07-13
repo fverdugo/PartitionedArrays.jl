@@ -75,10 +75,10 @@ function primitives_tests(distribute)
        @test snd2 == snd3
    end
 
-   np = length(rank)
-   rcv3 = map_main(rank) do rank
-       fill(NonIsBitsType([2]),np)
-   end
+   #np = length(rank)
+   #rcv3 = map_main(rank) do rank
+   #    fill(NonIsBitsType([2]),np)
+   #end
    #snd3 = allocate_scatter(rcv3)
    #scatter!(snd3,rcv3)
    #snd3 = scatter(rcv3)
