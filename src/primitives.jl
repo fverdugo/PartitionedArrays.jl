@@ -105,7 +105,7 @@ end
 
 function Base.wait(t::FakeTask)
     t.work()
-    t
+    nothing
 end
 
 function Base.fetch(t::FakeTask)
