@@ -259,7 +259,16 @@ function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
             data = Vector{eltype(snd)}(undef,0)
             JaggedArray(data,ptrs)
         end
-        rcv = map_main(f,l_dest,snd;otherwise=g,main=destination)
+        ranks = linear_indices(snd)
+        rcv = map(l_dest,snd,ranks) do l,snd,rank
+            if rank == destination
+                f(l,snd)
+            else
+                g(l,snd)
+            end
+        end
+        # This caused a type instability
+        #rcv = map_main(f,l_dest,snd;otherwise=g,main=destination)
     else
         @assert destination === :all
         rcv = map(f,l_dest,snd)
@@ -372,13 +381,13 @@ function allocate_scatter_impl(snd,source,::Type{T}) where T
 end
 
 function allocate_scatter_impl(snd,source,::Type{T}) where T <:AbstractVector
-    counts = map(snd) do snd
-        map(length,snd)
+    counts = map(snd) do mysnd
+        map(length,mysnd)
     end
     counts_scat = scatter(counts;source)
-    S = eltype(T)
-    map(counts_scat) do count
-        Vector{S}(undef,count)
+    map(counts_scat) do mycount
+        S = eltype(T)
+        Vector{S}(undef,mycount)
     end
 end
 
