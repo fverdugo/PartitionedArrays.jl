@@ -353,6 +353,10 @@ function primitives_tests(distribute)
 
    data_rcv = exchange(
                        data_snd,
+                       ExchangeGraph(parts_snd, parts_rcv)) |> wait
+
+   data_rcv = exchange(
+                       data_snd,
                        ExchangeGraph(parts_snd, parts_rcv)) |> fetch
 
    map(parts,data_rcv) do part, data_rcv

@@ -336,7 +336,7 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
     buffer_snd, buffer_rcv = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
     graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
     exchange_setup = setup_exchange(buffer_rcv,buffer_snd,graph)
-    cache = VectorAssemblyCache(neighbors_snd,neighbors_rcv,p_snd,p_rcv,buffer_snd,buffer_rcv)
+    cache = VectorAssemblyCache(neighbors_snd,neighbors_rcv,p_snd,p_rcv,buffer_snd,buffer_rcv,exchange_setup)
     JaggedArrayAssemblyCache(cache)
 end
 

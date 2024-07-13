@@ -251,7 +251,7 @@ function exchange_impl!(
     rcv::DebugArray,snd::DebugArray,graph::ExchangeGraph{<:DebugArray},setup)
     graph2 = ExchangeGraph(graph.snd.items,graph.rcv.items)
     exchange_impl!(rcv.items,snd.items,graph2,setup)
-    rcv
+    @fake_async rcv
 end
 
 #function exchange_impl!(
