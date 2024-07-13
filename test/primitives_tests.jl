@@ -38,12 +38,17 @@ function primitives_tests(distribute)
    map_main(rcv;main=2) do rcv
      @test rcv == [10,20,30,40]
    end
+   gather!(rcv,snd;destination=2)
+   map_main(rcv;main=2) do rcv
+     @test rcv == [10,20,30,40]
+   end
 
    snd2 = scatter(rcv;source=2)
    map(snd,snd2) do snd,snd2
        @test snd == snd2
    end
    @test typeof(snd) == typeof(snd2)
+   #scatter!(snd2,rcv;source=2)
 
    snd = b
    rcv = gather(snd;destination=:all)

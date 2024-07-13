@@ -300,7 +300,8 @@ function gather_impl!(
                 rcv_buffer = MPI.UBuffer(rcv.item,1)
                 MPI.Gather!(MPI.IN_PLACE,rcv_buffer,root,comm)
             else
-                MPI.Gather!(snd.item_ref,nothing,root,comm)
+                # TODO Ref really needed?
+                MPI.Gather!(Ref(snd.item),nothing,root,comm)
             end
         else
             if MPI.Comm_rank(comm) == root
@@ -313,7 +314,8 @@ function gather_impl!(
         @assert destination === :all
         @assert length(rcv.item) == MPI.Comm_size(comm)
         rcv_buffer = MPI.UBuffer(rcv.item,1)
-        MPI.Allgather!(snd.item_ref,rcv_buffer,snd.comm)
+        # TODO Ref really needed?
+        MPI.Allgather!(Ref(snd.item),rcv_buffer,snd.comm)
     end
     rcv
 end
@@ -347,24 +349,18 @@ function gather_impl!(
     rcv
 end
 
-function setup_scatter_impl(snd::MPIArray,source,::Type{T}) where T
-    item_ref = Ref{T}()
-end
-
 function scatter_impl(snd::MPIArray,source,::Type{T}) where T
     comm = snd.comm
     root = source - 1
     @assert source !== :all "All to all not implemented"
-    @assert rcv.comm === snd.comm
     if isbitstype(T)
-        @assert eltype(snd.item) == typeof(rcv.item)
         if MPI.Comm_rank(comm) == root
             snd_buffer = MPI.UBuffer(snd.item,1)
             rcv_item = snd.item[source]
             MPI.Scatter!(snd_buffer,MPI.IN_PLACE,root,comm)
         else
-            item_ref = setup
-            MPI.Scatter!(nothing,rcv.item_ref,root,comm)
+            item_ref = Ref{T}()
+            MPI.Scatter!(nothing,item_ref,root,comm)
             rcv_item = item_ref[]
         end
     else
@@ -377,8 +373,15 @@ function scatter_impl(snd::MPIArray,source,::Type{T}) where T
     rcv = MPIArray(rcv_item,comm,snd.size)
 end
 
-function setup_scatter_impl(snd::MPIArray,source,::Type{T}) where T <:AbstractVector
-    nothing
+function scatter_impl(snd::MPIArray,source,::Type{T}) where T<:AbstractVector
+    rcv = allocate_scatter_impl(snd,source)
+    scatter_impl!(rcv,snd,source)
+end
+
+function scatter_impl!(
+    rcv::MPIArray,snd::MPIArray,
+    source,::Type{T}) where T
+    error("In-place scatter only for vectors")
 end
 
 function scatter_impl!(
@@ -406,25 +409,35 @@ function scatter_impl!(
     rcv
 end
 
-function multicast_impl!(
-    rcv::MPIArray,snd::MPIArray,
-    source,::Type{T}) where T
-    @assert rcv.comm === snd.comm
+function multicast_impl(snd::MPIArray,source,::Type{T}) where T
     comm = snd.comm
     root = source - 1
     if isbitstype(T)
+        item_ref = Ref{T}()
         if MPI.Comm_rank(comm) == root
-            rcv.item = snd.item
+            item_ref[] = snd.item
         end
-        MPI.Bcast!(rcv.item_ref,root,comm)
+        MPI.Bcast!(item_ref,root,comm)
+        rcv_item = item_ref[]
     else
         if MPI.Comm_rank(comm) == root
-            rcv.item = MPI.bcast(snd.item,comm;root)
+            rcv_item = MPI.bcast(snd.item,comm;root)
         else
-            rcv.item = MPI.bcast(nothing,comm;root)
+            rcv_item = MPI.bcast(nothing,comm;root)
         end
     end
-    rcv
+    MPIArray(rcv_item,comm,size(snd))
+end
+
+function multicast_impl(snd::MPIArray,source,::Type{T}) where T<:AbstractVector
+    rcv = allocate_multicast_impl(snd,source)
+    multicast_impl!(rcv,snd,source)
+end
+
+function multicast_impl!(
+    rcv::MPIArray,snd::MPIArray,
+    source,::Type{T}) where T
+    error("In-place multicast only for vectors")
 end
 
 function multicast_impl!(
@@ -434,70 +447,57 @@ function multicast_impl!(
     comm = snd.comm
     root = source - 1
     if MPI.Comm_rank(comm) == root
-        rcv.item = snd.item
+        rcv.item[:] = snd.item
     end
     MPI.Bcast!(rcv.item,root,comm)
     rcv
 end
 
-function scan!(op,b::MPIArray,a::MPIArray;init,type)
-    @assert b.comm === a.comm
+function scan_impl(op,a::MPIArray,init,type)
     @assert type in (:inclusive,:exclusive)
     T = eltype(a)
-    @assert eltype(b) == T
     comm = a.comm
     opr = MPI.Op(op,T)
+    item_ref = Ref{T}()
     if type === :inclusive
-        if a.item_ref !== b.item_ref
-            MPI.Scan!(a.item_ref,b.item_ref,opr,comm)
-        else
-            MPI.Scan!(b.item_ref,opr,comm)
-        end
-        b.item = op(b.item,init)
+        MPI.Scan!(Ref(a.item),item_ref,opr,comm) # TODO Ref needed here?
+        b_item = item_ref[]
+        b_item = op(b_item,init)
     else
-        if a.item_ref !== b.item_ref
-            MPI.Exscan!(a.item_ref,b.item_ref,opr,comm)
-        else
-            MPI.Exscan!(b.item_ref,opr,comm)
-        end
+        MPI.Exscan!(Ref(a.item),item_ref,opr,comm) # TODO Ref needed here?
         if MPI.Comm_rank(comm) == 0
-            b.item = init
+            b_item = init
         else
-            b.item = op(b.item,init)
+            b_item = item_ref[]
+            b_item = op(b_item,init)
         end
     end
-    b
+    MPIArray(b_item,comm,size(a))
 end
 
-function reduction!(op,b::MPIArray,a::MPIArray;destination=1,init=nothing)
-    @assert b.comm === a.comm
+function reduction_impl(op,a::MPIArray,destination;init=nothing)
     T = eltype(a)
-    @assert eltype(b) == T
     comm = a.comm
     opr = MPI.Op(op,T)
+    item_ref = Ref{T}()
     if destination !== :all
         root = destination-1
-        if a.item_ref !== b.item_ref
-            MPI.Reduce!(a.item_ref,b.item_ref,opr,root,comm)
-        else
-            MPI.Reduce!(b.item_ref,opr,root,comm)
-        end
+        MPI.Reduce!(Ref(a.item),item_ref,opr,root,comm) # TODO Ref needed?
+        b_item = item_ref[]
         if MPI.Comm_rank(comm) == root
             if init !== nothing
-                b.item = op(b.item,init)
+                b_item = op(b_item,init)
             end
         end
+        b_item
     else
-        if a.item_ref !== b.item_ref
-            MPI.Allreduce!(a.item_ref,b.item_ref,opr,comm)
-        else
-            MPI.Allreduce!(b.item_ref,opr,comm)
-        end
+        MPI.Allreduce!(Ref(a.item),item_ref,opr,comm) # TODO Ref needed?
+        b_item = item_ref[]
         if init !== nothing
-            b.item = op(b.item,init)
+            b_item = op(b_item,init)
         end
     end
-    b
+    MPIArray(b_item,comm,size(a))
 end
 
 function Base.reduce(op,a::MPIArray;kwargs...)
