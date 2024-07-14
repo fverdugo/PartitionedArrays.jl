@@ -3,19 +3,19 @@ module PSparseMatrixGallery
 using PartitionedArrays
 
 export laplace_matrix_fdm
-function laplace_matrix_fdm(;
+function laplace_matrix_fdm(
         nodes_per_dir,
         parts_per_dir,
-        ranks,
+        parts;
         index_type = Int64,
         value_type = Float64,
     )
-    D = length(nodes_per_dir)
     function neig_node(cartesian_node_i,d,i,cartesian_node_to_node)
         function is_boundary_node(node_1d,nodes_1d)
             !(node_1d in 1:nodes_1d)
         end
-        inc = ntuple(k->( k==d ? i : 0),Val(D))
+        D = length(nodes_per_dir)
+        inc = ntuple(k->( k==d ? i : zero(i)),Val{D}())
         cartesian_node_j = CartesianIndex(Tuple(cartesian_node_i) .+ inc)
         boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
         T = eltype(cartesian_node_to_node)
@@ -25,7 +25,8 @@ function laplace_matrix_fdm(;
         node_j = cartesian_node_to_node[cartesian_node_j]
         node_j
     end
-    function setup(nodes)
+    function setup(nodes,::Type{index_type},::Type{value_type}) where {index_type,value_type}
+        D = length(nodes_per_dir)
         α = value_type(prod(i->(i+1),nodes_per_dir))
         node_to_cartesian_node = CartesianIndices(nodes_per_dir)
         cartesian_node_to_node = LinearIndices(nodes_per_dir)
@@ -71,8 +72,10 @@ function laplace_matrix_fdm(;
         end
         myI,myJ,myV
     end
-    node_partition = uniform_partition(ranks,parts_per_dir,nodes_per_dir)
-    I,J,V = map(setup,node_partition) |> tuple_of_arrays
+    node_partition = uniform_partition(parts,parts_per_dir,nodes_per_dir)
+    I,J,V = map(node_partition) do nodes
+        setup(nodes,index_type,value_type)
+    end |> tuple_of_arrays
     I,J,V,node_partition,node_partition
 end
 
