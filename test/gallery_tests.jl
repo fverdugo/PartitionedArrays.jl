@@ -1,16 +1,14 @@
-module GalleryTests
 
 using PartitionedArrays
-using PartitionedSolvers
 using Test
 
-function main(distribute)
-    main(distribute,(4,))
-    main(distribute,(2,2))
-    main(distribute,(2,1,2))
+function gallery_tests(distribute)
+    gallery_tests(distribute,(4,))
+    gallery_tests(distribute,(2,2))
+    gallery_tests(distribute,(2,1,2))
 end
 
-function main(distribute,parts_per_dir)
+function gallery_tests(distribute,parts_per_dir)
     p = prod(parts_per_dir)
     ranks = distribute(LinearIndices((p,)))
     nodes_per_dir = map(i->2*i,parts_per_dir)
@@ -19,6 +17,4 @@ function main(distribute,parts_per_dir)
     A = psparse(args...;assembled=true) |> fetch
 end
 
-with_debug(main)
 
-end # module

@@ -166,4 +166,7 @@ export toc!
 export statistics
 include("p_timer.jl")
 
+export laplace_matrix_fdm
+include("gallery.jl")
+
 end # module
