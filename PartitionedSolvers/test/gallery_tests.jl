@@ -5,9 +5,9 @@ using PartitionedSolvers
 using Test
 
 function main(distribute)
-    test_all(distribute,(4,))
-    test_all(distribute,(2,2))
-    test_all(distribute,(2,1,2))
+    main(distribute,(4,))
+    main(distribute,(2,2))
+    main(distribute,(2,1,2))
 end
 
 function main(distribute,parts_per_dir)
