@@ -381,5 +381,7 @@ function p_sparse_matrix_tests(distribute)
     mul!(r,transpose(A),x)
 
     B = LinearAlgebra.I-A
+
+    @test isa(renumber(A),PSparseMatrix)
     
 end

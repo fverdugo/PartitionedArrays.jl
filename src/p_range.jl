@@ -780,7 +780,7 @@ function trivial_partition(ranks,n;destination=MAIN)
     partition_in_main
 end
 
-function renumber_partition(partition_in)
+function renumber_partition(partition_in;renumber_local_indices=true)
     own_ids = map(own_to_global,partition_in)
     if eltype(own_ids) <: BlockPartitionOwnToGlobal{1}
         return partition_in
@@ -796,6 +796,9 @@ function renumber_partition(partition_in)
     I = ghost_values(v)
     I_owner = map(ghost_to_owner,partition_in)
     new_ids2 = map(union_ghost,new_gids,I,I_owner)
+    if renumber_local_indices
+        return new_ids2
+    end
     perm = map(PartitionedArrays.local_permutation,partition_in)
     partition_out = map(permute_indices,new_ids2,perm)
     partition_out

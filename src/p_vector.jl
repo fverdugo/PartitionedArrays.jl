@@ -1173,3 +1173,20 @@ function find_local_indices(node_to_mask::PVector)
     dof_to_local_node, node_to_local_dof
 end
 
+function renumber(a::PVector;kwargs...)
+    row_partition = partition(axes(a,1))
+    row_partition_2 = renumber_partition(row_partition;kwargs...)
+    renumber(a,row_partition_2;kwargs...)
+end
+
+function renumber(a::PVector,row_partition_2;renumber_local_indices=true)
+    # TODO storing the vector in split format would help to return a view
+    # of the input
+    if renumber_local_indices
+        values = map(vcat,own_values(a),ghost_values(a))
+    else
+        values = map(copy,local_values(a))
+    end
+    PVector(values,row_partition_2)
+end
+

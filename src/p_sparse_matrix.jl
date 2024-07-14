@@ -2302,9 +2302,39 @@ function LinearAlgebra.ldiv!(c::PVector,a::PLUNew,b::PVector)
     c
 end
 
+function renumber(a::PSparseMatrix;kwargs...)
+    row_partition = partition(axes(a,1))
+    row_partition_2 = renumber_partition(row_partition;kwargs...)
+    col_partition = partition(axes(a,2))
+    col_partition_2 = renumber_partition(col_partition;kwargs...)
+    renumber(a,row_partition_2,col_partition_2;kwargs...)
+end
+
+function renumber(a::PSparseMatrix,row_partition_2,col_partition_2;
+    renumber_local_indices=true)
+    function setup(oo,oh,ho,hh,rows,cols)
+        blocks = split_matrix_blocks(oo,oh,ho,hh)
+        row_perm = local_permutation(rows)
+        col_perm = local_permutation(cols)
+        split_matrix(blocks,row_perm,col_perm)
+    end
+    if renumber_local_indices
+        oo = own_own_values(a)
+        oh = own_ghost_values(a)
+        ho = ghost_own_values(a)
+        hh = ghost_ghost_values(a)
+        values = map(setup,oo,oh,ho,hh,row_partition_2,col_partition_2)
+        PSparseMatrix(values,row_partition_2,col_partition_2,a.assembled)
+    else
+        values = partition(a)
+        PSparseMatrix(values,row_partition_2,col_partition_2,a.assembled)
+    end
+end
 
 ## Test matrices
 
+# TODO this is deprecated
+# Find a replacement in PartitionedSolvers/gallery.jl
 function laplace_matrix(nodes_per_dir)
     function is_boundary_node(node_1d,nodes_1d)
         !(node_1d in 1:nodes_1d)

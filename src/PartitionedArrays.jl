@@ -132,13 +132,12 @@ export assemble
 export consistent
 export repartition
 export repartition!
+export renumber
 export find_local_indices
 include("p_vector.jl")
 
-export OldPSparseMatrix
 export SplitMatrix
 export PSparseMatrix
-export old_psparse
 export psparse
 export psparse!
 export split_format
