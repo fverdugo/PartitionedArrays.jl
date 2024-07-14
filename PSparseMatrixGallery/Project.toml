@@ -1,7 +1,0 @@
-name = "PSparseMatrixGallery"
-uuid = "fe8b6318-23e7-4999-9a74-ea579e4d8535"
-authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl>"]
-version = "0.1.0"
-
-[deps]
-PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"

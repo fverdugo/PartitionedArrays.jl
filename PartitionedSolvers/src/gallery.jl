@@ -1,15 +1,11 @@
-module PSparseMatrixGallery
 
-using PartitionedArrays
-
-export laplace_matrix_fdm
 function laplace_matrix_fdm(
         nodes_per_dir,
         parts_per_dir,
         parts;
-        index_type = Int64,
-        value_type = Float64,
-    )
+        index_type::Type{Ti} = Int64,
+        value_type::Type{Tv} = Float64,
+    ) where {Ti,Tv}
     function neig_node(cartesian_node_i,d,i,cartesian_node_to_node)
         function is_boundary_node(node_1d,nodes_1d)
             !(node_1d in 1:nodes_1d)
@@ -74,9 +70,8 @@ function laplace_matrix_fdm(
     end
     node_partition = uniform_partition(parts,parts_per_dir,nodes_per_dir)
     I,J,V = map(node_partition) do nodes
-        setup(nodes,index_type,value_type)
+        setup(nodes,Ti,Tv)
     end |> tuple_of_arrays
     I,J,V,node_partition,node_partition
 end
 
-end # module PSparseMatrixGallery

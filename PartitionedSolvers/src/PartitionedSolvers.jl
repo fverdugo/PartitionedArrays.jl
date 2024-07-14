@@ -34,4 +34,7 @@ export amg_coarse_params
 export amg_statistics
 include("amg.jl")
 
+export laplace_matrix_fdm
+include("gallery.jl")
+
 end # module
