@@ -57,6 +57,16 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 	frefnwrites = fnwrites * (ref_max_iters) / (opt_max_iters)
 
 	# ======================== Memory usage model ======================================= #
+	main_times = zeros(Float64, 10)
+	mean_times = zeros(Float64, 10)
+	max_times = zeros(Float64, 10)
+
+
+	# max time of the process with the slowest total time.
+	transposed_times = collect(eachrow(reduce(hcat, times)))
+	max_times = times[argmax(transposed_times[10])]
+	main_times = times[1]
+	mean_times = mean(times, dims = 1)[1]
 
 	# Write results to file. 
 	isdir("results") || mkdir("results")
@@ -65,7 +75,9 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 	open(filename, "w") do file
 		println(file, "########## Problem Summary  ##########")
 		println(file, "Number of Procs: ", np)
-		println(file, "Setup time: ", times[10])
+		println(file, "Main setup time: ", main_times[10])
+		println(file, "Mean setup time: ", mean_times[10])
+		println(file, "Max setup time: ", max_times[10])
 		println(file, "Number of Equations: ", fnrow)
 		println(file, "Number of Nonzero Terms: ", fnnz)
 		println(file, "")
@@ -97,12 +109,31 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 		println(file, "########## Performance Summary (times in sec) ##########")
 
 		println(file, "Benchmark Time Summary:")
-		println(file, "Optimization phase = ", times[8])
-		println(file, "DDOT = ", times[2])
-		println(file, "WAXPBY = ", times[3])
-		println(file, "SpMV = ", times[4])
-		println(file, "MG = ", times[6])
-		println(file, "Total = ", times[1])
+		println(file, "Main times:")
+		println(file, "Optimization phase = ", main_times[8])
+		println(file, "DDOT = ", main_times[2])
+		println(file, "WAXPBY = ", main_times[3])
+		println(file, "SpMV = ", main_times[4])
+		println(file, "MG = ", main_times[6])
+		println(file, "Total = ", main_times[1])
+
+		println(file, "")
+		println(file, "Mean times:")
+		println(file, "Optimization phase = ", mean_times[8])
+		println(file, "DDOT = ", mean_times[2])
+		println(file, "WAXPBY = ", mean_times[3])
+		println(file, "SpMV = ", mean_times[4])
+		println(file, "MG = ", mean_times[6])
+		println(file, "Total = ", mean_times[1])
+
+		println(file, "")
+		println(file, "Max times:")
+		println(file, "Optimization phase = ", max_times[8])
+		println(file, "DDOT = ", max_times[2])
+		println(file, "WAXPBY = ", max_times[3])
+		println(file, "SpMV = ", max_times[4])
+		println(file, "MG = ", max_times[6])
+		println(file, "Total = ", max_times[1])
 
 		println(file, "")
 		println(file, "Floating Point Operations:")
@@ -113,6 +144,7 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 		println(file, "Total = ", fnops)
 		println(file, "Total with convergence overhead = ", frefnops)
 
+		times = main_times
 		println(file, "")
 		println(file, "GB/s Summary:")
 		println(file, "Raw Read B/W = ", fnreads / times[1] / 1.0E9)

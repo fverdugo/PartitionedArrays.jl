@@ -18,7 +18,7 @@ struct Mg_preconditioner
 	r::Vector{PVector}
 	x::Vector{PVector}
 	Axf::Vector{PVector}
-	levels::Int64
+	l::Int64
 end
 
 struct Mg_preconditioner_seq
@@ -28,7 +28,7 @@ struct Mg_preconditioner_seq
 	r::Vector{Vector}
 	x::Vector{Vector}
 	Axf::Vector{Vector}
-	levels::Int64
+	l::Int64
 end
 
 mutable struct Geometry
@@ -42,7 +42,7 @@ mutable struct Geometry
 	nrows::Vector{Int64}
 end
 
-function build_pmatrix(nx, ny, nz, gnx, gny, gnz, gix0, giy0, giz0)
+function build_matrix(nx, ny, nz, gnx, gny, gnz, gix0, giy0, giz0)
 	row_count = nx * ny * nz
 
 	@assert row_count > 0
@@ -97,6 +97,25 @@ function build_pmatrix(nx, ny, nz, gnx, gny, gnz, gix0, giy0, giz0)
 	first(col_vec, current_vec_index), first(row_vec, current_vec_index), first(val_vec, current_vec_index), b, row_b
 end
 
+function build_p_matrix(ranks, tnx, tny, tnz, gnx, gny, gnz, npx, npy, npz)
+	row_partition = uniform_partition(ranks, (npx, npy, npz), (gnx, gny, gnz))
+	cis = CartesianIndices((gnx, gny, gnz))
+	IJVb = map(row_partition) do my_rows
+		gix0, giy0, giz0 = Tuple(cis[first(my_rows)])
+		I, J, V, b, I_b = build_matrix(tnx, tny, tnz, gnx, gny, gnz, gix0, giy0, giz0)
+		I, J, V, b, I_b
+	end
+	I, J, V, b, I_b = tuple_of_arrays(IJVb)
+
+	col_partition = row_partition
+	A = psparse(I, J, V, row_partition, col_partition) |> fetch
+
+	row_partition = partition(axes(A, 2))
+	b = pvector(I_b, b, row_partition) |> fetch
+	consistent!(b) |> wait
+	return A, b
+end
+
 # Create a mapping between the fine and coarse levels.
 function restrict_operator(nx, ny, nz)
 	@assert (nx % 2 == 0) && (ny % 2 == 0) && (nz % 2 == 0)
@@ -122,7 +141,6 @@ end
 
 # Setup the preconditioner, create A and b for all levels.
 function pc_setup(np, ranks, level, nx, ny, nz)
-	row_count = nx * ny * nz
 	A_vec = Vector{PSparseMatrix}(undef, level)
 	f2c = Vector{Vector{Int64}}(undef, level - 1)
 	r = Vector{PVector}(undef, level)
@@ -140,25 +158,12 @@ function pc_setup(np, ranks, level, nx, ny, nz)
 		gnx = npx * tnx
 		gny = npy * tny
 		gnz = npz * tnz
-		row_partition = uniform_partition(ranks, (npx, npy, npz), (gnx, gny, gnz))
-		cis = CartesianIndices((gnx, gny, gnz))
+		A, b = build_p_matrix(ranks, tnx, tny, tnz, gnx, gny, gnz, npx, npy, npz)
 		#show((npx, npy, npz, gnx, gny, gnz))
-		IJVb = map(row_partition) do my_rows
-			gix0, giy0, giz0 = Tuple(cis[first(my_rows)])
-			I, J, V, b, I_b = build_pmatrix(tnx, tny, tnz, gnx, gny, gnz, gix0, giy0, giz0)
-			I, J, V, b, I_b
-		end
-		I, J, V, b, I_b = tuple_of_arrays(IJVb)
 
-		col_partition = row_partition
-		A = psparse(I, J, V, row_partition, col_partition) |> fetch
-
-		row_partition = partition(axes(A, 2))
-		b = pvector(I_b, b, row_partition) |> fetch
-		consistent!(b) |> wait
 		r[i] = b
-		x[i] = pzeros(Float64, row_partition)
-
+		x[i] = similar(b)
+		x[i] .= 0
 		A_vec[i] = A
 		gs_states[i] = setup(solver, x[i], A_vec[i], b)
 
@@ -177,7 +182,7 @@ end
 
 # Calls the preconditioner with the required recursion level.
 function pc_solve!(x, state::Mg_preconditioner, b)
-	multigrid_preconditioner!(state, b, x, state.levels)
+	multigrid_preconditioner!(state, b, x, state.l)
 	x
 end
 
@@ -220,19 +225,19 @@ function p_prolongate!(x_f, x_c, f2c)
 end
 
 # # Recursive multigrid preconditioner.
-function multigrid_preconditioner!(s, b, x, level)
+function multigrid_preconditioner!(s, b, x, l)
 	x .= 0
 
-	if level == 1
-		solve!(x, s.gs_states[level], b) # bottom solve
+	if l == 1
+		solve!(x, s.gs_states[l], b) # bottom solve
 	else
-		solve!(x, s.gs_states[level], b) # presmooth
-		s.Axf[level] = s.A_vec[level] * x
-		s.r[level-1] .= 0
-		p_restrict!(s.r[level-1], b, s.Axf[level], s.f2c[level-1])
-		multigrid_preconditioner!(s, s.r[level-1], s.x[level-1], level - 1)
-		p_prolongate!(x, s.x[level-1], s.f2c[level-1])
-		solve!(x, s.gs_states[level], b) # post smooth
+		solve!(x, s.gs_states[l], b) # presmooth
+		s.Axf[l] = s.A_vec[l] * x
+		s.r[l-1] .= 0
+		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
+		multigrid_preconditioner!(s, s.r[l-1], s.x[l-1], l - 1)
+		p_prolongate!(x, s.x[l-1], s.f2c[l-1])
+		solve!(x, s.gs_states[l], b) # post smooth
 	end
 	x
 end
@@ -246,10 +251,10 @@ function HPCG_parallel(distribute, np, nx, ny, nz; total_runtime = 60)
 	ref_max_iters = 50
 
 	timing_data[10] = @elapsed begin # CG setup time
-		levels = 4
-		S, geom = pc_setup(np, ranks, levels, nx, ny, nz)
-		x = similar(S.x[levels])
-		b = S.r[levels]
+		l = 4
+		S, geom = pc_setup(np, ranks, l, nx, ny, nz)
+		x = similar(S.x[l])
+		b = S.r[l]
 	end
 
 	### Reference CG Timing Phase ###
@@ -262,7 +267,7 @@ function HPCG_parallel(distribute, np, nx, ny, nz; total_runtime = 60)
 
 	for i in 1:nr_of_cg_sets
 		x .= 0
-		@time x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[levels], b, ref_timing_data, maxiter = ref_max_iters, tolerance = 0.0, Pl = S, statevars = statevars)
+		@time x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = ref_max_iters, tolerance = 0.0, Pl = S, statevars = statevars)
 		totalNiters_ref += iters
 	end
 	ref_tol = normr / normr0
@@ -277,7 +282,7 @@ function HPCG_parallel(distribute, np, nx, ny, nz; total_runtime = 60)
 	for i in 1:nr_of_cg_sets
 		last_cummulative_time = opt_timing_data[1]
 		x .= 0
-		x, opt_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[levels], b, opt_timing_data, maxiter = opt_max_iters, tolerance = ref_tol, Pl = S, statevars = statevars)
+		x, opt_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, opt_timing_data, maxiter = opt_max_iters, tolerance = ref_tol, Pl = S, statevars = statevars)
 
 		if iters > opt_n_iters # take largest number of iterations to guarantee convergence.
 			opt_n_iters = iters
@@ -306,23 +311,39 @@ function HPCG_parallel(distribute, np, nx, ny, nz; total_runtime = 60)
 	norm_data = zeros(Float64, nr_of_cg_sets)
 	for i in 1:nr_of_cg_sets
 		x .= 0
-		x, timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[levels], b, timing_data, maxiter = opt_n_iters, tolerance = opt_tolerance, Pl = S, statevars = statevars)
+		x, timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, timing_data, maxiter = opt_n_iters, tolerance = opt_tolerance, Pl = S, statevars = statevars)
 		norm_data[i] = normr / normr0
 	end
 
+	timing_data_buf = gather(map(rank -> timing_data, ranks); destination = MAIN)
+
+	all_timing_data = zeros(Float64, (4, 10))
+	map_main(timing_data_buf) do t
+		all_timing_data = t
+	end
+
 	map_main(ranks) do _
-		report_results(np, timing_data, levels, ref_max_iters, opt_n_iters, nr_of_cg_sets, norm_data, geom)
+		report_results(np, all_timing_data, l, ref_max_iters, opt_n_iters, nr_of_cg_sets, norm_data, geom)
 	end
 end
+
+# function hpcg_benchmark()
+# 	with_mpi() do distribute
+# 		HPCG_parallel(distribute, 4, 104, 104, 104, total_runtime = 10)
+# 	end
+# end
 
 function hpcg_benchmark()
 	with_mpi() do distribute
-		HPCG_parallel(distribute, 4, 104, 104, 104, total_runtime = 60)
+		HPCG_parallel(distribute, 4, 16, 16, 16, total_runtime = 10)
 	end
 end
 
-# with_debug() do distribute
-# 	HPCG_parallel(distribute, 4, 16, 16, 16, total_runtime = 10)
-# end
-
-hpcg_benchmark()
+debug = true
+if debug
+	with_debug() do distribute
+		HPCG_parallel(distribute, 4, 16, 16, 16, total_runtime = 10)
+	end
+else
+	hpcg_benchmark()
+end
