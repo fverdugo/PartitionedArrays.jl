@@ -363,6 +363,12 @@ end
 function sparse_matrix(I,J,V,m,n;kwargs...)
     sparse_matrix(sparse,I,J,V,m,n;kwargs...)
 end
+
+function sparse_matrix(::Type{T},I,J,V,m,n;kwargs...) where T
+    f(args...) = compresscoo(T,args...)
+    sparse_matrix(f,I,J,V,m,n;kwargs...)
+end
+
 function sparse_matrix(f,I,J,V,m,n;reuse=Val(false),skip_out_of_bounds=true)
     if !skip_out_of_bounds
         I2 = I

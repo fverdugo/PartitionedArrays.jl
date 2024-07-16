@@ -1123,6 +1123,11 @@ function psparse(I,J,V,rows,cols;kwargs...)
     psparse(sparse_matrix,I,J,V,rows,cols;kwargs...)
 end
 
+function psparse(::Type{T},I,J,V,rows,cols;kwargs...) where T
+    f(args...) =  sparse_matrix(T,args...)
+    psparse(f,I,J,V,rows,cols;kwargs...)
+end
+
 """
     psparse([f,]I,J,V,row_partition,col_partition;kwargs...) -> Task
 

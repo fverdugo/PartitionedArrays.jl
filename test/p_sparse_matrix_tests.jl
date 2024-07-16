@@ -223,6 +223,7 @@ function p_sparse_matrix_tests(distribute)
         end
     end |> tuple_of_arrays
 
+    A = psparse(SparseMatrixCSC{Float64,Int32},I,J,V,row_partition,col_partition) |> fetch
     A = psparse(I,J,V,row_partition,col_partition) |> fetch
     x = pones(partition(axes(A,2)))
     y = A*x
