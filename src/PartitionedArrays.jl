@@ -167,6 +167,7 @@ export statistics
 include("p_timer.jl")
 
 export laplace_matrix_fdm
+export laplace_matrix_fem
 include("gallery.jl")
 
 end # module

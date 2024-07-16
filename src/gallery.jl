@@ -75,3 +75,103 @@ function laplace_matrix_fdm(
     I,J,V,node_partition,node_partition
 end
 
+function laplace_matrix_fem(
+        nodes_per_dir,
+        parts_per_dir,
+        parts;
+        index_type::Type{Ti} = Int64,
+        value_type::Type{Tv} = Float64,
+    ) where {Ti,Tv}
+
+    cells_per_dir = nodes_per_dir .+ 1
+
+    function is_boundary_node(node_1d,nodes_1d)
+        !(node_1d in 1:nodes_1d)
+    end
+    function ref_matrix(D,::Type{value_type}) where value_type
+        if D == 1
+            value_type[1 -1; -1 1]
+        elseif D == 2
+            a = 2/3
+            b = -1/3
+            c = -1/6
+            value_type[a c c b; c a b c; c b a c; b c c a]
+        else
+            error()
+        end
+    end
+    function setup(cells,::Type{index_type},::Type{value_type}) where {index_type,value_type}
+        D = length(nodes_per_dir)
+        α = value_type(prod(i->(i+1),nodes_per_dir))
+        Aref = α*ref_matrix(D,value_type)#ones(value_type,2^D,2^D)
+        cell_to_cartesian_cell = CartesianIndices(cells_per_dir)
+        first_cartesian_cell = cell_to_cartesian_cell[first(cells)]
+        last_cartesian_cell = cell_to_cartesian_cell[last(cells)]
+        ranges = map(:,Tuple(first_cartesian_cell),Tuple(last_cartesian_cell))
+        cartesian_cells = CartesianIndices(ranges)
+        ttt = ntuple(d->2,Val{D}())
+        cartesian_local_nodes = CartesianIndices(ttt)
+        offset = CartesianIndex(ttt)
+        cartesian_local_node_to_local_node = LinearIndices(cartesian_local_nodes)
+        cartesian_node_to_node = LinearIndices(nodes_per_dir)
+        nnz = 0 
+        for cartesian_cell in cartesian_cells
+            for cartesian_local_node_i in cartesian_local_nodes
+                local_node_i = cartesian_local_node_to_local_node[cartesian_local_node_i]
+                cartesian_node_i = cartesian_cell .+ cartesian_local_node_i .- offset
+                boundary = any(map(is_boundary_node,Tuple(cartesian_node_i),nodes_per_dir))
+                if boundary
+                    continue
+                end
+                node_i = cartesian_node_to_node[cartesian_node_i]
+                for cartesian_local_node_j in cartesian_local_nodes
+                    local_node_j = cartesian_local_node_to_local_node[cartesian_local_node_j]
+                    cartesian_node_j = cartesian_cell .+ cartesian_local_node_j .- offset
+                    boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                    if boundary
+                        continue
+                    end
+                    node_j = cartesian_node_to_node[cartesian_node_j]
+                    nnz += 1
+                end
+            end
+        end
+        myI = zeros(index_type,nnz)
+        myJ = zeros(index_type,nnz)
+        myV = zeros(value_type,nnz)
+        k = 0 
+        for cartesian_cell in cartesian_cells
+            for cartesian_local_node_i in cartesian_local_nodes
+                local_node_i = cartesian_local_node_to_local_node[cartesian_local_node_i]
+                cartesian_node_i = cartesian_cell .+ cartesian_local_node_i .- offset
+                boundary = any(map(is_boundary_node,Tuple(cartesian_node_i),nodes_per_dir))
+                if boundary
+                    continue
+                end
+                node_i = cartesian_node_to_node[cartesian_node_i]
+                for cartesian_local_node_j in cartesian_local_nodes
+                    local_node_j = cartesian_local_node_to_local_node[cartesian_local_node_j]
+                    cartesian_node_j = cartesian_cell .+ cartesian_local_node_j .- offset
+                    boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                    if boundary
+                        continue
+                    end
+                    node_j = cartesian_node_to_node[cartesian_node_j]
+                    k += 1
+                    myI[k] = node_i
+                    myJ[k] = node_j
+                    myV[k] = Aref[local_node_i,local_node_j]
+                end
+            end
+        end
+        myI,myJ,myV
+    end
+    node_partition = uniform_partition(parts,parts_per_dir,nodes_per_dir)
+    cell_partition = uniform_partition(parts,parts_per_dir,cells_per_dir)
+    I,J,V = map(cell_partition) do cells
+        setup(cells,Ti,Tv)
+    end |> tuple_of_arrays
+    I,J,V,node_partition,node_partition
+end
+
+
