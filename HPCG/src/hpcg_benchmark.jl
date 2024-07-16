@@ -242,7 +242,7 @@ function multigrid_preconditioner!(s, b, x, l)
 	x
 end
 
-function HPCG_parallel(distribute, np, nx, ny, nz; total_runtime = 60)
+function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60)
 	ranks = distribute(LinearIndices((np,)))
 
 	timing_data = zeros(Float64, 10)
@@ -333,17 +333,17 @@ end
 # 	end
 # end
 
-function hpcg_benchmark()
+function hpcg_benchmark_mpi()
 	with_mpi() do distribute
-		HPCG_parallel(distribute, 4, 16, 16, 16, total_runtime = 10)
+		hpcg_benchmark(distribute, 4, 16, 16, 16, total_runtime = 10)
 	end
 end
 
 debug = true
 if debug
 	with_debug() do distribute
-		HPCG_parallel(distribute, 4, 16, 16, 16, total_runtime = 10)
+		hpcg_benchmark(distribute, 1, 16, 16, 16, total_runtime = 10)
 	end
 else
-	hpcg_benchmark()
+	hpcg_benchmark_mpi()
 end
