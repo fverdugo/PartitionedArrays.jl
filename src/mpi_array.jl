@@ -43,7 +43,7 @@ function distribute_with_mpi(a;comm::MPI.Comm=MPI.COMM_WORLD,duplicate_comm=true
     if !MPI.Initialized()
         MPI.Init()
     end
-    msg = "Number of MPI ranks needs to be the same as items in the given array"
+    msg = "Number of MPI ranks ($(MPI.Comm_size(comm))) needs to be the same as items in the given array ($(length(a)))"
     @assert length(a) == MPI.Comm_size(comm) msg
     if duplicate_comm
         comm = MPI.Comm_dup(comm)
