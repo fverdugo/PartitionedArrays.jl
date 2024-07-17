@@ -7,7 +7,7 @@ using IterativeSolvers
 using BenchmarkTools
 using DelimitedFiles
 
-include("timed_cg.jl")
+include("cg.jl")
 include("report_results.jl")
 
 struct Mg_preconditioner

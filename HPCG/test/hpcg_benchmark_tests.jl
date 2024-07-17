@@ -1,17 +1,31 @@
+include("../src/hpcg_benchmark.jl")
 
+function hpcg_tests(distribute)
+	np = 4
+	nx = ny = nz = 16
+	l = 4
+	ranks = distribute(LinearIndices((np,)))
 
+	I, J, V, b, I_b = build_matrix(32, 32, 16, 32, 32, 16, 1, 1, 1)
+	A_seq = sparse(I, J, V)
 
-I, J, V, b, I_b = build_matrix(32, 32, 16, 32, 32, 16, 0, 0, 0)
-A_seq = sparse(I, J, V)
+	pA, pb = build_p_matrix(ranks, nx, ny, nz, 32, 32, 16, 2, 2, 1)
 
-pA, pb = build_p_matrix(4, 16, 16, 16, 32, 32, 16, 2, 2, 1)
+	@test isequal(A_seq, centralize(pA))
 
-@test isequal(A_seq, centralize(pA))
+	@test isequal(b, collect(pb))
 
-@test isequal(b, collect(pb))
+	# convergence test
+	nx = ny = nz = 32
+	S, geom = pc_setup(np, ranks, l, nx, ny, nz)
+	ref_timing_data = zeros(Float64, 10)
+	x = similar(S.x[l])
+	x .= 0
+	statevars = CGStateVariables(zero(x), similar(x), similar(x))
+	b = S.r[l]
+	x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = 50, tolerance = 0.0, Pl = S, statevars = statevars)
 
-# # test sequential processing
-# hpcg_benchmark()
-
-# # test parallel processing
-# hpcg_benchmark()
+	ref_tol = normr / normr0
+	# expected tolerance = 2.877476184683206e-13
+	@test ref_tol < 1.0E-12
+end
