@@ -1120,7 +1120,8 @@ function psparse(f,row_partition,col_partition;assembled)
 end
 
 function psparse(I,J,V,rows,cols;kwargs...)
-    psparse(sparse_matrix,I,J,V,rows,cols;kwargs...)
+    T = SparseMatrixCSC{eltype(V),Int32}
+    psparse(T,I,J,V,rows,cols;kwargs...)
 end
 
 function psparse(::Type{T},I,J,V,rows,cols;kwargs...) where T
