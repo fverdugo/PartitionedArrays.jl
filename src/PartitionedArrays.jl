@@ -166,4 +166,8 @@ export toc!
 export statistics
 include("p_timer.jl")
 
+export laplacian_fdm
+export laplacian_fem
+include("gallery.jl")
+
 end # module
