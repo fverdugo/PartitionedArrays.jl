@@ -277,6 +277,7 @@ function nzindex(A::SparseMatrixCSR, i0::Integer, i1::Integer)
   ((k > r2) || (colvals(A)[k] != i1o)) ? 0 : k
 end
 
+# TODO remove and simply use sparse_matrix
 """
     compresscoo(T,args...)
 
@@ -394,7 +395,8 @@ function sparse_matrix(I,J,V,m,n;kwargs...)
     sparse_matrix(SparseMatrixCSC{Tv,Ti},I,J,V,m,n;kwargs...)
 end
 
-function sparse_matrix(::Type{T},I,J,V,m,n;reuse=Val(false),combine=+,skip=true) where T
+function sparse_matrix(
+    ::Type{T},I,J,V,m,n;reuse=Val(false),combine=+,skip=true) where T
     A = compresscoo(T,I,J,V,m,n;combine,skip)
     if val_parameter(reuse)
         K = precompute_nzindex(A,I,J)

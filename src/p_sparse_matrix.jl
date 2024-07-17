@@ -1137,10 +1137,10 @@ instance of [`PSparseMatrix`](@ref) allowing latency hiding while performing
 the communications needed in its setup.
 """
 function psparse(f,I,J,V,rows,cols;
-        split_format=true,
-        subassembled=false,
-        assembled=false,
-        assemble=true,
+        split_format=Val(true),
+        subassembled=Val(false),
+        assembled=Val(false),
+        assemble=Val(true),
         indices = :global,
         restore_ids = true,
         assembly_neighbors_options_rows = (;),
@@ -1157,10 +1157,10 @@ function psparse(f,I,J,V,rows,cols;
     # merged with the assembly step
 
     # Checks
-    disassembled = (!subassembled && ! assembled) ? true : false
+    disassembled = (!val_parameter(subassembled) && ! val_parameter(assembled)) ? true : false
 
     @assert indices in (:global,:local)
-    if count((subassembled,assembled)) == 2
+    if count((val_parameter(subassembled),val_parameter(assembled))) == 2
         error("Only one of the folling flags can be set to true: subassembled, assembled")
     end
     if indices === :global
@@ -1179,7 +1179,7 @@ function psparse(f,I,J,V,rows,cols;
         rows_sa = map(union_ghost,rows,I,I_owner)
         cols_sa = map(union_ghost,cols,J,J_owner)
         assembly_neighbors(rows_sa;assembly_neighbors_options_rows...)
-        if ! assemble
+        if ! val_parameter(assemble)
             # We only need this if we want a subassembled output.
             # For assembled output, this call will be deleted when optimizing
             # the code to do the conversions in a single shot.
@@ -1195,18 +1195,18 @@ function psparse(f,I,J,V,rows,cols;
             map(map_local_to_global!,I,rows_sa)
             map(map_local_to_global!,J,cols_sa)
         end
-        A = PSparseMatrix(values_sa,rows_sa,cols_sa,assembled)
-        if split_format
-            B,cacheB = PartitionedArrays.split_format(A;reuse=true)
+        A = PSparseMatrix(values_sa,rows_sa,cols_sa,val_parameter(assembled))
+        if split_format |> val_parameter
+            B,cacheB = PartitionedArrays.split_format(A;reuse=Val{true}())
         else
             B,cacheB = A,nothing
         end
-        if assemble
-            t = PartitionedArrays.assemble(B,rows;reuse=true,assembly_neighbors_options_cols)
+        if val_parameter(assemble)
+            t = PartitionedArrays.assemble(B,rows;reuse=Val{true}(),assembly_neighbors_options_cols)
         else
             t = @fake_async B,cacheB
         end
-    elseif subassembled
+    elseif val_parameter(subassembled)
         rows_sa = rows
         cols_sa = cols
         if assembled_rows == nothing
@@ -1224,18 +1224,18 @@ function psparse(f,I,J,V,rows,cols;
             map(map_local_to_global!,I,rows_sa)
             map(map_local_to_global!,J,cols_sa)
         end
-        A = PSparseMatrix(values_sa,rows_sa,cols_sa,assembled)
-        if split_format
-            B,cacheB = PartitionedArrays.split_format(A;reuse=true)
+        A = PSparseMatrix(values_sa,rows_sa,cols_sa,val_parameter(assembled))
+        if split_format |> val_parameter
+            B,cacheB = PartitionedArrays.split_format(A;reuse=Val{true}())
         else
             B,cacheB = A,nothing
         end
-        if assemble
-            t = PartitionedArrays.assemble(B,assembled_rows;reuse=true,assembly_neighbors_options_cols)
+        if val_parameter(assemble)
+            t = PartitionedArrays.assemble(B,assembled_rows;reuse=Val{true}(),assembly_neighbors_options_cols)
         else
             t = @fake_async B,cacheB
         end
-    elseif assembled
+    elseif val_parameter(assembled)
         rows_fa = rows
         cols_fa = cols
         if indices === :global
@@ -1250,9 +1250,9 @@ function psparse(f,I,J,V,rows,cols;
             map(map_local_to_global!,I,rows_fa)
             map(map_local_to_global!,J,cols_fa)
         end
-        A = PSparseMatrix(values_fa,rows_fa,cols_fa,assembled)
-        if split_format
-            B,cacheB = PartitionedArrays.split_format(A;reuse=true)
+        A = PSparseMatrix(values_fa,rows_fa,cols_fa,val_parameter(assembled))
+        if split_format |> val_parameter
+            B,cacheB = PartitionedArrays.split_format(A;reuse=Val{true}())
         else
             B,cacheB = A,nothing
         end
@@ -1268,7 +1268,7 @@ function psparse(f,I,J,V,rows,cols;
     else
         return @fake_async begin
             C, cacheC = fetch(t)
-            cache = (A,B,K,cacheB,cacheC,split_format,assembled) 
+            cache = (A,B,K,cacheB,cacheC,val_parameter(split_format),val_parameter(assembled))
             (C, cache)
         end
     end

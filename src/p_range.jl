@@ -1589,12 +1589,12 @@ end
 
 function find_owner(indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSize})
     map(indices,global_ids) do indices,global_ids
-        start = map(indices.np,indices.n) do np,n
+        start2 = map(indices.np,indices.n) do np,n
             start = [ first(local_range(p,np,n)) for p in 1:np ]
             push!(start,n+1)
             start
         end
-        global_to_owner = BlockPartitionGlobalToOwner(start)
+        global_to_owner = BlockPartitionGlobalToOwner(start2)
         map_global_to_owner(global_ids,global_to_owner)
     end
 end
