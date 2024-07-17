@@ -1,5 +1,5 @@
 
-function laplace_matrix_fdm(
+function laplacian_fdm(
         nodes_per_dir,
         parts_per_dir,
         parts;
@@ -75,7 +75,7 @@ function laplace_matrix_fdm(
     I,J,V,node_partition,node_partition
 end
 
-function laplace_matrix_fem(
+function laplacian_fem(
         nodes_per_dir,
         parts_per_dir,
         parts;
@@ -88,29 +88,60 @@ function laplace_matrix_fem(
     function is_boundary_node(node_1d,nodes_1d)
         !(node_1d in 1:nodes_1d)
     end
-    function ref_matrix(D,::Type{value_type}) where value_type
-        if D == 1
-            value_type[1 -1; -1 1]
-        elseif D == 2
-            a = 2/3
-            b = -1/3
-            c = -1/6
-            value_type[a c c b; c a b c; c b a c; b c c a]
-        else
-            error()
+    function ref_matrix(cartesian_local_nodes,h_per_dir,::Type{value_type}) where value_type
+        D = ndims(cartesian_local_nodes)
+        gp_1d = value_type[-sqrt(3)/3,sqrt(3)/3]
+        sf_1d = zeros(value_type,length(gp_1d),2)
+        sf_1d[:,1] = 0.5 .* (1 .- gp_1d)
+        sf_1d[:,2] = 0.5 .* (gp_1d .+ 1)
+        sg_1d = zeros(value_type,length(gp_1d),2)
+        sg_1d[:,1] .= - 0.5
+        sg_1d[:,2] .=  0.5
+        cartesian_points = CartesianIndices(ntuple(d->length(gp_1d),Val{D}()))
+        cartesian_local_node_to_local_node = LinearIndices(cartesian_local_nodes)
+        cartesian_point_to_point = LinearIndices(cartesian_points)
+        n = 2^D
+        sg = Matrix{NTuple{D,value_type}}(undef,n,length(gp_1d)^D)
+        for cartesian_local_node in cartesian_local_nodes
+            local_node = cartesian_local_node_to_local_node[cartesian_local_node]
+            local_node_tuple = Tuple(cartesian_local_node)
+            for cartesian_point in cartesian_points
+                point = cartesian_point_to_point[cartesian_point]
+                point_tuple = Tuple(cartesian_point)
+                v = ntuple(Val{D}()) do d
+                    prod(1:D) do i
+                        if i == d
+                            (2/h_per_dir[d])*sg_1d[local_node_tuple[d],point_tuple[d]]
+                        else
+                            sf_1d[local_node_tuple[i],point_tuple[i]]
+                        end
+                    end
+                end
+                sg[local_node,point] = v
+            end
         end
+        Aref = zeros(value_type,n,n)
+        dV = prod(h_per_dir)/(2^D)
+        for i in 1:n
+            for j in 1:n
+                for k in 1:n
+                    Aref[i,j] += dV*dot(sg[k,i],sg[k,j])
+                end
+            end
+        end
+        Aref
     end
     function setup(cells,::Type{index_type},::Type{value_type}) where {index_type,value_type}
         D = length(nodes_per_dir)
-        α = value_type(prod(i->(i+1),nodes_per_dir))
-        Aref = α*ref_matrix(D,value_type)#ones(value_type,2^D,2^D)
+        h_per_dir = map(i->1/(i+1),nodes_per_dir)
+        ttt = ntuple(d->2,Val{D}())
+        cartesian_local_nodes = CartesianIndices(ttt)
+        Aref = ref_matrix(cartesian_local_nodes,h_per_dir,value_type)#ones(value_type,2^D,2^D)
         cell_to_cartesian_cell = CartesianIndices(cells_per_dir)
         first_cartesian_cell = cell_to_cartesian_cell[first(cells)]
         last_cartesian_cell = cell_to_cartesian_cell[last(cells)]
         ranges = map(:,Tuple(first_cartesian_cell),Tuple(last_cartesian_cell))
         cartesian_cells = CartesianIndices(ranges)
-        ttt = ntuple(d->2,Val{D}())
-        cartesian_local_nodes = CartesianIndices(ttt)
         offset = CartesianIndex(ttt)
         cartesian_local_node_to_local_node = LinearIndices(cartesian_local_nodes)
         cartesian_node_to_node = LinearIndices(nodes_per_dir)
