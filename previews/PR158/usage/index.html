@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Usage · PartitionedArrays.jl</title><meta name="title" content="Usage · PartitionedArrays.jl"/><meta property="og:title" content="Usage · PartitionedArrays.jl"/><meta property="twitter:title" content="Usage · PartitionedArrays.jl"/><meta name="description" content="Documentation for PartitionedArrays.jl."/><meta property="og:description" content="Documentation for PartitionedArrays.jl."/><meta property="twitter:description" content="Documentation for PartitionedArrays.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/custom.css" rel="stylesheet" type="text/css"/><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="PartitionedArrays.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">PartitionedArrays.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li class="is-active"><a class="tocitem" href>Usage</a><ul class="internal"><li><a class="tocitem" href="#Basic-usage"><span>Basic usage</span></a></li><li><a class="tocitem" href="#Debugging"><span>Debugging</span></a></li><li><a class="tocitem" href="#Running-MPI-code-safely"><span>Running MPI code safely</span></a></li><li><a class="tocitem" href="#Benchmarking-distributed-codes"><span>Benchmarking distributed codes</span></a></li></ul></li><li><a class="tocitem" href="../examples/">Examples</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../jacobi_tutorial/">Jacobi method</a></li></ul></li><li><span class="tocitem">Reference</span><ul><li><a class="tocitem" href="../reference/backends/">Back-ends</a></li><li><a class="tocitem" href="../reference/arraymethods/">Array methods</a></li><li><a class="tocitem" href="../reference/primitives/">Parallel primitives</a></li><li><a class="tocitem" href="../reference/partition/">Data partition</a></li><li><a class="tocitem" href="../reference/pvector/">PVector</a></li><li><a class="tocitem" href="../reference/psparsematrix/">PSparseMatrix</a></li><li><a class="tocitem" href="../reference/ptimer/">Benchmarking</a></li><li><a class="tocitem" href="../reference/advanced/">Advanced</a></li><li><a class="tocitem" href="../reference/helpers/">Helpers</a></li><li><a class="tocitem" href="../reference/gallery/">Gallery</a></li></ul></li><li><a class="tocitem" href="../refindex/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Usage</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Usage</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/fverdugo/PartitionedArrays.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/fverdugo/PartitionedArrays.jl/blob/master/docs/src/usage.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Usage"><a class="docs-heading-anchor" href="#Usage">Usage</a><a id="Usage-1"></a><a class="docs-heading-anchor-permalink" href="#Usage" title="Permalink"></a></h1><p>PartitionedArrays considers a data-oriented programming model that allows one to write distributed algorithms in a generic way, independent from the message passing back-end used to run them. The basic abstraction of this model consists in expressing distributed data using array containers. The particular container type will depend on the back-end used to run the code in parallel. MPI is one of the possible back-ends, used to run large cases on computational clusters. However, one can also use serial arrays to prototype and debug complex codes in an effective way.</p><h2 id="Basic-usage"><a class="docs-heading-anchor" href="#Basic-usage">Basic usage</a><a id="Basic-usage-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-usage" title="Permalink"></a></h2><p>We want each rank in a distributed system to print its rank id and the total number of ranks. The distributed data are the rank ids. If we have an array with all rank ids, printing the messages is trivial with <code>map</code> function.</p><pre><code class="language-julia hljs">np = 4
+ranks = LinearIndices((np,))
+map(ranks) do rank
+   println(&quot;I am proc $rank of $np.&quot;)
+end</code></pre><p>Previous code is not parallel (yet). However, it can be easily parallelized if one considers a suitable distributed array type that overloads <code>map</code> with a parallel implementation.</p><pre><code class="language-julia hljs"># hello_mpi.jl
+using PartitionedArrays
+np = 4
+ranks = distribute_with_mpi(LinearIndices((np,)))
+map(ranks) do rank
+   println(&quot;I am proc $rank of $np.&quot;)
+end</code></pre><p>Now this code is parallel. Function <code>distribute_with_mpi</code> takes an array and distributes it over the different ranks of a given MPI communicator (a duplicate of <code>MPI.COMM_WORLD</code> by default). The type of the result is an array type called <code>MPIArray</code>, which overloads function <code>map</code> with a parallel implementation. Function <code>distribute_with_mpi</code> assigns exactly one item in the input array to each rank in the communicator. Thus, the resulting array <code>ranks</code> will be distributed in such a way that each MPI rank will get an integer corresponding to its (1-based) rank id. If we place   this code in a file called <code>&quot;hello_mpi.jl&quot;</code>, we can run it as any Julia applications using the MPI API in   <code>MPI.jl</code>. For instance,</p><pre><code class="language-julia hljs">using MPI
+mpiexec(cmd-&gt;run(`$cmd -np 4 julia --project=. hello_mpi.jl`))</code></pre><p>The construction of the array <code>ranks</code> containing the rank ids is just the first step of a computation using PartitionedArrays. See the <a href="../examples/#Examples">Examples</a> for more interesting cases.</p><h2 id="Debugging"><a class="docs-heading-anchor" href="#Debugging">Debugging</a><a id="Debugging-1"></a><a class="docs-heading-anchor-permalink" href="#Debugging" title="Permalink"></a></h2><p>One of the main advantages of PartitionedArrays is that it allows one to write and debug your parallel code without using MPI. This makes possible to use the standard Julia development workflow (e.g., Revise)  when implementing distributed applications, which is certainly useful. This ability comes from the fact that one can use standard serial Julia arrays to test your application based on PartitionedArrays. However, the array type <code>MPIArray</code> resulting after distributing data over MPI processes, is not as flexible as the standard arrays in Julia. There are operations that are not allowed for <code>MPIArray</code>, mainly for performance reasons. One of them is indexing the array at arbitrary indices. In consequence, code that runs with the common Julia arrays might fall when switching to MPI. In order to anticipate these type of errors, PartitionedArrays provides an special array type called <code>DebugArray</code> for debugging purposes. The type <code>DebugArray</code> tries to mimic the limitations of <code>MPIArray</code> but it is just a wrapper to a standard Julia array and therefore can be used in a standard Julia session.</p><pre><code class="language-julia hljs">using PartitionedArrays
+np = 4
+ranks = DebugArray(LinearIndices((np,)))
+ranks[3] # Error!</code></pre><p>The last line of previous code will throw an error telling that scalar indexing is not allowed. This is to mimic the error you would get in production when using MPI.</p><pre><code class="language-julia hljs">using PartitionedArrays
+with_mpi() do distribute
+    np = 4
+    ranks = distribute(LinearIndices((np,)))
+    ranks[3] # Error!
+end</code></pre><p>We also provide function <code>with_debug</code> which allows to easily switch from one back-end to the other. For instance, if we define the following main function</p><pre><code class="language-julia hljs">using PartitionedArrays
+function main(distribute)
+    np = 4
+    ranks = distribute(LinearIndices((np,)))
+    map(ranks) do rank
+       println(&quot;I am proc $rank of $np&quot;)
+    end
+end</code></pre><p>then <code>with_debug(main)</code> and <code>with_mpi(main)</code> will run the code using the debug back-end and MPI respectively. If you want to run in using native Julia arrays, you can simply call <code>main(identity)</code>. Make sure that your code works using <code>DebugArray</code> before moving to MPI.</p><h2 id="Running-MPI-code-safely"><a class="docs-heading-anchor" href="#Running-MPI-code-safely">Running MPI code safely</a><a id="Running-MPI-code-safely-1"></a><a class="docs-heading-anchor-permalink" href="#Running-MPI-code-safely" title="Permalink"></a></h2><p>MPI applications should call <code>MPI.Abort</code> if they stop prematurely (e.g., by an error). The Julia error handling system is not aware of that. For this reasons, codes like the following one will crash and stop without calling <code>MPI.Abort</code>.</p><pre><code class="language-julia hljs">using PartitionedArrays
+np = 3
+ranks = distribute_with_mpi(LinearIndices((np,)))
+map(ranks) do rank
+    if rank == 2
+        error(&quot;I have crashed&quot;)
+    end
+end</code></pre><p>Even worse, the code will crash only in the 2nd MPI process. The other processes will finish normally. This can lead to zombie MPI processes running in the background (and provably consuming quota in your cluster account until the queuing system kills them). To fix this, PartitionedArrays provides function <code>with_mpi</code>. We rewrite the previous example using it.</p><pre><code class="language-julia hljs">using PartitionedArrays
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    map(ranks) do rank
+        if rank == 2
+            error(&quot;I have crashed&quot;)
+        end
+    end
+end</code></pre><p>Essentially, <code>with_mpi(f)</code> calls <code>f(distribute_with_mpi)</code> in a <code>try</code>-<code>catch</code> block. If some error is cached,  <code>MPI.Abort</code> will be called, safely finishing all the MPI processes, also the ones that did not experienced the error.</p><h2 id="Benchmarking-distributed-codes"><a class="docs-heading-anchor" href="#Benchmarking-distributed-codes">Benchmarking distributed codes</a><a id="Benchmarking-distributed-codes-1"></a><a class="docs-heading-anchor-permalink" href="#Benchmarking-distributed-codes" title="Permalink"></a></h2><p>When using MPI, the computational time to run some code can be different for each one of the processes. Usually, one measures the time for each process and computes some statistics of the resulting values. This is done by doing time measurements with the tool of your choice and then <code>gather</code>ing the results on the root for further analysis. Note that this is possible thanks to the changes in version 0.4.1 that allow one to use  <code>gather</code> on arbitrary objects.</p><p>In the following example, we force different computation times at each of the processes by sleeping a value proportional to the rank id. We gather all the timings in the main process and compute some statistics:</p><pre><code class="language-julia hljs">using PartitionedArrays
+using Statistics
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = @elapsed map(ranks) do rank
+        sleep(rank)
+    end
+    ts = gather(map(rank-&gt;t,ranks))
+    map_main(ts) do ts
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end</code></pre><pre><code class="nohighlight hljs">ts = [1.001268313, 2.0023204, 3.001216396]
+maximum(ts) = 3.001216396
+minimum(ts) = 1.001268313
+Statistics.mean(ts) = 2.001601703</code></pre><p>This mechanism also works for the other back-ends. For sequential ones, it provides the time spend by all parts combined. Note how we define <code>t</code> (outside the call to <code>map</code>) and the object passed to <code>gather</code>.</p><pre><code class="language-julia hljs">using PartitionedArrays
+using Statistics
+with_debug() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = @elapsed map(ranks) do rank
+        sleep(rank)
+    end
+    ts = gather(map(rank-&gt;t,ranks))
+    map_main(ts) do ts
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end;</code></pre><pre><code class="nohighlight hljs">ts = [6.009726399, 6.009726399, 6.009726399]
+maximum(ts) = 6.009726399
+minimum(ts) = 6.009726399
+Statistics.mean(ts) = 6.009726398999999</code></pre><p>We can also consider more sophisticated ways of measuring the times, e.g., with <a href="https://github.com/KristofferC/TimerOutputs.jl">TimerOutputs</a>.</p><pre><code class="language-julia hljs">using PartitionedArrays
+using Statistics
+using TimerOutputs
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    to = TimerOutput()
+    @timeit to &quot;phase 1&quot; map(ranks) do rank
+        sleep(rank)
+    end
+    @timeit to &quot;phase 2&quot; map(ranks) do rank
+        sleep(2*rank)
+    end
+    tos = gather(map(rank-&gt;to,ranks))
+    map_main(tos) do tos
+        # check the timings on the first rank
+        display(tos[1])
+        # compute statistics for phase 1
+        ts = map(tos) do to
+            TimerOutputs.time(to[&quot;phase 1&quot;])
+        end
+        @show ts
+        @show maximum(ts)
+        @show minimum(ts)
+        @show Statistics.mean(ts)
+    end
+end</code></pre><pre><code class="nohighlight hljs"> ────────────────────────────────────────────────────────────────────
+                            Time                    Allocations      
+                   ───────────────────────   ────────────────────────
+ Tot / % measured:      10.3s /  29.3%           44.9MiB /   0.0%    
+
+ Section   ncalls     time    %tot     avg     alloc    %tot      avg
+ ────────────────────────────────────────────────────────────────────
+ phase 2        1    2.00s   66.6%   2.00s      120B   50.0%     120B
+ phase 1        1    1.00s   33.4%   1.00s      120B   50.0%     120B
+ ────────────────────────────────────────────────────────────────────
+ts = [1002323746, 2001614329, 3004363808]
+maximum(ts) = 3004363808
+minimum(ts) = 1002323746
+Statistics.mean(ts) = 2.0027672943333333e9</code></pre><p>In addition, the library provides a special timer type called <a href="../reference/ptimer/#PTimer"><code>PTimer</code></a>.</p><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p><code>PTimer</code> has been deprecated. Do time measurements with the tool of your choice and then <code>gather</code> the results on the root for further analysis (see above).</p></div></div><p>In the following example we force different computation times at each of the processes by sleeping a value proportional to the rank id. When displayed, the instance of <a href="../reference/ptimer/#PTimer"><code>PTimer</code></a> shows some statistics of the times over the different processes.</p><pre><code class="language-julia hljs">using PartitionedArrays
+with_mpi() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = PTimer(ranks)
+    tic!(t)
+    map(ranks) do rank
+        sleep(rank)
+    end
+    toc!(t,&quot;Sleep&quot;)
+    display(t)
+end</code></pre><pre><code class="nohighlight hljs">───────────────────────────────────────────
+Section         max         min         avg
+───────────────────────────────────────────
+Sleep     3.021e+00   1.021e+00   2.021e+00
+───────────────────────────────────────────</code></pre><p>This mechanism also works for the other back-ends. For sequential ones, it provides the time spend by all parts combined.</p><pre><code class="language-julia hljs">using PartitionedArrays
+with_debug() do distribute
+    np = 3
+    ranks = distribute(LinearIndices((np,)))
+    t = PTimer(ranks)
+    tic!(t)
+    map(ranks) do rank
+        sleep(rank)
+    end
+    toc!(t,&quot;Sleep&quot;)
+    display(t)
+end</code></pre><pre><code class="nohighlight hljs">───────────────────────────────────────────
+Section         max         min         avg
+───────────────────────────────────────────
+Sleep     6.010e+00   6.010e+00   6.010e+00
+───────────────────────────────────────────</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../examples/">Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.5.0 on <span class="colophon-date" title="Wednesday 17 July 2024 15:12">Wednesday 17 July 2024</span>. Using Julia version 1.10.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
