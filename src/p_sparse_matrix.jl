@@ -1817,6 +1817,23 @@ for op in (:+,:-)
     end
 end
 
+muladd!(b,A,x) = mul!(b,A,x,one(eltype(b)),one(eltype(b)))
+
+function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector)
+    @boundscheck @assert matching_own_indices(axes(c,1),axes(a,1))
+    @boundscheck @assert matching_own_indices(axes(a,2),axes(b,1))
+    @boundscheck @assert matching_ghost_indices(axes(a,2),axes(b,1))
+    if ! a.assembled
+        @boundscheck @assert matching_ghost_indices(axes(a,1),axes(c,1))
+        return mul!(c,a,b,1,0)
+    end
+    t = consistent!(b)
+    foreach(mul!,own_values(c),own_own_values(a),own_values(b))
+    wait(t)
+    foreach(muladd!,own_values(c),own_ghost_values(a),ghost_values(b))
+    c
+end
+
 function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector,α::Number,β::Number)
     @boundscheck @assert matching_own_indices(axes(c,1),axes(a,1))
     @boundscheck @assert matching_own_indices(axes(a,2),axes(b,1))
