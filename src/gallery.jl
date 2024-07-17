@@ -169,7 +169,8 @@ function laplacian_fem(
         for cartesian_cell in cartesian_cells
             for cartesian_local_node_i in cartesian_local_nodes
                 local_node_i = cartesian_local_node_to_local_node[cartesian_local_node_i]
-                cartesian_node_i = cartesian_cell .+ cartesian_local_node_i .- offset
+                # This is ugly to support Julia 1.6 (idem below)
+                cartesian_node_i = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_i) .- Tuple(offset))
                 boundary = any(map(is_boundary_node,Tuple(cartesian_node_i),nodes_per_dir))
                 if boundary
                     continue
@@ -177,7 +178,7 @@ function laplacian_fem(
                 node_i = cartesian_node_to_node[cartesian_node_i]
                 for cartesian_local_node_j in cartesian_local_nodes
                     local_node_j = cartesian_local_node_to_local_node[cartesian_local_node_j]
-                    cartesian_node_j = cartesian_cell .+ cartesian_local_node_j .- offset
+                    cartesian_node_j = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_j) .- Tuple(offset))
                     boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
                     if boundary
                         continue
@@ -194,7 +195,7 @@ function laplacian_fem(
         for cartesian_cell in cartesian_cells
             for cartesian_local_node_i in cartesian_local_nodes
                 local_node_i = cartesian_local_node_to_local_node[cartesian_local_node_i]
-                cartesian_node_i = cartesian_cell .+ cartesian_local_node_i .- offset
+                cartesian_node_i = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_i) .- Tuple(offset))
                 boundary = any(map(is_boundary_node,Tuple(cartesian_node_i),nodes_per_dir))
                 if boundary
                     continue
@@ -202,7 +203,7 @@ function laplacian_fem(
                 node_i = cartesian_node_to_node[cartesian_node_i]
                 for cartesian_local_node_j in cartesian_local_nodes
                     local_node_j = cartesian_local_node_to_local_node[cartesian_local_node_j]
-                    cartesian_node_j = cartesian_cell .+ cartesian_local_node_j .- offset
+                    cartesian_node_j = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_j) .- Tuple(offset))
                     boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
                     if boundary
                         continue
