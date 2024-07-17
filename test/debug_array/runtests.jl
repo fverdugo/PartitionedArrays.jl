@@ -13,6 +13,8 @@ using PartitionedArrays
 
 @testset "p_sparse_matrix" begin include("p_sparse_matrix_tests.jl")  end
 
+@testset "gallery" begin include("gallery_tests.jl")  end
+
 @testset "p_timer" begin include("p_timer_tests.jl")  end
 
 @testset "fdm_example" begin include("fdm_example.jl")  end
