@@ -3,23 +3,21 @@ module HPCG
 using PartitionedArrays
 using PartitionedSolvers
 using LinearAlgebra
-using Test
-using SparseArrays
-using IterativeSolvers
-using BenchmarkTools
 using DelimitedFiles
+using Dates
+using Statistics
+using Primes
+using DataStructures
+import Base: iterate
 
-export build_pmatrix
-export restrict_operator
+export hpcg_benchmark_mpi
+export hpcg_benchmark_debug
+export hpcg_benchmark
+
+export build_matrix
+export build_p_matrix
+export ref_cg!
 export pc_setup
-export pc_solve!
-export restrict!
-export prolongate!
-export multigrid_preconditioner!
-export HPCG_benchmark
 include("hpcg_benchmark.jl")
-
-export compute_optimal_shape_XYZ
-include("compute_optimal_xyz.jl")
 
 end # module HPCG

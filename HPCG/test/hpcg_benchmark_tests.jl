@@ -1,6 +1,17 @@
-include("../src/hpcg_benchmark.jl")
+using HPCG
+using PartitionedArrays
+using PartitionedSolvers
+using LinearAlgebra
+using Primes
+using DataStructures
+using Dates
+using Statistics
+using DelimitedFiles
+using SparseArrays
+using Test
+import Base: iterate
 
-function hpcg_tests(distribute)
+function hpcg_benchmark_tests(distribute)
 	np = 4
 	nx = ny = nz = 16
 	l = 4
@@ -21,11 +32,13 @@ function hpcg_tests(distribute)
 	ref_timing_data = zeros(Float64, 10)
 	x = similar(S.x[l])
 	x .= 0
-	statevars = CGStateVariables(zero(x), similar(x), similar(x))
 	b = S.r[l]
-	x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = 50, tolerance = 0.0, Pl = S, statevars = statevars)
+	x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = 50, tolerance = 0.0, Pl = S)
 
 	ref_tol = normr / normr0
 	# expected tolerance = 2.877476184683206e-13
 	@test ref_tol < 1.0E-12
+
+	#hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 10)
 end
+

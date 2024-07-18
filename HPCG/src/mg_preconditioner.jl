@@ -143,7 +143,7 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 			f2c[i-1] = restrict_operator(nx, ny, nz)
 		end
 		nrows_vec[i] = size(A, 1)
-		nnz_vec[i] = nnz(A)
+		nnz_vec[i] = PartitionedArrays.nnz(A)
 		nx = div(nx, 2)
 		ny = div(ny, 2)
 		nz = div(nz, 2)

@@ -1,7 +1,21 @@
-using Dates
-using Statistics
-using PartitionedArrays: nnz
+"""
+	report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom) -> file output
 
+	# Arguments 
+	- `np`: number of processes.
+	- `times`: reported times from all processes.
+	- `levels`: levels of recursion of the preconditioner
+	- `ref_max_iters`: max iterations of the reference algorithm.
+	- `opt_max_iters`: max iterations of the optimised algorithm.
+	- `nr_cg_sets`: number of times the optimised version is run.
+	- `norm_data`: convergence data of all cg sets.
+	- `geom`: struct contianing geometry data.
+
+	# Output
+
+	- file output.
+
+"""
 function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom)
 	fniters = nr_cg_sets * opt_max_iters
 	fnrow = geom.nrows[levels]

@@ -1,12 +1,3 @@
-using PartitionedArrays
-using PartitionedSolvers
-using LinearAlgebra
-using Test
-using SparseArrays
-using IterativeSolvers
-using BenchmarkTools
-using DelimitedFiles
-
 include("cg.jl")
 include("report_results.jl")
 include("mg_preconditioner.jl")
@@ -17,18 +8,18 @@ include("mg_preconditioner.jl")
 	High performance congjugate gradient benchmark. 
 
 	Consists of 3 phases 
-		- Reference phase: get tolerance of refrence algorithm after 50 iterations.
+		- Reference phase: get tolerance of reference algorithm after 50 iterations.
 		- Optimisation phase: run optimised version until refrence tolerance is achieved.
 		- Measuring phase: run the optimised version multiple times until the set total runtime.
 
 	# Arguments
 
-	- `distribute`: method of distribution (mpi or debug)
-	- `np`: number of processes
-	- `nx`: points in the x direction for each process
-	- `ny`: points in the y direction for each process
-	- `nz`: points in the z direction for each process
-	- `total_runtime`: desired total runtime (official requirement is 1800)
+	- `distribute`: method of distribution (mpi or debug).
+	- `np`: number of processes.
+	- `nx`: points in the x direction for each process.
+	- `ny`: points in the y direction for each process.
+	- `nz`: points in the z direction for each process.
+	- `total_runtime`: desired total runtime (official time requirement is 1800).
 
 	# Output
 
@@ -57,15 +48,10 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60)
 	normr = 0
 	for i in 1:nr_of_cg_sets
 		x .= 0
-		@time x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = ref_max_iters, tolerance = 0.0, Pl = S, statevars = statevars)
+		x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = ref_max_iters, tolerance = 0.0, Pl = S, statevars = statevars)
 		totalNiters_ref += iters
-		show(collect(x)[1:10])
-
 	end
-
 	ref_tol = normr / normr0
-	show(ref_tol)
-	return
 
 	### Optimized CG Setup Phase ### (only relevant after optimising the algorithm with potential convergence loss)
 	opt_max_iters = 10 * ref_max_iters
@@ -160,9 +146,9 @@ function hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60)
 	end
 end
 
-debug = true
-if debug
-	hpcg_benchmark_debug(4, 16, 16, 16, total_runtime = 10)
-else
-	hpcg_benchmark_mpi(4, 16, 16, 16, total_runtime = 10)
-end
+# debug = true
+# if debug
+# 	hpcg_benchmark_debug(4, 16, 16, 16, total_runtime = 10)
+# else
+# 	hpcg_benchmark_mpi(4, 16, 16, 16, total_runtime = 10)
+# end

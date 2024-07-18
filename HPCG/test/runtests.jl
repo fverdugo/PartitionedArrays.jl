@@ -1,10 +1,12 @@
 module HPCGRunTests
 
-using HPCG
 using Test
 
-@testset "hpcg_benchmark" begin
-	include("hpcg_benchmark_tests.jl")
+@testset "hpcg_debug" begin
+	include("hpcg_debug/runtests.jl")
+end
+@testset "hpcg_mpi" begin
+	include("hpcg_mpi/runtests.jl")
 end
 
 end

@@ -1,12 +1,9 @@
-using Primes: Primes
-using DataStructures: DataStructures
-
 include("mixed_base_counter.jl")
 
 """
 	compute_optimal_shape_XYZ(np)
 	
-Calculate the optimal way to partition a 3D shape over np processors.
+	Calculate the optimal way to partition a 3D shape over np processors.
 """
 function compute_optimal_shape_XYZ(np)
 

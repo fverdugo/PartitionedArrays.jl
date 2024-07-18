@@ -1,6 +1,3 @@
-
-
-
 """
 	build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz) -> I, J, V, Ib, Vb
 

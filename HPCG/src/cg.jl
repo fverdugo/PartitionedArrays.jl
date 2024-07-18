@@ -1,13 +1,6 @@
 """
 	Conjugate gradient solver from IterativeSolvers with benchmark timing added.
 """
-
-import Base: iterate
-using Printf
-using PartitionedArrays
-
-export ref_cg!, PCGIterable, cg_iterator!, CGStateVariables
-
 mutable struct PCGIterable{precT, matT, solT, vecT, numT <: Real, paramT <: Number}
 	Pl::precT
 	A::matT
@@ -23,11 +16,11 @@ mutable struct PCGIterable{precT, matT, solT, vecT, numT <: Real, paramT <: Numb
 	timing_data::Vector{Float64}
 end
 
-@inline converged(it::Union{CGIterable, PCGIterable}) = it.residual / it.residual0 ≤ it.tol
+@inline converged(it::PCGIterable) = it.residual / it.residual0 ≤ it.tol
 
-@inline start(it::Union{CGIterable, PCGIterable}) = 0
+@inline start(it::PCGIterable) = 0
 
-@inline done(it::Union{CGIterable, PCGIterable}, iteration::Int) = iteration ≥ it.maxiter || converged(it)
+@inline done(it::PCGIterable, iteration::Int) = iteration ≥ it.maxiter || converged(it)
 
 #####################
 # Preconditioned CG #
