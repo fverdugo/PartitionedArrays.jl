@@ -217,4 +217,7 @@ function p_vector_tests(distribute)
     map(local_values(w),local_values(v)) do w,v
       @test w == v
     end
+
+    @test isa(renumber(w),PVector)
+
 end

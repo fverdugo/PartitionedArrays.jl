@@ -179,3 +179,35 @@ function additive_schwarz_correction(local_solver)
     linear_solver(;setup,update!,solve!,finalize!)
 end
 
+# Wrappers
+
+function linear_solver(::typeof(LinearAlgebra.lu))
+    lu_solver()
+end
+
+function linear_solver(::typeof(IterativeSolvers.cg);Pl,kwargs...)
+    function setup(x,A,b,options)
+        Pl_solver = linear_solver(Pl)
+        P = PartitionedSolvers.setup(Pl_solver,x,A,b;options...)
+        A_ref = Ref(A)
+        (;P,A_ref)
+    end
+    function update!(state,A,options)
+        (;P,A_ref) = state
+        A_ref[] = A
+        P = PartitionedSolvers.update!(P,A;options...)
+        state
+    end
+    function solve!(x,state,b,options)
+        (;P,A_ref) = state
+        A = A_ref[]
+        IterativeSolvers.cg!(x,A,b;Pl=P,kwargs...)
+    end
+    function finalize!(state,A,options)
+        (;P) = state
+        PartitionedSolvers.finalize!(P)
+        nothing
+    end
+    linear_solver(;setup,update!,solve!,finalize!)
+end
+

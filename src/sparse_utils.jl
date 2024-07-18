@@ -277,6 +277,7 @@ function nzindex(A::SparseMatrixCSR, i0::Integer, i1::Integer)
   ((k > r2) || (colvals(A)[k] != i1o)) ? 0 : k
 end
 
+# TODO remove and simply use sparse_matrix
 """
     compresscoo(T,args...)
 
@@ -292,14 +293,20 @@ function compresscoo(
   J::AbstractVector,
   V::AbstractVector,
   m::Integer,
-  n::Integer,
-  combine=+) where {Tv,Ti}
+  n::Integer;
+  combine=+,
+  skip=false,
+  ) where {Tv,Ti}
 
-  sparse(
-    EltypeVector(Ti,I),
-    EltypeVector(Ti,J),
-    EltypeVector(Tv,V),
-    m,n,combine)
+    T = SparseMatrixCSRR{Tv,Ti}
+    Acsrr = compresscoo(T,I,J,V,m,n;combine,skip)
+    SparseMatrixCSC{Tv,Ti}(Acsrr)
+
+  #sparse(
+  #  EltypeVector(Ti,I),
+  #  EltypeVector(Ti,J),
+  #  EltypeVector(Tv,V),
+  #  m,n,combine)
 end
 
 
@@ -309,14 +316,36 @@ function compresscoo(
   J::AbstractVector,
   V::AbstractVector,
   m::Integer,
-  n::Integer,
-  combine=+) where {Bi,Tv,Ti}
+  n::Integer;
+  combine=+,
+  skip=false,
+    ) where {Bi,Tv,Ti}
+
+    #Tcsrr = SparseMatrixCSRR{Tv,Ti}
+    #Atcsrr = compresscoo(T,J,I,V,n,m;combine,skip)
+    #Atcsc = SparseMatrixCSC{Tv,Ti}(Atcsrr)
+    #Atcsc |> transpose |> SparseMatrixCSR{Bi,Tv,Ti}
+
+    # TODO
+    if !skip
+        I2 = I
+        J2 = J
+        V2 = V
+    elseif m*n == 0
+        I2 = eltype(I)[]
+        J2 = eltype(I)[]
+        V2 = eltype(V)[]
+    else
+        I2 = FilteredCooVector(one,I,J,I)
+        J2 = FilteredCooVector(one,I,J,J)
+        V2 = FilteredCooVector(zero,I,J,V)
+    end
 
   sparsecsr(
     Val(Bi),
-    EltypeVector(Ti,I),
-    EltypeVector(Ti,J),
-    EltypeVector(Tv,V),
+    EltypeVector(Ti,I2),
+    EltypeVector(Ti,J2),
+    EltypeVector(Tv,V2),
     m,n,combine)
 end
 
@@ -361,31 +390,46 @@ Base.@propagate_inbounds function Base.getindex(a::FilteredCooVector,k::Int)
 end
 
 function sparse_matrix(I,J,V,m,n;kwargs...)
-    sparse_matrix(sparse,I,J,V,m,n;kwargs...)
+    Tv = eltype(V)
+    Ti = eltype(I)
+    sparse_matrix(SparseMatrixCSC{Tv,Ti},I,J,V,m,n;kwargs...)
 end
-function sparse_matrix(f,I,J,V,m,n;reuse=Val(false),skip_out_of_bounds=true)
-    if !skip_out_of_bounds
-        I2 = I
-        J2 = J
-        V2 = V
-    elseif m*n == 0
-        Ti = eltype(I)
-        Tv = eltype(V)
-        I2 = Ti[]
-        J2 = Ti[]
-        V2 = Tv[]
-    else
-        I2 = FilteredCooVector(one,I,J,I)
-        J2 = FilteredCooVector(one,I,J,J)
-        V2 = FilteredCooVector(zero,I,J,V)
-    end
-    A = f(I2,J2,V2,m,n)
+
+function sparse_matrix(
+    ::Type{T},I,J,V,m,n;reuse=Val(false),combine=+,skip=true) where T
+    A = compresscoo(T,I,J,V,m,n;combine,skip)
     if val_parameter(reuse)
         K = precompute_nzindex(A,I,J)
         return A,K
     end
     A
+    #f(args...) = compresscoo(T,args...)
+    #sparse_matrix(f,I,J,V,m,n;kwargs...)
 end
+
+#function sparse_matrix(f,I,J,V,m,n;reuse=Val(false),skip=true)
+#    if !skip
+#        I2 = I
+#        J2 = J
+#        V2 = V
+#    elseif m*n == 0
+#        Ti = eltype(I)
+#        Tv = eltype(V)
+#        I2 = Ti[]
+#        J2 = Ti[]
+#        V2 = Tv[]
+#    else
+#        I2 = FilteredCooVector(one,I,J,I)
+#        J2 = FilteredCooVector(one,I,J,J)
+#        V2 = FilteredCooVector(zero,I,J,V)
+#    end
+#    A = f(I2,J2,V2,m,n)
+#    if val_parameter(reuse)
+#        K = precompute_nzindex(A,I,J)
+#        return A,K
+#    end
+#    A
+#end
 
 function precompute_nzindex(A,I,J)
     K = zeros(Int32,length(I))
@@ -413,4 +457,143 @@ function sparse_matrix!(A,V,K;reset=true)
 end
 
 
+# Notation
+# csrr: csr with repeated and unsorted columns
+# csru: csr witu unsorted columns
+# csc: csc with sorted columns
+
+struct SparseMatrixCSRR{Tv,Ti,A}
+    rowptr::Vector{Ti}
+    colval::Vector{Ti}
+    nzval::Vector{Tv}
+    nrows::Int
+    ncols::Int
+    combine::A
+end
+
+function compresscoo(
+        ::Type{SparseMatrixCSRR{Tv,Ti}},
+        I::AbstractVector,
+        J::AbstractVector,
+        V::AbstractVector,
+        m::Integer,
+        n::Integer;
+        combine=+,
+        skip=false) where {Tv,Ti}
+
+    nrows = m
+    ncols = n
+    rowptr = zeros(Ti,nrows+1)
+    for (row,col) in zip(I,J)
+        if !skip || ((row in 1:nrows) && (col in 1:ncols))
+            rowptr[row+1] += Ti(1)
+        end
+    end
+    length_to_ptrs!(rowptr)
+    nnz = rowptr[end]-1
+    colval = Vector{Ti}(undef,nnz)
+    nzval = Vector{Tv}(undef,nnz)
+    for (row,col,val) in zip(I,J,V)
+        if !skip || ((row in 1:nrows) && (col in 1:ncols))
+            p = rowptr[row]
+            colval[p] = col
+            nzval[p] = val
+            rowptr[row] = p + Ti(1)
+        end
+    end
+    rewind_ptrs!(rowptr)
+    SparseMatrixCSRR(rowptr,colval,nzval,nrows,ncols,combine)
+end
+
+function SparseMatrixCSC{Tv,Ti}(a::SparseMatrixCSRR) where {Tv,Ti}
+    colptr = Vector{Ti}(undef,a.ncols+1)
+    work = Vector{Ti}(undef,a.ncols)
+    cscnnz = csrr_to_csc_step_1(a.combine,colptr,a.rowptr,a.colval,a.nzval,work)
+    rowval = Vector{Ti}(undef,cscnnz)
+    nzvalcsc = Vector{Tv}(undef,cscnnz)
+    csrr_to_csc_step_2(colptr,rowval,nzvalcsc,a.rowptr,a.colval,a.nzval)
+    SparseMatrixCSC(a.nrows,a.ncols,colptr,rowval,nzvalcsc)
+end
+
+function csrr_to_csc_step_1(
+        combine,
+        colptrs::Vector{Ti},
+        rowptrs::Vector{Tj},
+        colvals::Vector{Tj},
+        nzvalscsr::Vector{Tv},
+        work::Vector{Tj},
+    ) where {Ti,Tj,Tv}
+
+    nrows = length(rowptrs)-1
+    ncols = length(colptrs)-1
+    if nrows == 0 || ncols == 0
+        fill!(colptrs, Ti(1))
+        return Tj(0)
+    end
+    # Convert csrr to csru by identifying repeated cols with array work.
+    # At the same time, count number of unique rows in colptrs shifted by one.
+    fill!(colptrs, Ti(0))
+    fill!(work, Tj(0))
+    writek = Tj(1)
+    newcsrrowptri = Ti(1)
+    origcsrrowptri = Tj(1)
+    origcsrrowptrip1 = rowptrs[2]
+    for i in 1:nrows
+        for readk in origcsrrowptri:(origcsrrowptrip1-Tj(1))
+            j = colvals[readk]
+            if work[j] < newcsrrowptri
+                work[j] = writek
+                if writek != readk
+                    colvals[writek] = j
+                    nzvalscsr[writek] = nzvalscsr[readk]
+                end
+                writek += Tj(1)
+                colptrs[j+1] += Ti(1)
+            else
+                klt = work[j]
+                nzvalscsr[klt] = combine(nzvalscsr[klt], nzvalscsr[readk])
+            end
+        end
+        newcsrrowptri = writek
+        origcsrrowptri = origcsrrowptrip1
+        origcsrrowptrip1 != writek && (rowptrs[i+1] = writek)
+        i < nrows && (origcsrrowptrip1 = rowptrs[i+2])
+    end
+    # Convert colptrs from counts to ptrs shifted by one
+    # (ptrs will be corrected below)
+    countsum = Tj(1)
+    colptrs[1] = Ti(1)
+    for j in 2:(ncols+1)
+        overwritten = colptrs[j]
+        colptrs[j] = countsum
+        countsum += overwritten
+    end
+    cscnnz = countsum - Tj(1)
+    Tj(cscnnz)
+end
+
+function csrr_to_csc_step_2(
+  colptrs::Vector{Ti},rowvals::Vector{Ti},nzvalscsc::Vector{Tv},
+  rowptrs::Vector{Tj},colvals::Vector{Tj},nzvalscsr::Vector{Tv}) where {Ti,Tj,Tv}
+
+  nrows = length(rowptrs)-1
+  ncols = length(colptrs)-1
+  if nrows == 0 || ncols == 0
+    return nothing
+  end
+  # From csru to csc
+  # Tracking write positions in colptrs corrects
+  # the column pointers to the final value.
+  for i in 1:nrows
+    for csrk in rowptrs[i]:(rowptrs[i+1]-Tj(1))
+      j = colvals[csrk]
+      x = nzvalscsr[csrk]
+      csck = colptrs[j+1]
+      colptrs[j+1] = csck + Ti(1)
+      rowvals[csck] = i
+      nzvalscsc[csck] = x
+    end
+  end
+  nothing
+end
 

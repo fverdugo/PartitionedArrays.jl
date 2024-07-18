@@ -1,3 +1,4 @@
+.vscode/
 *.code-workspace
 *.jl.*.cov
 *.jl.cov

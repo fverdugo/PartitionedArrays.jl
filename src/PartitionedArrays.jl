@@ -132,13 +132,12 @@ export assemble
 export consistent
 export repartition
 export repartition!
+export renumber
 export find_local_indices
 include("p_vector.jl")
 
-export OldPSparseMatrix
 export SplitMatrix
 export PSparseMatrix
-export old_psparse
 export psparse
 export psparse!
 export split_format
@@ -166,5 +165,9 @@ export tic!
 export toc!
 export statistics
 include("p_timer.jl")
+
+export laplacian_fdm
+export laplacian_fem
+include("gallery.jl")
 
 end # module
