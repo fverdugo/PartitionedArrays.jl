@@ -57,33 +57,34 @@ function consistent2!(v::PVector)
     t_sync = @elapsed begin
         vector_partition = partition(v)
         cache_for_assemble = v.cache
-        cache_for_consistent = map(reverse,cache_for_assemble)
-        function setup_snd!(cache,values)
-            local_indices_snd = cache.local_indices_snd
+        cache = reverse(cache_for_assemble)
+        local_indices_snd=cache.local_indices_snd
+        local_indices_rcv=cache.local_indices_rcv
+        neighbors_snd=cache.neighbors_snd
+        neighbors_rcv=cache.neighbors_rcv
+        buffer_snd=cache.buffer_snd
+        buffer_rcv=cache.buffer_rcv
+        exchange_setup=cache.exchange_setup
+        function setup_snd!(values,local_indices_snd,buffer_snd)
             for (p,lid) in enumerate(local_indices_snd.data)
-                cache.buffer_snd.data[p] = values[lid]
+                buffer_snd.data[p] = values[lid]
             end
         end
-        t_snd = @elapsed map(setup_snd!,cache_for_consistent,vector_partition)
-        buffer_snd = map(cache->cache.buffer_snd,cache_for_consistent)
-        buffer_rcv = map(cache->cache.buffer_rcv,cache_for_consistent)
-        neighbors_snd = map(cache->cache.neighbors_snd,cache_for_consistent)
-        neighbors_rcv = map(cache->cache.neighbors_rcv,cache_for_consistent)
+        t_snd = @elapsed foreach(setup_snd!,vector_partition,local_indices_snd,buffer_snd)
         graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
-        t_exchange = @elapsed t = exchange!(buffer_rcv,buffer_snd,graph)
+        t_exchange = @elapsed t = exchange!(buffer_rcv,buffer_snd,graph,exchange_setup)
     end
     t_wait_exchange = 0.0
     t_rcv = 0.0
     t_async = @elapsed begin
-        tr = @async begin
+        tr = PartitionedArrays.@fake_async begin
             t_wait_exchange = @elapsed wait(t)
-            function setup_rcv!(cache,values)
-                local_indices_rcv = cache.local_indices_rcv
+            function setup_rcv!(values,local_indices_rcv,buffer_rcv)
                 for (p,lid) in enumerate(local_indices_rcv.data)
-                    values[lid] = cache.buffer_rcv.data[p]
+                    values[lid] = buffer_rcv.data[p]
                 end
             end
-            t_rcv = @elapsed map(setup_rcv!,cache_for_consistent,vector_partition)
+            t_rcv = @elapsed foreach(setup_rcv!,vector_partition,local_indices_rcv,buffer_rcv)
             nothing
         end
     end
