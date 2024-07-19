@@ -31,6 +31,7 @@ makedocs(
                        "reference/ptimer.md",
                        "reference/advanced.md",
                        "reference/helpers.md",
+                       "reference/gallery.md",
                       ],
         "refindex.md",
     ],

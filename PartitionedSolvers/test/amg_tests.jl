@@ -257,6 +257,12 @@ Pl = setup(amg(;fine_params),y,A,b;nullspace=B)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
+solver = linear_solver(IterativeSolvers.cg;Pl=amg(;fine_params),verbose=true)
+S = setup(solver,y,A,b)
+solve!(y,S,b)
+update!(S,2*A)
+solve!(y,S,b)
+
 # Now in parallel
 
 parts_per_dir = (2,2)
