@@ -145,7 +145,6 @@ function constant_prolongator(node_to_aggregate,aggregates,n_nullspace_vecs)
     nnodes = length(node_to_aggregate)
     pending = typeof_aggregate(0)
     isolated = typeof_aggregate(-1)
-    nnodes = length(node_to_aggregate)
     naggregates = length(aggregates)
     aggregate_to_nodes_ptrs = zeros(Int,naggregates+1)
     for node in 1:nnodes
@@ -198,6 +197,79 @@ function constant_prolongator(node_to_aggregate::PVector,aggregates::PRange,n_nu
     P0
 end
 
+function collect_nodes_in_aggregate(node_to_aggregate,aggregates)
+    typeof_aggregate = eltype(node_to_aggregate)
+    nnodes = length(node_to_aggregate)
+    pending = typeof_aggregate(0)
+    isolated = typeof_aggregate(-1)
+    nnodes = length(node_to_aggregate)
+    naggregates = length(aggregates)
+    aggregate_to_nodes_ptrs = zeros(Int,naggregates+1)
+    for node in 1:nnodes
+        agg = node_to_aggregate[node]
+        if agg == pending || agg == isolated
+            continue
+        end
+        aggregate_to_nodes_ptrs[agg+1] += 1
+    end 
+    length_to_ptrs!(aggregate_to_nodes_ptrs)
+    ndata = aggregate_to_nodes_ptrs[end]-1
+    aggregate_to_nodes_data = zeros(Int,ndata)
+    for node in 1:nnodes
+        agg = node_to_aggregate[node]
+        if agg == pending || agg == isolated
+            continue
+        end
+        p = aggregate_to_nodes_ptrs[agg]
+        aggregate_to_nodes_data[p] = node
+        aggregate_to_nodes_ptrs[agg] += 1
+    end
+    rewind_ptrs!(aggregate_to_nodes_ptrs)
+    aggregate_to_nodes = jagged_array(aggregate_to_nodes_data,aggregate_to_nodes_ptrs)
+    aggregate_to_nodes
+end
+
+function remove_singleton_aggregates(aggregate_to_nodes_old)
+    typeof_nodes = eltype(aggregate_to_nodes_old[1])
+    n_aggregates_old = length(aggregate_to_nodes_old)
+    n_aggregates = 0
+    n_data = 0
+    for i in 1:n_aggregates_old
+        nnodes = aggregate_to_nodes_old.ptrs[i+1] - aggregate_to_nodes_old.ptrs[i]
+        if nnodes < 2
+            continue
+        end
+        n_aggregates += 1 
+        n_data += nnodes
+    end
+
+    # If there are no singleton aggregates, stop and return old array
+    if n_aggregates == n_aggregates_old
+        return aggregate_to_nodes_old
+    end
+
+    # Else copy non-singleton aggregates to new array
+    aggregate_to_nodes_ptrs = zeros(Int, n_aggregates+1)
+    aggregate_to_nodes_data = zeros(typeof_nodes, n_data)
+    aggregate_to_nodes_ptrs[1] = 1
+    agg = 1
+    for i in 1:n_aggregates_old
+        nnodes = aggregate_to_nodes_old.ptrs[i+1] - aggregate_to_nodes_old.ptrs[i]
+        if nnodes < 2
+            continue 
+        end
+        aggregate_to_nodes_ptrs[agg+1] = aggregate_to_nodes_ptrs[agg] + nnodes 
+        pini = aggregate_to_nodes_ptrs[agg]
+        pend = aggregate_to_nodes_ptrs[agg+1]-1
+        pini_old = aggregate_to_nodes_old.ptrs[i]
+        pend_old = aggregate_to_nodes_old.ptrs[i+1]-1
+        aggregate_to_nodes_data[pini:pend] = aggregate_to_nodes_old.data[pini_old:pend_old]
+        agg += 1     
+    end
+    aggregate_to_nodes = jagged_array(aggregate_to_nodes_data,aggregate_to_nodes_ptrs)
+    aggregate_to_nodes
+end
+
 function tentative_prolongator_for_laplace(P0,B)
     n_nullspace_vecs = length(B)
     if n_nullspace_vecs != 1
@@ -205,6 +277,107 @@ function tentative_prolongator_for_laplace(P0,B)
     end
     Bc = default_nullspace(P0)
     P0,Bc
+end
+
+function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B, block_size)
+    # A draft for the scalar case is commented below
+    ## TODO assumes CSC
+    # Algorithm 7 in https://mediatum.ub.tum.de/download/1229321/1229321.pdf 
+
+    if length(B) < 1
+        error("Null space must contain at least one null vector.")
+    end
+
+    n_aggregates = length(aggregate_to_nodes.ptrs)-1
+    n_B = length(B)
+    n_dofs = length(B[1])
+    n_dofs_c = n_aggregates * n_B
+    Bc = [Vector{Float64}(undef,n_dofs_c) for _ in 1:n_B]
+
+    # Build P0 colptr
+    P0_colptr = zeros(Int, n_dofs_c + 1)
+    P0_colptr[1] = 1
+    for i_agg in 1:n_aggregates
+        pini = aggregate_to_nodes.ptrs[i_agg]
+        pend = aggregate_to_nodes.ptrs[i_agg+1]-1
+        n_nodes = length(pini:pend)
+        for b in 1:n_B 
+            col = (i_agg - 1) * n_B + b
+            P0_colptr[col+1] += P0_colptr[col] + n_nodes * block_size 
+        end
+    end
+    
+    # Build P0 rowvals
+    nnz = length(aggregate_to_nodes.data) * block_size * n_B
+    P0_rowval = zeros(Int, nnz)
+    for i_agg in 1:n_aggregates
+        pini = aggregate_to_nodes.ptrs[i_agg]
+        pend = aggregate_to_nodes.ptrs[i_agg+1]-1
+        i_nodes = aggregate_to_nodes.data[pini:pend]
+        for b in 1:n_B
+            rval_ini = P0_colptr[(i_agg-1)*n_B+b]
+            for i_node in i_nodes
+                rval_end = rval_ini+block_size-1
+                P0_rowval[rval_ini:rval_end] = node_to_dofs(i_node, block_size)
+                rval_ini = rval_end + 1
+            end
+        end
+    end
+    
+    P0 = SparseMatrixCSC(
+        n_dofs,
+        n_dofs_c,
+        P0_colptr,
+        P0_rowval,
+        ones(nnz))
+    
+    # Fill with nullspace vectors 
+    for i_agg in 1:n_aggregates
+        for b in 1:n_B
+            col = (i_agg-1) * n_B + b
+            pini = P0.colptr[col]
+            pend = P0.colptr[col+1]-1
+            rowids = P0.rowval[pini:pend]
+            P0.nzval[pini:pend] = B[b][rowids]
+        end
+    end
+
+    # Compute QR decomposition for nullspace in each aggregate 
+    for i_agg in 1:n_aggregates
+        # Copy values to Bi 
+        pini = aggregate_to_nodes.ptrs[i_agg]
+        pend = aggregate_to_nodes.ptrs[i_agg+1]-1
+        n_i = length(pini:pend) * block_size
+        Bi = zeros(n_i, n_B)
+        P0cols = (i_agg-1)*n_B+1 : i_agg*n_B
+        for (b, col) in enumerate(P0cols)
+            pini = P0.colptr[col]
+            pend = P0.colptr[col+1]-1
+            Bi[:,b] = P0.nzval[pini:pend]
+        end
+
+        # Compute thin QR decomposition 
+        # TODO: check if QR decomposition is possible if n_i >= n_B, raise an error
+        F= qr(Bi)
+        Qi = F.Q * Matrix(I,(n_i, n_B))
+        Qi = Qi[:,1:n_B]
+        Ri = F.R
+
+        # Build global tentative prolongator 
+        for (b, col) in enumerate(P0cols)
+            pini = P0.colptr[col]
+            pend = P0.colptr[col+1]-1
+            P0.nzval[pini:pend] = Qi[:,b]
+        end
+
+        # Build coarse null space
+        Bcrows = P0cols
+        for b in 1:n_B
+            Bc[b][Bcrows] = Ri[:, b]
+        end
+    end
+
+    P0, Bc
 end
 
 function generic_tentative_prolongator(P0::SparseArrays.AbstractSparseMatrixCSC,B)
@@ -247,17 +420,40 @@ end
 function smoothed_prolongator(A,P0,diagA=dense_diag(A);approximate_omega)
     # TODO the performance of this one can be improved
     invDiagA = 1 ./ diagA
-    omega = approximate_omega(invDiagA,A)
     Dinv = PartitionedArrays.sparse_diag_matrix(invDiagA,(axes(A,1),axes(A,1)))
+    omega = approximate_omega(invDiagA,A,Dinv*A)
     P = (I-omega*Dinv*A)*P0
     P
 end
 
-function omega_for_1d_laplace(invD,A)
+function omega_for_1d_laplace(invD,A, DinvA)
     # in general this will be (4/3)/ρ(D^-1*A)
     # with a cheap approximation (e.g., power method) of the spectral radius ρ(D^-1*A)
     # ρ(D^-1*A) == 2 for 1d Laplace problem
     2/3
+end
+
+function lambda_generic(invD,A,DinvA)
+    ω = 4/3
+    # Perform a few iterations of Power method to estimate lambda 
+    # (Remark 3.5.2. in https://mediatum.ub.tum.de/download/1229321/1229321.pdf)
+    ρ = spectral_radius(DinvA, 20)
+    ω/ρ 
+end
+
+function spectral_radius(A, x, num_iterations:: Int)
+    # Choose diagonal vector as initial guess
+    y = zeros(size(A,1))
+    # Power iteration
+    for i in 1:num_iterations
+        mul!(y, A, x)
+        y_norm = norm(y)
+        x = y/y_norm
+    end
+    # Compute spectral radius using Rayleigh coefficient
+    y = mul!(y, A, x)
+    ρ = (y' * x) / (x' * x)
+    abs(ρ)
 end
 
 function enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)
@@ -308,21 +504,19 @@ end
 
 function smoothed_aggregation_with_block_size(;
     epsilon = 0,
-    approximate_omega = omega_for_1d_laplace,
-    tentative_prolongator = tentative_prolongator_for_laplace,
+    approximate_omega = lambda_generic,
+    tentative_prolongator = tentative_prolongator_with_block_size,
     repartition_threshold = 2000,
     block_size = 1,
     )
     function coarsen(A,B)
         # build strength graph
-        G = strength_graph(A, block_size=block_size, theta=epsilon)
+        G = strength_graph(A, block_size=block_size, epsilon=epsilon)
         diagG = dense_diag(G)
         node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
-        # compute dof_to_aggregate, dof_aggregates
-        n_nullspace_vecs = length(B)
-        P0 = constant_prolongator(dof_to_aggregate, dof_aggregates,n_nullspace_vecs)
-        P0,Bc = tentative_prolongator(P0,B) # changes needed here
-        P = smoothed_prolongator(A,P0,diagG;approximate_omega) #changes needed here
+        aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
+        Pc,Bc,perm = tentative_prolongator(aggregate_to_nodes,B, block_size) 
+        P = smoothed_prolongator(A,Pc,diagG;approximate_omega) 
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
         Ac,Bc,R,P,cache,repartition_threshold = enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)#maybe changes here
@@ -343,7 +537,7 @@ function getblock!(B,A,ids_i,ids_j)
     end
 end
 
-function strength_graph(A::AbstractSparseMatrix, block_size::Integer; theta = 0)
+function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon = 0)
 
     if block_size < 1 
         error("Block size must be equal to or larger than 1.")
@@ -361,49 +555,101 @@ function strength_graph(A::AbstractSparseMatrix, block_size::Integer; theta = 0)
         return A
     end
 
-    if theta < 0
-        error("Expected a positive theta.")
+    if epsilon < 0
+        error("Expected a positive epsilon.")
     end
 
     n_dofs = A.m 
-    nnodes = Integer(n_dofs/block_size)
+    nnodes = div(n_dofs, block_size)
     B = zeros(block_size,block_size)
     diag_norms = zeros(nnodes)
-    
-    I = Int[]
-    J = Int[]
-    V = Float64[]
 
+    # Count nonzero values 
+    nnz = 0
+    
+    # If epsilon <= 1, all diagonal entries are in the graph
+    if epsilon <= 1 
+        nnz += nnodes
+    end
+
+    # Calculate norms of diagonal values first
     for i_node in 1:nnodes
-        i_dofs = ((i_node-1)*block_size+1) : i_node*block_size 
+        i_dofs = node_to_dofs(i_node, block_size)
         getblock!(B,A,i_dofs,i_dofs)
         diag_norms[i_node] = norm(B)
-        if theta <= 1 
-            push!(I, i_node)
-            push!(J, i_node)
-            push!(V, 1.0)
-        end
     end
 
     for j_node in 1:nnodes
         for i_node in 1:nnodes
             if j_node != i_node
-                i_dofs = ((i_node-1)*block_size+1) : i_node*block_size 
-                j_dofs = ((j_node-1)*block_size+1) : j_node*block_size 
+                i_dofs = node_to_dofs(i_node, block_size) 
+                j_dofs = node_to_dofs(j_node, block_size) 
                 getblock!(B,A,i_dofs,j_dofs)
                 # Calculate strength according to https://github.com/pyamg/pyamg/blob/e1fe54c93be1029c02ddcf84c2338a607b088703/pyamg/strength.py#L275 
-                if norm(B) >= theta * sqrt(diag_norms[i_node] * diag_norms[j_node])
-                    push!(I, i_node)
-                    push!(J, j_node)
-                    push!(V, 1.0)
+                if norm(B) >= epsilon * sqrt(diag_norms[i_node] * diag_norms[j_node])
+                    nnz += 1
                 end
             end 
         end
     end
-  
+    
+    # Allocate data structures for sparsematrix
+    I = zeros(Int, nnz)
+    J = zeros(Int, nnz)
+    V = zeros(nnz)
+
+    i_nz = 1
+
+    for j_node in 1:nnodes
+        for i_node in 1:nnodes
+            if j_node == i_node
+                # Diagonal entries are always in graph if epsilon <= 1
+                if epsilon <= 1
+                    I[i_nz] = i_node 
+                    J[i_nz] = j_node
+                    V[i_nz] = 1.0
+                    i_nz += 1
+                end
+            else 
+                i_dofs = node_to_dofs(i_node, block_size)
+                j_dofs = node_to_dofs(j_node, block_size) 
+                getblock!(B,A,i_dofs,j_dofs)
+                # Calculate strength according to https://github.com/pyamg/pyamg/blob/e1fe54c93be1029c02ddcf84c2338a607b088703/pyamg/strength.py#L275 
+                if norm(B) >= epsilon * sqrt(diag_norms[i_node] * diag_norms[j_node])
+                    I[i_nz] = i_node 
+                    J[i_nz] = j_node
+                    V[i_nz] = 1.0
+                    i_nz += 1
+                end
+            end
+        end
+    end
+
     G = sparse(I, J, V, nnodes, nnodes)
     G
 end 
+
+function node_to_dofs(i_node, block_size)
+    # Convert single node in graph to range of dofs
+    ((i_node-1)*block_size+1) : i_node*block_size
+end
+
+function dofs_to_node(dofs, block_size)
+    # Convert range of dofs to single node in graph
+    div(dofs[end], block_size)
+end
+
+function amg_level_params_linear_elasticity(;
+    pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
+    coarsening = smoothed_aggregation(approximate_omega = lambda_generic,
+    tentative_prolongator = tentative_prolongator_with_block_size),
+    cycle = v_cycle,
+    pos_smoother = pre_smoother,
+    )
+
+    level_params = (;pre_smoother,pos_smoother,coarsening,cycle)
+    level_params
+end
 
 function amg_level_params(;
     pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
