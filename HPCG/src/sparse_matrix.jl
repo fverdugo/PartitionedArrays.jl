@@ -117,7 +117,16 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 
 	row_partition = partition(axes(A, 2))
 	b = pvector(I_b, b, row_partition) |> fetch
-	consistent!(b) |> wait
+	assemble!(b) |> wait
 	return A, b
 end
 
+muladd!(y, A, x) = mul!(y, A, x, 1, 1)
+
+function spmv_latency_hiding!(y, A, x)
+	t = consistent!(x)
+	map(mul!, own_values(y), own_own_values(A), own_values(x))
+	wait(t)
+	map(muladd!, own_values(y), own_ghost_values(A), ghost_values(x))
+	y
+end

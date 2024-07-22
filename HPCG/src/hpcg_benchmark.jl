@@ -146,9 +146,5 @@ function hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60)
 	end
 end
 
-# debug = true
-# if debug
-# 	hpcg_benchmark_debug(4, 16, 16, 16, total_runtime = 10)
-# else
-# 	hpcg_benchmark_mpi(4, 16, 16, 16, total_runtime = 10)
-# end
+
+#hpcg_benchmark_mpi(1, 104, 104, 104, total_runtime = 60)

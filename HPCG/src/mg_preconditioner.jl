@@ -18,9 +18,9 @@ include("sparse_matrix.jl")
 
 """
 struct Mg_preconditioner
-	f2c::Vector{Vector{Int64}}
+	f2c::Vector{Vector{Int32}}
 	A_vec::Vector{PSparseMatrix}
-	gs_states::Vector{Any}
+	gs_states::Vector{PartitionedSolvers.Preconditioner}
 	r::Vector{PVector}
 	x::Vector{PVector}
 	Axf::Vector{PVector}
@@ -76,7 +76,7 @@ function restrict_operator(nx, ny, nz)
 	nyc = div(ny, 2)
 	nzc = div(nz, 2)
 	local_number_of_rows = nxc * nyc * nzc
-	f2c = zeros(Int64, local_number_of_rows)
+	f2c = zeros(Int32, local_number_of_rows)
 	for izc in 1:nzc
 		izf = 2 * (izc - 1)
 		for iyc in 1:nyc
@@ -115,10 +115,10 @@ end
 """
 function pc_setup(np, ranks, l, nx, ny, nz)
 	A_vec = Vector{PSparseMatrix}(undef, l)
-	f2c = Vector{Vector{Int64}}(undef, l - 1)
+	f2c = Vector{Vector{Int32}}(undef, l - 1)
 	r = Vector{PVector}(undef, l)
 	x = Vector{PVector}(undef, l)
-	gs_states = Vector{Any}(undef, l)
+	gs_states = Vector{PartitionedSolvers.Preconditioner}(undef, l)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
@@ -131,19 +131,17 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 		gnx = npx * nx
 		gny = npy * ny
 		gnz = npz * nz
-		A, b = build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
+		A_vec[i], r[i] = build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 
-		r[i] = b
-		x[i] = similar(b)
+		x[i] = similar(r[i])
 		x[i] .= 0
-		A_vec[i] = A
-		gs_states[i] = setup(solver, x[i], A_vec[i], b)
+		gs_states[i] = setup(solver, x[i], A_vec[i], r[i])
 
 		if i != 1
 			f2c[i-1] = restrict_operator(nx, ny, nz)
 		end
-		nrows_vec[i] = size(A, 1)
-		nnz_vec[i] = PartitionedArrays.nnz(A)
+		nrows_vec[i] = size(A_vec[i], 1)
+		nnz_vec[i] = PartitionedArrays.nnz(A_vec[i])
 		nx = div(nx, 2)
 		ny = div(ny, 2)
 		nz = div(nz, 2)
