@@ -7,8 +7,11 @@ using PartitionedArrays
 using PartitionedArrays: laplace_matrix
 using PartitionedSolvers
 using LinearAlgebra
-using Test
+using IterativeSolvers
 using IterativeSolvers: cg!
+using Plots
+using Statistics
+using Test
 using SparseArrays
 
 # Test strength graph computation 
@@ -133,71 +136,109 @@ function random_nullspace(ndofs, n_B)
 end
 
 # Test tentative prolongator with laplace matrix
-nodes_per_dir = (90,90)
 block_size = 3
-A = laplace_matrix(nodes_per_dir)
+parts_per_dir = (2,2,2)
+p = prod(parts_per_dir)
+ranks = DebugArray(LinearIndices((p,)))
+nodes_per_dir = map(i->block_size*i,parts_per_dir)
+args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
+A_dist = psparse(args...) |> fetch 
+A = centralize(A_dist)
+println("dims A: $(size(A))")
 G = PartitionedSolvers.strength_graph(A, block_size, epsilon=epsilon)
 diagG = dense_diag(G)
 B = random_nullspace(size(A, 1), block_size)
 node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G,diagG;epsilon)
-aggregate_to_nodes_old = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-aggregate_to_nodes = PartitionedSolvers.remove_singleton_aggregates(aggregate_to_nodes_old)
-# Assert there are no singleton aggregates
-@assert length(aggregate_to_nodes_old) == length(aggregate_to_nodes)
+aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
 Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B, block_size) 
 @test Pc * stack(Bc) ≈ stack(B)
 
+# Test spectral radius sequential & parallel 
+diagA = dense_diag(A_dist)
+invD = 1 ./ diagA
+Dinv = PartitionedArrays.sparse_diag_matrix(invD,(axes(A_dist,1),axes(A_dist,1)))
+M = Dinv * A_dist
+exp = eigmax(Array(centralize(M)))
+cols = axes(M, 2) 
+x0 = prand(partition(cols))
+x0_seq = collect(x0)
+l, x = PartitionedSolvers.spectral_radius(M, x0, 10)
+lseq, x = PartitionedSolvers.spectral_radius(centralize(M), x0_seq, 10)
+@test l ≈ lseq 
+@test abs((l-exp)/exp) < 2*10^-1
 
 # Test spectral radius estimation 
-n_its = [2, 4, 6, 8, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-n_trials = 10
-errors_powm = zeros(n_trials, length(n_its))
-time_powm = zeros(n_trials,length(n_its))
-errors_spectrad = zeros(n_trials,length(n_its))
-time_spectrad = zeros(n_trials,length(n_its))
-using IterativeSolvers
-using Plots
-using LinearMaps
-using Statistics
-A = laplace_matrix((100,100))
-diagA = dense_diag(A)
-invD = 1 ./ diagA
-x0 = rand(size(A,2))
-M = invD .* A
-Fmap = LinearMap(M)
-exp = 2.0
-for (i, n_it) in enumerate(n_its)
+#= maxiter = 5000
+nnodes = [8, 16, 32]
+exp = [1.9396926207859075, 1.9829730996838997, 1.9954719225730886]
+msizes = zeros(Int, length(nnodes))
+parts_per_dir = (2,2,2)
+p = prod(parts_per_dir)
+ranks = DebugArray(LinearIndices((p,)))
+n_trials = 3
+A_dims = zeros(length(nnodes))
+errors_powm = zeros(length(nnodes), n_trials, maxiter)
+time_powm = zeros(length(nnodes), n_trials)
+errors_spectrad = zeros(length(nnodes), n_trials, maxiter)
+time_spectrad = zeros(length(nnodes), n_trials)
+
+for (n_i, n) in enumerate(nnodes)
+    nodes_per_dir = (n, n, n)
+    args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
+    A = psparse(args...) |> fetch |> centralize
+    println("dims A: $(size(A))")
+    msizes[n_i] = size(A,1)
+    diagA = dense_diag(A)
+    invD = 1 ./ diagA
+    M = invD .* A
+    #M_dense = Array(M)
+    #exp[n_i] = max(abs(eigmax(M_dense)), abs(eigmin(M_dense)))
     for t in 1:n_trials
-        # Power method
+        x0 = rand(size(A,2))
+        lprev, x = powm!(M, x0, maxiter=1)
         tic = time_ns()
-        λ, x = powm!(Fmap, x0, maxiter = n_it)
+        for i in 1:maxiter
+            # Power method
+            l, x = powm!(M, x, maxiter = 1)
+            errors_powm[n_i, t, i] = abs(l-lprev) 
+            lprev = l
+        end
         toc = time_ns()
-        time_powm[t,i] = toc - tic
-        errors_powm[t,i] = abs((λ-exp)/exp)
-        
-        # own implementation
+        time_powm[n_i,t] = (toc - tic)/10^9
+        ρprev, x = PartitionedSolvers.spectral_radius(M,x0, 1)
         tic = time_ns()
-        ρ = PartitionedSolvers.spectral_radius(M,x0, n_it)
+        for i in 1:maxiter
+            # own implementation
+            ρ, x = PartitionedSolvers.spectral_radius(M,x, 1)
+            errors_spectrad[n_i, t, i] = abs(ρ-ρprev)
+            ρprev = ρ
+        end
         toc = time_ns()
-        time_spectrad[t,i] = toc-tic
-        errors_spectrad[t,i] = abs((ρ-exp)/exp)
+        time_spectrad[n_i, t] = (toc-tic)/10^9
     end
 end
-avg_time_powm = median(time_powm, dims=1)
-avg_time_spectrad = median(time_spectrad, dims=1)
-avg_error_powm = median(errors_powm, dims=1)
-avg_error_spectrad = median(errors_spectrad, dims=1)
-avg_time_powm = avg_time_powm ./ 10^9
-avg_time_spectrad = avg_time_spectrad ./ 10^9
-p1 = plot(n_its, [avg_error_powm' avg_error_spectrad'], label = ["powm" "spectrad"], 
-    marker=[:c :x], ms=2)
-plot!(p1, xlabel="#iterations", ylabel="avg rel error", xticks = n_its)
-p2 = plot(n_its, [avg_time_powm' avg_time_spectrad'], label = ["powm" "spectrad"], 
-    marker=[:c :x], ms=2)
-plot!(p2, xlabel="#iterations", ylabel="avg runtime (s)", xticks = n_its)
+avg_time_powm = median(time_powm, dims=2)
+avg_time_spectrad = median(time_spectrad, dims=2)
+avg_error_powm = median(errors_powm, dims=2)
+avg_error_spectrad = median(errors_spectrad, dims=2)
+
+p1 = plot()
+plot!(p1, [1], [0], color="black", label="powm")
+plot!(p1, [1], [0], color="black", ls=:dash, label="spectrad")
+for (n_i, n) in enumerate(msizes)
+    plot!(p1, 1:maxiter, avg_error_powm[n_i,:,:]', label = "($(n),$(n))", color= n_i)
+    plot!(p1, 1:maxiter, avg_error_spectrad[n_i,:,:]', label = "", color=n_i, ls=:dash)
+end
+
+p2 = plot(msizes, [avg_time_powm avg_time_spectrad], label = ["powm" "spectrad"], color="black", marker=[:c :x])
+yticks=[10^-16, 10^-14, 10^-12, 10^-10, 10^-8, 10^-6, 10^-4, 10^-2, 10^0]
+xticks=[10^0, 10^1, 10^2, 10^3]
+plot!(p1, xlabel="#iterations (k)", ylabel="|λ(k) - exp|", legend=:outertopleft, xscale=:log,
+    xticks=xticks, yscale=:log, ylim=(10^-16, 1), yticks=yticks)
+plot!(p2, xlabel="size of matrix", ylabel="avg runtime (s)", xscale=:log10)
 p = plot(p1, p2, layout=(2,1), suptitle="Convergence of powm and spectral_radius")
-savefig(p, "C:/Users/gelie/Home/ComputationalScience/GSoC/powm_convergence.png")    
-display(p)
+savefig(p, "C:/Users/gelie/Home/ComputationalScience/GSoC/powm_l-lprev_k$(maxiter)_m$(msizes[end]).png")    
+display(p)  =#
 
 # First with a sequential matrix
 #= nodes_per_dir = (100,100)

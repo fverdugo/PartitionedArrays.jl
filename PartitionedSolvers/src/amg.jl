@@ -348,6 +348,11 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B
         pini = aggregate_to_nodes.ptrs[i_agg]
         pend = aggregate_to_nodes.ptrs[i_agg+1]-1
         n_i = length(pini:pend) * block_size
+
+        if n_i < n_B 
+            error("Singleton node aggregate: Case not implemented.")
+        end
+
         Bi = zeros(n_i, n_B)
         P0cols = (i_agg-1)*n_B+1 : i_agg*n_B
         for (b, col) in enumerate(P0cols)
@@ -357,7 +362,6 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B
         end
 
         # Compute thin QR decomposition 
-        # TODO: check if QR decomposition is possible if n_i >= n_B, raise an error
         F= qr(Bi)
         Qi = F.Q * Matrix(I,(n_i, n_B))
         Qi = Qi[:,1:n_B]
@@ -437,15 +441,16 @@ function lambda_generic(invD,A,DinvA)
     ω = 4/3
     # Perform a few iterations of Power method to estimate lambda 
     # (Remark 3.5.2. in https://mediatum.ub.tum.de/download/1229321/1229321.pdf)
-    ρ = spectral_radius(DinvA, 20)
+    x0 = rand(size(DinvA,2))
+    ρ = spectral_radius(DinvA, x0, maxiter=20)
     ω/ρ 
 end
 
 function spectral_radius(A, x, num_iterations:: Int)
     # Choose diagonal vector as initial guess
-    y = zeros(size(A,1))
+    y = similar(x)
     # Power iteration
-    for i in 1:num_iterations
+    for _ in 1:num_iterations
         mul!(y, A, x)
         y_norm = norm(y)
         x = y/y_norm
@@ -453,7 +458,7 @@ function spectral_radius(A, x, num_iterations:: Int)
     # Compute spectral radius using Rayleigh coefficient
     y = mul!(y, A, x)
     ρ = (y' * x) / (x' * x)
-    abs(ρ)
+    abs(ρ), x
 end
 
 function enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)
@@ -516,7 +521,8 @@ function smoothed_aggregation_with_block_size(;
         node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
         aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
         Pc,Bc,perm = tentative_prolongator(aggregate_to_nodes,B, block_size) 
-        P = smoothed_prolongator(A,Pc,diagG;approximate_omega) 
+        diagA = dense_diag(A)
+        P = smoothed_prolongator(A,Pc,diagA;approximate_omega) 
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
         Ac,Bc,R,P,cache,repartition_threshold = enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)#maybe changes here
