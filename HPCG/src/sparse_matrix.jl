@@ -117,7 +117,7 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 
 	row_partition = partition(axes(A, 2))
 	b = pvector(I_b, b, row_partition) |> fetch
-	assemble!(b) |> wait
+	consistent!(b) |> wait
 	return A, b
 end
 

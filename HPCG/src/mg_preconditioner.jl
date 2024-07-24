@@ -17,14 +17,25 @@ include("sparse_matrix.jl")
 	- `l`: number of levels in the preconditioner
 
 """
-struct Mg_preconditioner
-	f2c::Vector{Vector{Int32}}
-	A_vec::Vector{PSparseMatrix}
-	gs_states::Vector{PartitionedSolvers.Preconditioner}
-	r::Vector{PVector}
-	x::Vector{PVector}
-	Axf::Vector{PVector}
-	l::Int64
+mutable struct Mg_preconditioner{A, B, C, D, E, F, G}
+	f2c::Vector{A}
+	A_vec::Vector{B}
+	gs_states::Vector{C}
+	r::Vector{D}
+	x::Vector{E}
+	Axf::Vector{F}
+	l::G
+
+	function Mg_preconditioner(f2c, A_vec, gs_states, r, x, Axf, l)
+		A = typeof(f2c[1])
+		B = typeof(A_vec[1])
+		C = typeof(gs_states[1])
+		D = typeof(r[1])
+		E = typeof(x[1])
+		F = typeof(Axf[1])
+		G = typeof(l)
+		new{A, B, C, D, E, F, G}(f2c, A_vec, gs_states, r, x, Axf, l)
+	end
 end
 
 """
@@ -43,7 +54,7 @@ end
 	- `nnz`: number of non zeroes in sparse matrices of the preconditioner
 	- `nrows`: number of rows in each of the sparse matrices of the preconditioner
 """
-mutable struct Geometry
+struct Geometry
 	nx::Int64
 	ny::Int64
 	nz::Int64
@@ -118,6 +129,7 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	f2c = Vector{Vector{Int32}}(undef, l - 1)
 	r = Vector{PVector}(undef, l)
 	x = Vector{PVector}(undef, l)
+	Axf = Vector{PVector}(undef, l)
 	gs_states = Vector{PartitionedSolvers.Preconditioner}(undef, l)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
@@ -134,6 +146,8 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 		A_vec[i], r[i] = build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 
 		x[i] = similar(r[i])
+		Axf[i] = similar(r[i])
+		Axf[i] .= 0
 		x[i] .= 0
 		gs_states[i] = setup(solver, x[i], A_vec[i], r[i])
 
@@ -146,7 +160,6 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 		ny = div(ny, 2)
 		nz = div(nz, 2)
 	end
-	Axf = similar(x)
 	Mg_preconditioner(f2c, A_vec, gs_states, r, x, Axf, l), Geometry(tnx, tny, tnz, npx, npy, npz, nnz_vec, nrows_vec)
 end
 
@@ -283,7 +296,7 @@ function pc_solve!(x, s, b, l)
 		solve!(x, s.gs_states[l], b) # bottom solve
 	else
 		solve!(x, s.gs_states[l], b) # presmooth
-		s.Axf[l] = s.A_vec[l] * x
+		mul!(s.Axf[l], s.A_vec[l], x)
 		s.r[l-1] .= 0
 		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
 		pc_solve!(s.x[l-1], s, s.r[l-1], l - 1)
@@ -292,3 +305,4 @@ function pc_solve!(x, s, b, l)
 	end
 	x
 end
+
