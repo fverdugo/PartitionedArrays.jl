@@ -25,7 +25,7 @@ include("mg_preconditioner.jl")
 
 	- file output.
 """
-function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60)
+function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_type = "JSON")
 	ranks = distribute(LinearIndices((np,)))
 	timing_data = zeros(Float64, 10)
 	ref_timing_data = zeros(Float64, 10)
@@ -96,7 +96,7 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60)
 	end
 
 	map_main(ranks) do _
-		report_results(np, all_timing_data, l, ref_max_iters, opt_n_iters, nr_of_cg_sets, norm_data, geom)
+		report_results(np, all_timing_data, l, ref_max_iters, opt_n_iters, nr_of_cg_sets, norm_data, geom, output_type = output_type)
 	end
 end
 
@@ -117,9 +117,9 @@ end
 
 	- file output.
 """
-function hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60)
+function hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60, output_type = "JSON")
 	with_mpi() do distribute
-		hpcg_benchmark(distribute, np, nx, ny, nz, total_runtime = total_runtime)
+		hpcg_benchmark(distribute, np, nx, ny, nz, total_runtime = total_runtime, output_type = output_type)
 	end
 end
 
@@ -140,11 +140,8 @@ end
 
 	- file output.
 """
-function hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60)
+function hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60, output_type = "JSON")
 	with_debug() do distribute
-		hpcg_benchmark(distribute, np, nx, ny, nz, total_runtime = total_runtime)
+		hpcg_benchmark(distribute, np, nx, ny, nz, total_runtime = total_runtime, output_type = output_type)
 	end
 end
-
-
-#hpcg_benchmark_mpi(1, 104, 104, 104, total_runtime = 60)

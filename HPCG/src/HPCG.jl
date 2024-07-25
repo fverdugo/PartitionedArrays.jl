@@ -8,7 +8,7 @@ using Dates
 using Statistics
 using Primes
 using DataStructures
-using JLD2
+using JSON
 using SparseArrays
 import Base: iterate
 
