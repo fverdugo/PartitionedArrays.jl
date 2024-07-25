@@ -134,6 +134,7 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
+	#solver = additive_schwarz_correction(PartitionedSolvers.gauss_seidel(; iters = 1))
 	solver = additive_schwarz(PartitionedSolvers.gauss_seidel(; iters = 1))
 	tnx = nx
 	tny = ny
@@ -179,7 +180,8 @@ end
 	- `x`: approximated solution.
 """
 function LinearAlgebra.ldiv!(x, P::Mg_preconditioner, b)
-	pc_solve!(x, P, b, P.l)
+	x .= 0
+	pc_solve!(x, P, b, P.l, x_is_zero = true)
 	x
 end
 
@@ -289,13 +291,17 @@ end
 
 	- `x`: approximated solution.
 """
-function pc_solve!(x, s, b, l)
+function pc_solve!(x, s, b, l; x_is_zero = false)
 	x .= 0
-
 	if l == 1
 		solve!(x, s.gs_states[l], b) # bottom solve
 	else
-		solve!(x, s.gs_states[l], b) # presmooth
+		solve!(x, s.gs_states[l], b) # presmoother
+		# if x_is_zero
+		# 	s.Axf[l] .= 0
+		# else
+		# 	mul!(s.Axf[l], s.A_vec[l], x)
+		# end
 		mul!(s.Axf[l], s.A_vec[l], x)
 		s.r[l-1] .= 0
 		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])

@@ -113,7 +113,8 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 	I, J, V, b, I_b = tuple_of_arrays(IJVb)
 
 	col_partition = row_partition
-	A = psparse(I, J, V, row_partition, col_partition) |> fetch
+	T = SparseMatrixCSC{Float64, Int32}
+	A = psparse(T, I, J, V, row_partition, col_partition) |> fetch
 
 	row_partition = partition(axes(A, 2))
 	b = pvector(I_b, b, row_partition) |> fetch
@@ -121,12 +122,4 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 	return A, b
 end
 
-muladd!(y, A, x) = mul!(y, A, x, 1, 1)
 
-function spmv_latency_hiding!(y, A, x)
-	t = consistent!(x)
-	map(mul!, own_values(y), own_own_values(A), own_values(x))
-	wait(t)
-	map(muladd!, own_values(y), own_ghost_values(A), ghost_values(x))
-	y
-end
