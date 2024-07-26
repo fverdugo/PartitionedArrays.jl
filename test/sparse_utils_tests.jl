@@ -29,6 +29,21 @@ function test_mat(T)
   B = compresscoo(T,I,J,V,m,n)
   @test typeof(B) == T
   @test A == B
+
+  b1 = ones(Tv,size(B,1))
+  b2 = ones(Tv,size(B,1))
+  x = collect(Tv,1:size(B,2))
+  mul!(b1,B,x)
+  spmv!(b2,B,x)
+  @test norm(b1-b2)/norm(b1) + 1 ≈ 1
+
+  b1 = ones(Tv,size(B,2))
+  b2 = ones(Tv,size(B,2))
+  x = collect(Tv,1:size(B,1))
+  mul!(b1,transpose(B),x)
+  spmtv!(b2,B,x)
+  @test norm(b1-b2)/norm(b1) + 1 ≈ 1
+
   
   i,j,v = findnz(B)
   for (k,(ki,kj,kv)) in enumerate(nziterator(B))
