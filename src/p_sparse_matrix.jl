@@ -1829,7 +1829,7 @@ function LinearAlgebra.mul!(c::PVector,a::PSparseMatrix,b::PVector)
         return mul!(c,a,b,1,0)
     end
     t = consistent!(b)
-    foreach(mul!,own_values(c),own_own_values(a),own_values(b))
+    foreach(spmv!,own_values(c),own_own_values(a),own_values(b))
     wait(t)
     foreach(muladd!,own_values(c),own_ghost_values(a),ghost_values(b))
     c

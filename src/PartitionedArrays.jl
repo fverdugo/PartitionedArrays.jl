@@ -153,6 +153,8 @@ export dense_diag
 export dense_diag!
 export rap
 export rap!
+export spmv!
+export spmtv!
 export spmm
 export spmm!
 export spmtm
