@@ -87,13 +87,6 @@ end
 I,J,V = tuple_of_arrays(IJV)
 col_partition = row_partition
 A = psparse(I,J,V,row_partition, col_partition) |> fetch 
-# TODO: implement and test psparse matrix 
-
-
-# Now with CSC sparse matrix 
-# Test sample matrix with block size 2
-epsilon = 0.02
-A_test = centralize(A)
 
 # build solution
 I = [1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 
@@ -108,10 +101,15 @@ J = [1, 2, 4,
      5, 7, 8, 9, 
      6, 8, 9]
 V = ones(length(I))
-
 solution = sparse(I, J, V, nnodes, nnodes)
-G_test = PartitionedSolvers.strength_graph(A_test, 2, epsilon=epsilon)
-@test solution ≈ G_test
+
+epsilon = 0.02
+
+# Test with CSC sparse matrix 
+# Test sample matrix with block size 2
+A_seq = centralize(A)
+G_seq = PartitionedSolvers.strength_graph(A_seq, 2, epsilon=epsilon)
+@test solution ≈ G_seq
 
 # Another test with 3 dims
 M = rand([-2.0, -1, 1, 2], (3, 3))
@@ -125,6 +123,52 @@ G = PartitionedSolvers.strength_graph(A, 3, epsilon=epsilon)
 G = PartitionedSolvers.strength_graph(M, 3, epsilon=epsilon)
 solution = sparse([1], [1], 1.0, 1, 1)
 @test solution ≈ G 
+
+# Test strength_graph with psparse matrix 
+block_size = 3
+parts_per_dir = (2,2,2)
+p = prod(parts_per_dir)
+ranks = DebugArray(LinearIndices((p,)))
+nodes_per_dir = map(i->block_size*i,parts_per_dir)
+args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
+A_dist = psparse(args...) |> fetch 
+A_seq = centralize(A_dist)
+G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
+G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
+diff = G_seq - centralize(G_dist)
+println("Difference between sequential and parallel strength_graph:")
+display(diff)
+
+# Test sequential collect nodes in aggregate 
+diagG = dense_diag(centralize(G_dist))
+node_to_aggregate_seq, node_aggregates_seq = PartitionedSolvers.aggregate(centralize(G_dist),diagG;epsilon)
+aggregate_to_nodes_seq = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate_seq, node_aggregates_seq)
+@test length(aggregate_to_nodes_seq.data) == length(node_to_aggregate_seq)
+for i_agg in node_aggregates_seq
+    pini = aggregate_to_nodes_seq.ptrs[i_agg]
+    pend = aggregate_to_nodes_seq.ptrs[i_agg+1]-1
+    nodes = aggregate_to_nodes_seq.data[pini:pend]
+    @test all(node_to_aggregate_seq[nodes] .== i_agg)
+end
+
+# Test parallel collect_nodes_in_aggregate
+diagG = dense_diag(G_dist)
+node_to_aggregate_dist, node_aggregates_dist = PartitionedSolvers.aggregate(G_dist,diagG;epsilon)
+aggregate_to_nodes_dist = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate_dist, node_aggregates_dist)
+map(partition(aggregate_to_nodes_dist), partition(node_to_aggregate_dist), partition(node_aggregates_dist)) do my_aggregate_to_nodes, my_node_to_aggregate, my_aggregates
+    @test length(my_aggregate_to_nodes.data) == length(my_node_to_aggregate)
+    global_to_local_aggregate = global_to_local(my_aggregates) 
+    local_aggregates = global_to_local_aggregate[my_aggregates]
+    own_node_to_local_aggregate = map(my_node_to_aggregate) do global_aggregate
+        global_to_local_aggregate[global_aggregate]
+    end
+    for i_agg in local_aggregates
+        pini = my_aggregate_to_nodes.ptrs[i_agg]
+        pend = my_aggregate_to_nodes.ptrs[i_agg+1]-1
+        nodes = my_aggregate_to_nodes.data[pini:pend]
+        @test all(own_node_to_local_aggregate[nodes] .== i_agg)
+    end
+end
 
 # Test tentative prolongator 
 function random_nullspace(ndofs, n_B)
@@ -144,7 +188,6 @@ nodes_per_dir = map(i->block_size*i,parts_per_dir)
 args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
 A_dist = psparse(args...) |> fetch 
 A = centralize(A_dist)
-println("dims A: $(size(A))")
 G = PartitionedSolvers.strength_graph(A, block_size, epsilon=epsilon)
 diagG = dense_diag(G)
 B = random_nullspace(size(A, 1), block_size)
@@ -152,6 +195,9 @@ node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G,diagG;epsilo
 aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
 Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B, block_size) 
 @test Pc * stack(Bc) ≈ stack(B)
+
+# Test tentative prolongator with parallel matrix 
+
 
 # Test spectral radius sequential & parallel 
 diagA = dense_diag(A_dist)
@@ -233,13 +279,13 @@ end
 p2 = plot(msizes, [avg_time_powm avg_time_spectrad], label = ["powm" "spectrad"], color="black", marker=[:c :x])
 yticks=[10^-16, 10^-14, 10^-12, 10^-10, 10^-8, 10^-6, 10^-4, 10^-2, 10^0]
 xticks=[10^0, 10^1, 10^2, 10^3]
-plot!(p1, xlabel="#iterations (k)", ylabel="|λ(k) - exp|", legend=:outertopleft, xscale=:log,
+plot!(p1, xlabel="#iterations (k)", ylabel="|λ(k) - λ(k-1)|", legend=:outertopleft, xscale=:log,
     xticks=xticks, yscale=:log, ylim=(10^-16, 1), yticks=yticks)
 plot!(p2, xlabel="size of matrix", ylabel="avg runtime (s)", xscale=:log10)
 p = plot(p1, p2, layout=(2,1), suptitle="Convergence of powm and spectral_radius")
 savefig(p, "C:/Users/gelie/Home/ComputationalScience/GSoC/powm_l-lprev_k$(maxiter)_m$(msizes[end]).png")    
-display(p)  =#
-
+display(p)  
+ =#
 # First with a sequential matrix
 #= nodes_per_dir = (100,100)
 A = laplace_matrix(nodes_per_dir)

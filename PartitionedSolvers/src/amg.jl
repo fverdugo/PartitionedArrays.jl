@@ -197,6 +197,22 @@ function constant_prolongator(node_to_aggregate::PVector,aggregates::PRange,n_nu
     P0
 end
 
+function collect_nodes_in_aggregate(node_to_aggregate::PVector,aggregates::PRange)
+    aggregate_to_nodes_partition = map(own_values(node_to_aggregate), partition(aggregates)) do own_node_to_global_aggregate, my_aggregates
+        # convert to local ids
+        global_to_local_aggregate = global_to_local(my_aggregates) 
+        local_aggregates = global_to_local_aggregate[my_aggregates]
+        @assert all(local_aggregates .!= 0)
+        n_local_aggregates = length(local_aggregates)
+        own_node_to_local_aggregate = map(own_node_to_global_aggregate) do global_aggregate
+            global_to_local_aggregate[global_aggregate]
+        end
+        local_aggregate_to_local_nodes = collect_nodes_in_aggregate(own_node_to_local_aggregate, 1:n_local_aggregates)    
+        local_aggregate_to_local_nodes
+    end
+    PVector(aggregate_to_nodes_partition, partition(aggregates))
+end
+
 function collect_nodes_in_aggregate(node_to_aggregate,aggregates)
     typeof_aggregate = eltype(node_to_aggregate)
     nnodes = length(node_to_aggregate)
@@ -278,6 +294,25 @@ function tentative_prolongator_for_laplace(P0,B)
     Bc = default_nullspace(P0)
     P0,Bc
 end
+
+function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, block_size)
+    # B vector of pvectors
+    own_values_B = map(own_values, B)
+    P0_partition, Bc_partition = map(own_values(aggregate_to_nodes), own_values_B...) do own_aggregate_to_local_nodes, local_dof_to_b...
+        P0_own_own, local_coarse_dof_to_Bc = tentative_prolongator_with_block_size(own_aggregate_to_local_nodes, local_dof_to_b, block_size)
+        # create P0 sparse matrix as in strength graph
+        # partition in B 
+        # return tuple here 
+    end |> tuple_of_arrays
+    # partition for the coarse dofs 
+    P0 = PSparseMatrix(P0_partition, dof_partition, coarse_dof_partition)
+    Bc = map(Bc_partition) do bic_partition 
+
+        PVector(bic_partition, coarse_dof_partition)
+    end
+    P0, Bc
+end
+
 
 function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B, block_size)
     # A draft for the scalar case is commented below
@@ -516,13 +551,13 @@ function smoothed_aggregation_with_block_size(;
     )
     function coarsen(A,B)
         # build strength graph
-        G = strength_graph(A, block_size=block_size, epsilon=epsilon)
+        G = strength_graph(A, block_size=block_size, epsilon=epsilon) # TODO parallel
         diagG = dense_diag(G)
         node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
-        aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-        Pc,Bc,perm = tentative_prolongator(aggregate_to_nodes,B, block_size) 
+        aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates) # TODO: provide parallel version
+        Pc,Bc,perm = tentative_prolongator(aggregate_to_nodes,B, block_size) # TODO parallel
         diagA = dense_diag(A)
-        P = smoothed_prolongator(A,Pc,diagA;approximate_omega) 
+        P = smoothed_prolongator(A,Pc,diagA;approximate_omega) # the given approximate omega should work in parallel 
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
         Ac,Bc,R,P,cache,repartition_threshold = enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)#maybe changes here
@@ -541,6 +576,48 @@ function getblock!(B,A,ids_i,ids_j)
             B[i,j] = A[I,J]
         end
     end
+end
+
+function strength_graph(A::PSparseMatrix, block_size::Integer; epsilon = 0)
+    dof_partition = partition(axes(A,1))
+    node_partition = map(dof_partition) do my_dofs
+        n_local_dofs = length(my_dofs)
+        @assert n_local_dofs % block_size == 0 
+        @assert own_length(my_dofs) == n_local_dofs
+        n_own_nodes = div(n_local_dofs, block_size)
+        own_to_global_node = zeros(Int, n_own_nodes)
+        for local_node in 1:n_own_nodes
+            local_dof = (local_node - 1) * block_size + 1
+            global_dof = my_dofs[local_dof]
+            global_node = div(global_dof -1, block_size) +1 
+            own_to_global_node[local_node] = global_node 
+        end
+        n_global_dofs = global_length(my_dofs)
+        n_global_nodes = div(n_global_dofs, block_size)
+        @assert n_global_dofs % block_size == 0
+        own_nodes = OwnIndices(n_global_nodes, part_id(my_dofs), own_to_global_node)
+        ghost_nodes = GhostIndices(n_global_nodes, Int[], Int32[])
+        my_nodes = OwnAndGhostIndices(own_nodes, ghost_nodes)
+        my_nodes 
+    end
+
+    G_partition = map(own_own_values(A), node_partition) do A_own_own, my_nodes
+        G_own_own = strength_graph(A_own_own, block_size, epsilon=epsilon)
+        n_own_nodes = own_length(my_nodes)
+        n_ghost_nodes = ghost_length(my_nodes)
+        @assert n_ghost_nodes == 0 
+        @assert size(G_own_own, 1) == n_own_nodes 
+        @assert size(G_own_own, 2) == size(G_own_own, 1)
+        G_own_ghost = sparse(Int[], Int[], eltype(G_own_own)[], n_own_nodes, n_ghost_nodes)
+        G_ghost_own = sparse(Int[], Int[], eltype(G_own_own)[], n_ghost_nodes, n_own_nodes)
+        G_ghost_ghost = sparse(Int[], Int[], eltype(G_own_own)[], n_ghost_nodes, n_ghost_nodes)
+        blocks = PartitionedArrays.split_matrix_blocks(G_own_own, G_own_ghost, G_ghost_own, G_ghost_ghost)
+        perm = PartitionedArrays.local_permutation(my_nodes)
+        PartitionedArrays.split_matrix(blocks, perm, perm)
+    end
+
+    G = PSparseMatrix(G_partition, node_partition, node_partition, true)
+    G
 end
 
 function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon = 0)
