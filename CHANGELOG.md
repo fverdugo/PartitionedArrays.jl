@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `OldPSparseMatrix` and related functionality.
 
+### Added
+
+- New method for `psparse` that accepts a sparse matrix type as first argument.
+
 ## [0.4.7] - 2024-07-18
 
 ### Added
