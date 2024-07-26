@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `OldPSparseMatrix` and related functionality.
 
+## [0.4.7] - 2024-07-18
+
+### Added
+
+- Functions `laplacian_fdm` and `laplacian_fem` to generate distributed sparse matrices from the discretization of the Laplacian operator.
 
 ## [0.4.6] - 2024-05-25
 
