@@ -28,14 +28,12 @@ allocate_multicast
 
 ```@docs
 scan
-scan!
 ```
 
 ## Reduction
 
 ```@docs
 reduction
-reduction!
 ```
 
 ## Exchange
