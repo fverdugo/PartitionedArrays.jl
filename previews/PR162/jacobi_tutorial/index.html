@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Jacobi method · PartitionedArrays.jl</title><meta name="title" content="Jacobi method · PartitionedArrays.jl"/><meta property="og:title" content="Jacobi method · PartitionedArrays.jl"/><meta property="twitter:title" content="Jacobi method · PartitionedArrays.jl"/><meta name="description" content="Documentation for PartitionedArrays.jl."/><meta property="og:description" content="Documentation for PartitionedArrays.jl."/><meta property="twitter:description" content="Documentation for PartitionedArrays.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/custom.css" rel="stylesheet" type="text/css"/><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="PartitionedArrays.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">PartitionedArrays.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><a class="tocitem" href="../usage/">Usage</a></li><li><a class="tocitem" href="../examples/">Examples</a></li><li><span class="tocitem">Tutorials</span><ul><li class="is-active"><a class="tocitem" href>Jacobi method</a><ul class="internal"><li><a class="tocitem" href="#Learning-Outcomes"><span>Learning Outcomes</span></a></li><li><a class="tocitem" href="#The-Jacobi-method-for-the-Laplace-equation"><span>The Jacobi method for the Laplace equation</span></a></li><li><a class="tocitem" href="#Sequential-version"><span>Sequential version</span></a></li><li><a class="tocitem" href="#Parallel-version"><span>Parallel version</span></a></li><li><a class="tocitem" href="#Parallel-execution"><span>Parallel execution</span></a></li></ul></li></ul></li><li><span class="tocitem">Reference</span><ul><li><a class="tocitem" href="../reference/backends/">Back-ends</a></li><li><a class="tocitem" href="../reference/arraymethods/">Array methods</a></li><li><a class="tocitem" href="../reference/primitives/">Parallel primitives</a></li><li><a class="tocitem" href="../reference/partition/">Data partition</a></li><li><a class="tocitem" href="../reference/pvector/">PVector</a></li><li><a class="tocitem" href="../reference/psparsematrix/">PSparseMatrix</a></li><li><a class="tocitem" href="../reference/ptimer/">Benchmarking</a></li><li><a class="tocitem" href="../reference/advanced/">Advanced</a></li><li><a class="tocitem" href="../reference/helpers/">Helpers</a></li><li><a class="tocitem" href="../reference/gallery/">Gallery</a></li></ul></li><li><a class="tocitem" href="../refindex/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>Jacobi method</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Jacobi method</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/fverdugo/PartitionedArrays.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/fverdugo/PartitionedArrays.jl/blob/master/docs/jacobi_tutorial.jl" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Jacobi-method"><a class="docs-heading-anchor" href="#Jacobi-method">Jacobi method</a><a id="Jacobi-method-1"></a><a class="docs-heading-anchor-permalink" href="#Jacobi-method" title="Permalink"></a></h1><p>In this tutorial, you&#39;ll learn how to implement a parallel version of the one-dimensional Jacobi method using PartitionedArrays. Before you start, please make sure to have installed the following packages:</p><pre><code class="language-julia hljs">using Pkg
+Pkg.add(&quot;PartitionedArrays&quot;)
+Pkg.add(&quot;MPI&quot;)</code></pre><h2 id="Learning-Outcomes"><a class="docs-heading-anchor" href="#Learning-Outcomes">Learning Outcomes</a><a id="Learning-Outcomes-1"></a><a class="docs-heading-anchor-permalink" href="#Learning-Outcomes" title="Permalink"></a></h2><p>In this notebook, you will learn:</p><ul><li>How to parallelize the one-dimensional Jacobi method</li><li>How create a block partition with ghost cells</li><li>How to run functions in parallel using <code>map</code></li><li>How to update ghost cells using <code>consistent!</code></li><li>The debugging vs. MPI execution mode</li><li>How to execute the parallel Julia code with MPI</li></ul><h2 id="The-Jacobi-method-for-the-Laplace-equation"><a class="docs-heading-anchor" href="#The-Jacobi-method-for-the-Laplace-equation">The Jacobi method for the Laplace equation</a><a id="The-Jacobi-method-for-the-Laplace-equation-1"></a><a class="docs-heading-anchor-permalink" href="#The-Jacobi-method-for-the-Laplace-equation" title="Permalink"></a></h2><p>The <a href="https://en.wikipedia.org/wiki/Jacobi_method">Jacobi method</a> is a numerical tool to solve systems of linear algebraic equations. One of the main applications of the Jacobi method is to solve the equations resulting from boundary value problems (BVPs). I.e., given the values at the boundary (of a grid), we are interested in finding the interior values that fulfill a certain equation.</p><p>A sketch of the discretization of the one-dimensional Laplace equation with boundary conditions is given in the figure below. A possible application of the 1D Laplace equation is e.g. to simulate the temperature of a thin bar where both ends of the bar are kept at a constant temperature.</p><p><img src="../assets/jacobi-discretization.png" alt="discretization"/></p><p>When solving the Laplace equation in 1D, the Jacobi method leads to the following iterative scheme: The entry <span>$i$</span> of vector <span>$u$</span> at iteration <span>$t+1$</span> is computed as:</p><p class="math-container">\[u^{t+1}_i = \dfrac{u^t_{i-1}+u^t_{i+1}}{2}\]</p><h2 id="Sequential-version"><a class="docs-heading-anchor" href="#Sequential-version">Sequential version</a><a id="Sequential-version-1"></a><a class="docs-heading-anchor-permalink" href="#Sequential-version" title="Permalink"></a></h2><p>The following code implements the iterative scheme above for boundary conditions -1 and 1 on a grid with <span>$n$</span> interior points and <code>niter</code> number of iterations.</p><pre><code class="language-julia hljs">function jacobi(n,niters)
+    u = zeros(n+2)
+    u[1] = -1
+    u[end] = 1
+    u_new = copy(u)
+    for t in 1:niters
+        for i in 2:(n+1)
+            u_new[i] = 0.5*(u[i-1]+u[i+1])
+        end
+        u, u_new = u_new, u
+    end
+    u
+end
+
+jacobi(10,100)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">12-element Vector{Float64}:
+ -1.0
+ -0.8180639528982936
+ -0.6365897806956831
+ -0.45422928895536313
+ -0.2731077770805039
+ -0.09049502158506616
+  0.09049502158506616
+  0.2731077770805039
+  0.45422928895536313
+  0.6365897806956831
+  0.8180639528982936
+  1.0</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>In this version of the Jacobi method, we return after a given number of iterations. Other stopping criteria are possible. For instance, iterate until the difference between u and u_new is below a tolerance.</p></div></div><h3 id="Extracting-parallelism"><a class="docs-heading-anchor" href="#Extracting-parallelism">Extracting parallelism</a><a id="Extracting-parallelism-1"></a><a class="docs-heading-anchor-permalink" href="#Extracting-parallelism" title="Permalink"></a></h3><p>Consider the two nested loops of the Jacobi function and to analyze where parallelism can be exploited:</p><pre><code class="language-julia hljs">for t in 1:nsteps
+    for i in 2:(n+1)
+        u_new[i] = 0.5*(u[i-1]+u[i+1])
+    end
+    u, u_new = u_new, u
+end</code></pre><ul><li>The outer loop cannot be parallelized. The value of <code>u</code> at step <code>t+1</code> depends on the value at the previous step <code>t</code>.</li><li>The inner loop can be parallelized.</li></ul><h4 id="Partitioning-scheme"><a class="docs-heading-anchor" href="#Partitioning-scheme">Partitioning scheme</a><a id="Partitioning-scheme-1"></a><a class="docs-heading-anchor-permalink" href="#Partitioning-scheme" title="Permalink"></a></h4><p>We chose block partitioning to distribute data <code>u</code> over several processes. The image below illustrates the partitioning with 3 processes.</p><p><img src="../assets/jacobi-partition.png" alt="partition"/></p><h4 id="Data-dependencies"><a class="docs-heading-anchor" href="#Data-dependencies">Data dependencies</a><a id="Data-dependencies-1"></a><a class="docs-heading-anchor-permalink" href="#Data-dependencies" title="Permalink"></a></h4><p>Recall the Jacobi update:</p><p><code>u_new[i] = 0.5*(u[i-1]+u[i+1])</code></p><p>Thus, in order to update the local entries in <code>u_new</code>, we also need remote entries of vector <code>u</code> located in neighboring processes. Figure below shows the entries of <code>u</code> needed to update the local entries of <code>u_new</code> in a particular process (CPU 2).</p><p><img src="../assets/jacobi-data-dependencies.png" alt="data-dependencies"/></p><h4 id="Ghost-(aka-halo)-cells"><a class="docs-heading-anchor" href="#Ghost-(aka-halo)-cells">Ghost (aka halo) cells</a><a id="Ghost-(aka-halo)-cells-1"></a><a class="docs-heading-anchor-permalink" href="#Ghost-(aka-halo)-cells" title="Permalink"></a></h4><p>A usual way of implementing the Jacobi method and related algorithms is using so-called ghost cells. Ghost cells represent the missing data dependencies in the data owned by each process. After importing the appropriate values from the neighbor processes one can perform the usual sequential Jacobi update locally in the processes.</p><p><img src="../assets/jacobi-ghost-cell-update.png" alt="ghost-cells"/></p><p>Thus, the algorithm is usually implemented following two main phases at each iteration Jacobi:</p><ol><li>Fill the ghost entries with communications</li><li>Do the Jacobi update sequentially at each process</li></ol><h2 id="Parallel-version"><a class="docs-heading-anchor" href="#Parallel-version">Parallel version</a><a id="Parallel-version-1"></a><a class="docs-heading-anchor-permalink" href="#Parallel-version" title="Permalink"></a></h2><p>Next, we will implement a parallelized version of Jacobi method using partitioned arrays. The parallel function will take the number of processes <span>$p$</span> as an additional argument.</p><pre><code class="language-julia hljs">function jacobi_par(n,niters,p)
+  # TODO
+end</code></pre><pre><code class="language-julia hljs">using PartitionedArrays</code></pre><p>Define the grid size <code>n</code> and the number of iterations <code>niters</code>. We also specify the number of processors as 3.</p><pre><code class="language-julia hljs">n = 10
+niters = 100
+p = 3;</code></pre><p>The following line creates an array of Julia type <code>LinearIndices</code>. This array holds linear indices of a specified range and shape (<a href="https://docs.julialang.org/en/v1/base/arrays/#Base.LinearIndices">documentation</a>).</p><pre><code class="language-julia hljs">ranks = LinearIndices((p,))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element LinearIndices{1, Tuple{Base.OneTo{Int64}}}:
+ 1
+ 2
+ 3</code></pre><h3 id="Debug-Mode"><a class="docs-heading-anchor" href="#Debug-Mode">Debug Mode</a><a id="Debug-Mode-1"></a><a class="docs-heading-anchor-permalink" href="#Debug-Mode" title="Permalink"></a></h3><p>While developing the parallel Jacobi method, we can make use of PartitionedArrays debug mode to test parallel code before running it in MPI. When running the code in parallel using MPI, the data type <code>MPIArray</code> is used to hold the partitioned data. This array type is not as flexible as standard Julia arrays and many operations are not allowed for <code>MPIArray</code> for performance reasons. For instance, it is not permitted to index arbitrary entries.</p><p>Essentially, in debug mode one uses the data structure <code>DebugArray</code>, which is a wrapper of a standard Julia array and can therefore be used in sequential debugging sessions. This allows for easier development of parallel code, since debugging on multiple running instances can be challenging. Additionally, <code>DebugArray</code> emulates the limitations of <code>MPIArray</code>, which enables the user to detect possible MPI-related errors while debugging the code in sequential. For more information on debug and MPI mode, see the <a href="https://www.francescverdugo.com/PartitionedArrays.jl/dev/usage/">Usage</a> section of the documentation.</p><pre><code class="language-julia hljs">ranks = DebugArray(LinearIndices((p,)))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Int64, 1}:
+[1] = 1
+[2] = 2
+[3] = 3
+</code></pre><p>To demonstrate that <code>DebugArray</code> emulates the limitations of <code>MPIArray</code>, run the following code. It is expected to throw an error, since indexing is not permitted.</p><pre><code class="language-julia hljs">try
+    ranks[1]
+catch e
+    println(e)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">ErrorException(&quot;Scalar indexing on DebugArray is not allowed for performance reasons.&quot;)</code></pre><h3 id="Partition-the-data"><a class="docs-heading-anchor" href="#Partition-the-data">Partition the data</a><a id="Partition-the-data-1"></a><a class="docs-heading-anchor-permalink" href="#Partition-the-data" title="Permalink"></a></h3><p>Next, we create a distributed partition of the data. Using PartitionedArrays.jl method <code>uniform_partition</code>, one can generate a block partition with roughly equal block sizes. It is also possible to create multi-dimensional partitions and to create ghost cells with <code>uniform_partition</code>. For more information on the function, view the <a href="https://www.francescverdugo.com/PartitionedArrays.jl/dev/reference/partition/#PartitionedArrays.uniform_partition">documentation</a>.</p><p>The following line divides the <code>n=10</code> grid points into <code>p=3</code> approximately equally sized blocks and assigns the corresponding row indices to the ranks.</p><pre><code class="language-julia hljs">row_partition = uniform_partition(ranks,p,n)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{PartitionedArrays.LocalIndicesWithConstantBlockSize{1}, 1}:
+[1] = [1, 2, 3]
+[2] = [4, 5, 6]
+[3] = [7, 8, 9, 10]
+</code></pre><p>As discussed above, the Jacobi method requires the neighboring values <span>$u_{i-1}$</span> and <span>$u_{i+1}$</span> to update <span>$u_i$</span>. Therefore, some neighboring values that are stored on remote processes need to be communicated in each iteration. To store these neighbor values, we add ghost cells to the partition using <code>uniform_partition</code> with optional argument <code>ghost=true</code>.</p><pre><code class="language-julia hljs">ghost = true
+row_partition = uniform_partition(ranks,p,n,ghost)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{PermutedLocalIndices{PartitionedArrays.LocalIndicesWithConstantBlockSize{1}}, 1}:
+[1] = [1, 2, 3, 4]
+[2] = [3, 4, 5, 6, 7]
+[3] = [6, 7, 8, 9, 10]
+</code></pre><p>Note that rows 3, 4, 6, and 7 are now stored on more than one process. The <code>DebugArray</code> also keeps the information about which process is the owner of each row. It is possible to retrieve this information with function <code>local_to_owner</code>. The output is a <code>DebugArray</code> of the rank ids of the owner of each element.</p><pre><code class="language-julia hljs">map(local_to_owner,row_partition)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{PartitionedArrays.LocalToOwner{Vector{Int32}}, 1}:
+[1] = Int32[1, 1, 1, 2]
+[2] = Int32[1, 2, 2, 2, 3]
+[3] = Int32[2, 3, 3, 3, 3]
+</code></pre><p>Likewise, it is possible to view which are the ghost cells in each partition:</p><pre><code class="language-julia hljs">map(local_to_ghost, row_partition)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{PartitionedArrays.LocalToGhost{Vector{Int32}}, 1}:
+[1] = Int32[0, 0, 0, 1]
+[2] = Int32[1, 0, 0, 0, 2]
+[3] = Int32[1, 0, 0, 0, 0]
+</code></pre><p>And, which process is the owner of the local ghost cells:</p><pre><code class="language-julia hljs">map(ghost_to_owner, row_partition)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Int32}, 1}:
+[1] = Int32[2]
+[2] = Int32[1, 3]
+[3] = Int32[2]
+</code></pre><p>The following line initializes the data structure that will hold the solution <span>$u$</span> and fill it with all zero values.</p><pre><code class="language-julia hljs">u = pzeros(Float64,row_partition)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">10-element PVector partitioned into 3 parts of type Vector{Float64}
+</code></pre><p>Note that, like <code>DebugArray</code>, a <code>PVector</code> represents an array whose elements are distributed (i.e. partitioned) across processes, and indexing is disabled here as well. Therefore, the following examples are expected to raise an error.</p><pre><code class="language-julia hljs">try
+    u[1]
+    u[end]
+catch e
+    println(e)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">ErrorException(&quot;Scalar indexing on PVector is not allowed for performance reasons.&quot;)</code></pre><p>To view the local values of a partitioned vector, use method <code>partition</code> or <code>local_values</code>.</p><pre><code class="language-julia hljs">partition(u)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [0.0, 0.0, 0.0, 0.0]
+[2] = [0.0, 0.0, 0.0, 0.0, 0.0]
+[3] = [0.0, 0.0, 0.0, 0.0, 0.0]
+</code></pre><p>Partition returns a <code>DebugArray</code>, so again indexing, such as in the following examples, is not permitted.</p><pre><code class="language-julia hljs">try
+    partition(u)[1][1]
+    partition(u)[end][end]
+catch e
+    println(e)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">ErrorException(&quot;Scalar indexing on DebugArray is not allowed for performance reasons.&quot;)</code></pre><h3 id="Initialize-boundary-conditions"><a class="docs-heading-anchor" href="#Initialize-boundary-conditions">Initialize boundary conditions</a><a id="Initialize-boundary-conditions-1"></a><a class="docs-heading-anchor-permalink" href="#Initialize-boundary-conditions" title="Permalink"></a></h3><p>The values of the partition are still all 0, so next we need to set the correct boundary conditions: <span>$u(0) = -1$</span> and <span>$u(L)= 1$</span>.</p><p>Since <code>PVector</code> is distributed, one process cannot access the values that are owned by other processes, so we need to find a different approach. Each process can set the boundary conditions locally. This is possible with the following piece of code. Using Julia function <code>map</code>, the function <code>set_bcs</code> is executed locally by each process on its locally available part of <code>partition(u)</code>. These local partitions are standard Julia <code>Vector</code>s and are allowed to be indexed.</p><pre><code class="language-julia hljs">function set_bcs(my_u,rank)
+    if rank == 1
+       my_u[1] = 1
+    end
+    if rank == 3
+       my_u[end] = -1
+    end
+end
+map(set_bcs,partition(u),ranks)
+partition(u)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [1.0, 0.0, 0.0, 0.0]
+[2] = [0.0, 0.0, 0.0, 0.0, 0.0]
+[3] = [0.0, 0.0, 0.0, 0.0, -1.0]
+</code></pre><p>Using <code>map</code> we can apply the boundary conditions to each vector within the <code>DebugArray</code> individually. The result is that the local border cells (= ghost cells), which are not global borders, will be initialized with values <code>-1</code> and <code>1</code> as well. But this is not a problem since the ghost cells are overwritten with the values of the neighboring process in each iteration.</p><pre><code class="language-julia hljs">map(partition(u)) do my_u
+    my_u[1] = 1
+    my_u[end] = -1
+end
+partition(u)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [1.0, 0.0, 0.0, -1.0]
+[2] = [1.0, 0.0, 0.0, 0.0, -1.0]
+[3] = [1.0, 0.0, 0.0, 0.0, -1.0]
+</code></pre><p>Remember that to perform the Jacobi update, alternate writing to one data structure <code>u</code> and another <code>u_new</code> was required. Hence, we need to create a second data structure to hold a copy of our partition. Using Julia function <code>copy</code>, the new object has the same type and values as the original data structure <code>u</code>.</p><pre><code class="language-julia hljs">u_new = copy(u)
+partition(u_new)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [1.0, 0.0, 0.0, -1.0]
+[2] = [1.0, 0.0, 0.0, 0.0, -1.0]
+[3] = [1.0, 0.0, 0.0, 0.0, -1.0]
+</code></pre><h3 id="Communication-of-ghost-cell-values"><a class="docs-heading-anchor" href="#Communication-of-ghost-cell-values">Communication of ghost cell values</a><a id="Communication-of-ghost-cell-values-1"></a><a class="docs-heading-anchor-permalink" href="#Communication-of-ghost-cell-values" title="Permalink"></a></h3><p>The PartitionedArrays package provides method <code>consistent!</code> to update all ghost values of partition <code>u</code> with the values from the corresponding remote owners. Thus, the local values are made globally <em>consistent</em>. The function returns a <code>Task</code>, such that latency hiding is enabled (i.e. other computations can be performed between calling <code>consistent!</code> and <code>wait</code>). In the first iteration, calling <code>consistent!</code> effectively overwrites the initialization of the ghost values with values <code>-1</code> and <code>1</code>.</p><pre><code class="language-julia hljs">t = consistent!(u)
+wait(t)
+
+partition(u)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [1.0, 0.0, 0.0, 0.0]
+[2] = [0.0, 0.0, 0.0, 0.0, 0.0]
+[3] = [0.0, 0.0, 0.0, 0.0, -1.0]
+</code></pre><h3 id="Updating-grid-values-with-Jacobi-iteration"><a class="docs-heading-anchor" href="#Updating-grid-values-with-Jacobi-iteration">Updating grid values with Jacobi iteration</a><a id="Updating-grid-values-with-Jacobi-iteration-1"></a><a class="docs-heading-anchor-permalink" href="#Updating-grid-values-with-Jacobi-iteration" title="Permalink"></a></h3><p>After having updated the ghost cells, each process can perform the Jacobi update on its local data. To perform the update on each part of the data in parallel, we again use <code>map</code>. You can verify that the grid points are updated correctly by running one iteration of the Jacobi method on the partitioned vectors <code>u</code> and <code>u_new</code> with the following code:</p><pre><code class="language-julia hljs">map(partition(u),partition(u_new)) do my_u, my_u_new
+    my_n = length(my_u)
+    for i in 2:(my_n-1)
+        my_u_new[i] = 0.5*(my_u[i-1]+my_u[i+1])
+    end
+end
+partition(u_new)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [1.0, 0.5, 0.0, -1.0]
+[2] = [1.0, 0.0, 0.0, 0.0, -1.0]
+[3] = [1.0, 0.0, 0.0, -0.5, -1.0]
+</code></pre><h3 id="Final-parallel-implementation"><a class="docs-heading-anchor" href="#Final-parallel-implementation">Final parallel implementation</a><a id="Final-parallel-implementation-1"></a><a class="docs-heading-anchor-permalink" href="#Final-parallel-implementation" title="Permalink"></a></h3><p>To conclude, we can combine the steps to a final parallel implementation:</p><pre><code class="language-julia hljs">function jacobi_par(n,niters,p)
+    ranks = DebugArray(LinearIndices((p,)))
+    ghost = true
+    row_partition = uniform_partition(ranks,p,n,ghost)
+    u = pzeros(Float64,row_partition)
+    map(partition(u)) do my_u
+        my_u[1] = 1
+        my_u[end] = -1
+    end
+    u_new = copy(u)
+    for iter in 1:niters
+        t = consistent!(u)
+        wait(t)
+        map(partition(u),partition(u_new)) do my_u, my_u_new
+            my_n = length(my_u)
+            for i in 2:(my_n-1)
+                my_u_new[i] = 0.5*(my_u[i-1]+my_u[i+1])
+            end
+        end
+        u, u_new = u_new, u
+    end
+    u
+end
+
+u = jacobi_par(10,100,3)
+
+partition(u)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">3-element DebugArray{Vector{Float64}, 1}:
+[1] = [1.0, 0.7777511251764432, 0.5556056460575878, 0.3332569063154697]
+[2] = [0.5556122817624403, 0.333265846578943, 0.11118785421447791, -0.11118785421447791, -0.3332569063154697]
+[3] = [-0.11119802070547052, -0.333265846578943, -0.5556056460575878, -0.7777511251764432, -1.0]
+</code></pre><h2 id="Parallel-execution"><a class="docs-heading-anchor" href="#Parallel-execution">Parallel execution</a><a id="Parallel-execution-1"></a><a class="docs-heading-anchor-permalink" href="#Parallel-execution" title="Permalink"></a></h2><p>After having debugged the code in sequential, we just need to change a couple of code passages to execute the Jacobi method in parallel using MPI. First of all, include the Julia MPI API <code>MPI.jl</code>.</p><pre><code class="language-julia hljs">using MPI</code></pre><p>In general, any Julia program can be executed using <code>MPI.jl</code> like so:</p><pre><code class="language-julia hljs">run(`$(mpiexec()) -np 3 julia -e &#39;println(&quot;hi!&quot;)&#39;`);</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">hi!
+hi!
+hi!</code></pre><p>The command <code>mpiexec</code> launches MPI and <code>-np</code> specifies the number of processes. Instead of passing the code, you can also copy the code in a file called <code>filename.jl</code> and launch the code with</p><pre><code class="nohighlight hljs">run(`$(mpiexec()) -np 3 julia --project=. filename.jl`)</code></pre><h3 id="The-MPI-mode"><a class="docs-heading-anchor" href="#The-MPI-mode">The MPI mode</a><a id="The-MPI-mode-1"></a><a class="docs-heading-anchor-permalink" href="#The-MPI-mode" title="Permalink"></a></h3><p>Now we can call the main function, which calls the parallel Jacobi method, using <code>with_mpi(main)</code>. This expression calls function <code>main</code> &quot;in MPI mode&quot;. Essentially, <code>with_mpi(main)</code> calls function <code>main</code> with function argument <code>distribute_with_mpi</code>. The function <code>distribute_with_mpi</code> in turn creates an <code>MPIArray</code> from a given collection and distributes its items over the ranks of the given MPI communicator <code>comm</code>. (If <code>comm</code> is not specified, the standard communicator <code>MPI.COMM_WORLD</code> is used.) The difference to the debug mode is that now a real distributed <code>MPIArray</code> is used where before <code>DebugArray</code> was employed. To switch back to debug mode, simply replace <code>with_mpi</code> with <code>with_debug</code>.</p><p>Finally the whole syntax is copied in a Julia <code>quote</code> block and run with <code>mpiexec</code>.</p><pre><code class="language-julia hljs">code = quote
+   using PartitionedArrays
+
+   function main(distribute)
+       function jacobi_par(n,niters,p)
+           ranks = distribute(LinearIndices((p,)))
+           ghost = true
+           row_partition = uniform_partition(ranks,p,n,ghost)
+           u = pzeros(Float64,row_partition)
+           map(partition(u)) do my_u
+               my_u[1] = 1
+               my_u[end] = -1
+           end
+           u_new = copy(u)
+           for iter in 1:niters
+               t = consistent!(u)
+               wait(t)
+               map(partition(u),partition(u_new)) do my_u, my_u_new
+                   my_n = length(my_u)
+                   for i in 2:(my_n-1)
+                       my_u_new[i] = 0.5*(my_u[i-1]+my_u[i+1])
+                   end
+              end
+              u, u_new = u_new, u
+           end
+           u
+       end
+   u = jacobi_par(10,100,3)
+   display(partition(u))
+   end # main
+
+   with_mpi(main)
+
+   end # quote
+
+run(`$(mpiexec()) -np 3  julia --project=. -e $code`);</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../examples/">« Examples</a><a class="docs-footer-nextpage" href="../reference/backends/">Back-ends »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.5.0 on <span class="colophon-date" title="Friday 26 July 2024 14:32">Friday 26 July 2024</span>. Using Julia version 1.10.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
