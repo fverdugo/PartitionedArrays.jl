@@ -62,8 +62,8 @@ function build_matrix(nx, ny, nz, gnx, gny, gnz, gix0, giy0, giz0)
 										else
 											val_vec[current_vec_index] = -1.0
 										end
-										col_vec[current_vec_index] = current_global_row
-										row_vec[current_vec_index] = curcol
+										row_vec[current_vec_index] = current_global_row
+										col_vec[current_vec_index] = curcol
 										non_zeros_in_row_count += 1
 									end
 								end
@@ -118,7 +118,6 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 
 	row_partition = partition(axes(A, 2))
 	b = pvector(I_b, b, row_partition) |> fetch
-	consistent!(b) |> wait
 	return A, b
 end
 

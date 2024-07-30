@@ -134,8 +134,7 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
-	#solver = additive_schwarz_correction(PartitionedSolvers.gauss_seidel(; iters = 1))
-	solver = additive_schwarz(PartitionedSolvers.gauss_seidel(; iters = 1))
+	solver = additive_schwarz_correction(PartitionedSolvers.gauss_seidel(; iters = 1))
 	tnx = nx
 	tny = ny
 	tnz = nz
@@ -180,8 +179,8 @@ end
 	- `x`: approximated solution.
 """
 function LinearAlgebra.ldiv!(x, P::Mg_preconditioner, b)
-	x .= 0
-	pc_solve!(x, P, b, P.l, x_is_zero = true)
+	fill!(x, zero(eltype(x)))
+	pc_solve!(x, P, b, P.l; x_is_zero = true)
 	x
 end
 
@@ -296,14 +295,8 @@ function pc_solve!(x, s, b, l; x_is_zero = false)
 	if l == 1
 		solve!(x, s.gs_states[l], b) # bottom solve
 	else
-		solve!(x, s.gs_states[l], b) # presmoother
-		# if x_is_zero
-		# 	s.Axf[l] .= 0
-		# else
-		# 	mul!(s.Axf[l], s.A_vec[l], x)
-		# end
+		solve!(x, s.gs_states[l], b) # presmoother - TODO first halo exchange can be skipped / first gsweep can be kept to below the diagonal
 		mul!(s.Axf[l], s.A_vec[l], x)
-		s.r[l-1] .= 0
 		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
 		pc_solve!(s.x[l-1], s, s.r[l-1], l - 1)
 		p_prolongate!(x, s.x[l-1], s.f2c[l-1])

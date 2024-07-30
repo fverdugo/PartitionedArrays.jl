@@ -25,7 +25,7 @@ include("mg_preconditioner.jl")
 
 	- file output.
 """
-function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_type = "JSON")
+function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_type = "txt")
 	ranks = distribute(LinearIndices((np,)))
 	timing_data = zeros(Float64, 10)
 	ref_timing_data = zeros(Float64, 10)
@@ -51,7 +51,15 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 		x, ref_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, ref_timing_data, maxiter = ref_max_iters, tolerance = 0.0, Pl = S, statevars = statevars)
 		totalNiters_ref += iters
 	end
+
 	ref_tol = normr / normr0
+
+	# map_main(ranks) do _
+	# 	println(normr0)
+	# 	println(normr)
+	# 	println(ref_tol)
+	# end
+	# return
 
 	### Optimized CG Setup Phase ### (only relevant after optimising the algorithm with potential convergence loss)
 	opt_max_iters = 10 * ref_max_iters
@@ -117,7 +125,7 @@ end
 
 	- file output.
 """
-function hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60, output_type = "JSON")
+function hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60, output_type = "txt")
 	with_mpi() do distribute
 		hpcg_benchmark(distribute, np, nx, ny, nz, total_runtime = total_runtime, output_type = output_type)
 	end
@@ -140,7 +148,7 @@ end
 
 	- file output.
 """
-function hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60, output_type = "JSON")
+function hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60, output_type = "txt")
 	with_debug() do distribute
 		hpcg_benchmark(distribute, np, nx, ny, nz, total_runtime = total_runtime, output_type = output_type)
 	end

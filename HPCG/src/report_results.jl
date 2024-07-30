@@ -16,7 +16,7 @@
 	- file output.
 
 """
-function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom; output_type = "JSON")
+function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom; output_type = "txt")
 	fniters = nr_cg_sets * opt_max_iters
 	fnrow = geom.nrows[levels]
 	fnnz = geom.nnz[levels]
@@ -85,23 +85,23 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 	mean_times = mean(times, dims = 1)[1]
 
 	function time_dict(times)
-		return Dict("setup" => times[10],
+		return OrderedDict("setup" => times[10],
 			"total" => times[1],
 			"DDOT" => times[2],
 			"WAXPBY" => times[3],
-			"SPMV" => main_times[4],
-			"allreduce" => main_times[5],
-			"MG" => main_times[6],
-			"halo_time" => main_times[7],
-			"opt_time" => main_times[8],
-			"ref_time" => main_times[9])
+			"SPMV" => times[4],
+			"allreduce" => times[5],
+			"MG" => times[6],
+			"halo_time" => times[7],
+			"opt_time" => times[8],
+			"ref_time" => times[9])
 	end
 
 	# Write results to file. 
 	isdir("results") || mkdir("results")
-	if output_type == "JSON"
+	if output_type == "json"
 		filename_json = "results/hpcg-benchmark_results" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * ".json"
-		json_dict = Dict()
+		json_dict = OrderedDict()
 		json_dict["procs"] = np
 		json_dict["main_times"] = time_dict(main_times)
 		json_dict["mean_times"] = time_dict(mean_times)
@@ -109,7 +109,7 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 		json_dict["nr_equations"] = fnrow
 		json_dict["non_zeors"] = fnnz
 		json_dict["multigrid_data"] = mg_data
-		json_dict["geometry"] = Dict("npx" => geom.npx,
+		json_dict["geometry"] = OrderedDict("npx" => geom.npx,
 			"npy" => geom.npy,
 			"npz" => geom.npz,
 			"gnx" => geom.npx * geom.nx,
@@ -118,12 +118,12 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 			"nx" => geom.nx,
 			"ny" => geom.ny,
 			"nz" => geom.nz)
-		json_dict["iter_data"] = Dict("ref_iters_set" => ref_max_iters,
+		json_dict["iter_data"] = OrderedDict("ref_iters_set" => ref_max_iters,
 			"opt_iters_set" => opt_max_iters,
 			"ref_iters_total" => ref_max_iters * nr_cg_sets,
 			"opt_iters_total" => opt_max_iters * nr_cg_sets)
-		json_dict["reproducibility_data"] = Dict("mean" => Statistics.mean(norm_data), "var" => Statistics.var(norm_data))
-		json_dict["flops"] = Dict("DDOT" => fnops_ddot,
+		json_dict["reproducibility_data"] = OrderedDict("mean" => Statistics.mean(norm_data), "var" => Statistics.var(norm_data))
+		json_dict["flops"] = OrderedDict("DDOT" => fnops_ddot,
 			"WAXPBY" => fnops_waxpby,
 			"SpMV" => fnops_sparsemv,
 			"MG" => fnops_precond,
@@ -131,20 +131,20 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 			"Total_conv" => frefnops)
 
 		times = main_times
-		json_dict["GB/s"] = Dict("Read" => (fnreads / times[1] / 1.0E9),
+		json_dict["GB/s"] = OrderedDict("Read" => (fnreads / times[1] / 1.0E9),
 			"Write" => (fnwrites / times[1] / 1.0E9),
 			"Total" => ((fnreads + fnwrites) / (times[1]) / 1.0E9),
 			"Total_conv_opt" => ((frefnreads + frefnwrites) / (times[1] + nr_cg_sets * (times[8] / 10.0 + times[10] / 10.0)) / 1.0E9))
 
 		totalGflops = frefnops / (times[1] + nr_cg_sets * (times[8] / 10.0 + times[10] / 10.0)) / 1.0E9
-		json_dict["GFLOP/s"] = Dict("DDOT" => (fnops_ddot / times[2] / 1.0E9),
+		json_dict["GFLOP/s"] = OrderedDict("DDOT" => (fnops_ddot / times[2] / 1.0E9),
 			"WAXPBY" => (fnops_waxpby / times[3] / 1.0E9),
 			"SpMV" => (fnops_sparsemv / times[4] / 1.0E9),
 			"MG" => (fnops_precond / times[6] / 1.0E9),
 			"Total" => (fnops / times[1] / 1.0E9),
 			"Total_conv" => (frefnops / times[1] / 1.0E9),
 			"Total_conv_opt" => totalGflops)
-		json_dict["Overview"] = Dict("GFLOP/s" => totalGflops, "time" => times[1])
+		json_dict["Overview"] = OrderedDict("GFLOP/s" => totalGflops, "time" => times[1])
 
 		open(filename_json, "w") do file
 			JSON.print(file, json_dict)
