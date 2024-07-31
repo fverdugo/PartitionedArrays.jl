@@ -780,7 +780,7 @@ function trivial_partition(ranks,n;destination=MAIN)
     partition_in_main
 end
 
-function renumber_partition(partition_in)
+function renumber_partition(partition_in;renumber_local_indices=true)
     own_ids = map(own_to_global,partition_in)
     if eltype(own_ids) <: BlockPartitionOwnToGlobal{1}
         return partition_in
@@ -796,6 +796,9 @@ function renumber_partition(partition_in)
     I = ghost_values(v)
     I_owner = map(ghost_to_owner,partition_in)
     new_ids2 = map(union_ghost,new_gids,I,I_owner)
+    if renumber_local_indices
+        return new_ids2
+    end
     perm = map(PartitionedArrays.local_permutation,partition_in)
     partition_out = map(permute_indices,new_ids2,perm)
     partition_out
@@ -1556,27 +1559,29 @@ struct LocalIndicesWithConstantBlockSize{N} <: AbstractLocalIndices
     n::NTuple{N,Int}
     ghost::GhostIndices
     assembly_cache::AssemblyCache
+    ranges::NTuple{N,UnitRange{Int}}
     function LocalIndicesWithConstantBlockSize(
             p::CartesianIndex{N},
             np::NTuple{N,Int},
             n::NTuple{N,Int},
             ghost::GhostIndices) where N
-        new{N}(p, np, n, ghost, AssemblyCache())
+            ranges = map(local_range,Tuple(p),np,n)
+        new{N}(p, np, n, ghost, AssemblyCache(),ranges)
     end
 end
 assembly_cache(a::LocalIndicesWithConstantBlockSize) = a.assembly_cache
 
-function Base.getproperty(a::LocalIndicesWithConstantBlockSize, sym::Symbol)
-    if sym === :ranges
-        map(local_range,Tuple(a.p),a.np,a.n)
-    else
-        getfield(a,sym)
-    end
-end
-
-function Base.propertynames(x::LocalIndicesWithConstantBlockSize, private::Bool=false)
-  (fieldnames(typeof(x))...,:ranges)
-end
+#function Base.getproperty(a::LocalIndicesWithConstantBlockSize, sym::Symbol)
+#    if sym === :ranges
+#        map(local_range,Tuple(a.p),a.np,a.n)
+#    else
+#        getfield(a,sym)
+#    end
+#end
+#
+#function Base.propertynames(x::LocalIndicesWithConstantBlockSize, private::Bool=false)
+#  (fieldnames(typeof(x))...,:ranges)
+#end
 
 function replace_ghost(a::LocalIndicesWithConstantBlockSize,ghost::GhostIndices)
     LocalIndicesWithConstantBlockSize(a.p,a.np,a.n,ghost)
@@ -1584,12 +1589,12 @@ end
 
 function find_owner(indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSize})
     map(indices,global_ids) do indices,global_ids
-        start = map(indices.np,indices.n) do np,n
+        start2 = map(indices.np,indices.n) do np,n
             start = [ first(local_range(p,np,n)) for p in 1:np ]
             push!(start,n+1)
             start
         end
-        global_to_owner = BlockPartitionGlobalToOwner(start)
+        global_to_owner = BlockPartitionGlobalToOwner(start2)
         map_global_to_owner(global_ids,global_to_owner)
     end
 end

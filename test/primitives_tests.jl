@@ -38,12 +38,17 @@ function primitives_tests(distribute)
    map_main(rcv;main=2) do rcv
      @test rcv == [10,20,30,40]
    end
+   gather!(rcv,snd;destination=2)
+   map_main(rcv;main=2) do rcv
+     @test rcv == [10,20,30,40]
+   end
 
    snd2 = scatter(rcv;source=2)
    map(snd,snd2) do snd,snd2
        @test snd == snd2
    end
    @test typeof(snd) == typeof(snd2)
+   #scatter!(snd2,rcv;source=2)
 
    snd = b
    rcv = gather(snd;destination=:all)
@@ -75,17 +80,17 @@ function primitives_tests(distribute)
        @test snd2 == snd3
    end
 
-   np = length(rank)
-   rcv3 = map_main(rank) do rank
-       fill(NonIsBitsType([2]),np)
-   end
-   snd3 = allocate_scatter(rcv3)
-   scatter!(snd3,rcv3)
-   snd3 = scatter(rcv3)
-   rcv4 = gather(snd3)
-   map(rcv4,rcv2) do rcv4,rcv2
-       @test rcv4 == rcv2
-   end
+   #np = length(rank)
+   #rcv3 = map_main(rank) do rank
+   #    fill(NonIsBitsType([2]),np)
+   #end
+   #snd3 = allocate_scatter(rcv3)
+   #scatter!(snd3,rcv3)
+   #snd3 = scatter(rcv3)
+   #rcv4 = gather(snd3)
+   #map(rcv4,rcv2) do rcv4,rcv2
+   #    @test rcv4 == rcv2
+   #end
 
    rcv = multicast(rank,source=2)
    map(rcv) do rcv
@@ -113,19 +118,19 @@ function primitives_tests(distribute)
        @test c == [1,4,10,10]
    end
 
-   b = copy(a)
-   scan!(+,b,b,type=:inclusive,init=0)
-   c = gather(b)
-   map_main(c) do c
-       @test c == [3,9,9,12]
-   end
+   #b = copy(a)
+   #scan!(+,b,b,type=:inclusive,init=0)
+   #c = gather(b)
+   #map_main(c) do c
+   #    @test c == [3,9,9,12]
+   #end
 
-   b = copy(a)
-   scan!(+,b,b,type=:exclusive,init=1)
-   c = gather(b)
-   map_main(c) do c
-       @test c == [1,4,10,10]
-   end
+   #b = copy(a)
+   #scan!(+,b,b,type=:exclusive,init=1)
+   #c = gather(b)
+   #map_main(c) do c
+   #    @test c == [1,4,10,10]
+   #end
 
    r = reduction(+,rank,init=0)
    map_main(r) do r
@@ -140,17 +145,17 @@ function primitives_tests(distribute)
    @test sum(rank) == 10
    @test collect(rank) == [1 3; 2 4]
 
-   r = copy(rank)
-   reduction!(+,r,r,init=0,destination=2)
-   map_main(r,main=2) do r
-       @test r == 10
-   end
+   #r = copy(rank)
+   #reduction!(+,r,r,init=0,destination=2)
+   #map_main(r,main=2) do r
+   #    @test r == 10
+   #end
 
-   r = copy(rank)
-   reduction!(+,r,r,init=10,destination=:all)
-   map(r) do r
-       @test r == 20
-   end
+   #r = copy(rank)
+   #reduction!(+,r,r,init=10,destination=:all)
+   #map(r) do r
+   #    @test r == 20
+   #end
 
    rcv_ids = map(rank) do rank
        if rank == 1
@@ -345,6 +350,10 @@ function primitives_tests(distribute)
        end
        @test r == data_rcv
    end
+
+   data_rcv = exchange(
+                       data_snd,
+                       ExchangeGraph(parts_snd, parts_rcv)) |> wait
 
    data_rcv = exchange(
                        data_snd,

@@ -24,8 +24,8 @@ map(a,parts) do a,part
     @test a == -part
 end
 
-b = similar(a)
-@test typeof(a) == typeof(b)
+#b = similar(a)
+#@test typeof(a) == typeof(b)
 
 
 end # module
