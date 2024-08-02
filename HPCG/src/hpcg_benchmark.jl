@@ -1,4 +1,5 @@
-include("cg.jl")
+include("ref_cg.jl")
+include("opt_cg.jl")
 include("report_results.jl")
 include("mg_preconditioner.jl")
 
@@ -68,7 +69,7 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 	for i in 1:nr_of_cg_sets
 		last_cummulative_time = opt_timing_data[1]
 		x .= 0
-		x, opt_timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, opt_timing_data, maxiter = opt_max_iters, tolerance = ref_tol, Pl = S, statevars = statevars) # Change ref_cg calls below to own optimised version.
+		x, opt_timing_data, normr0, normr, iters = opt_cg!(x, S.A_vec[l], b, opt_timing_data, maxiter = opt_max_iters, tolerance = ref_tol, Pl = S, statevars = statevars) # Change ref_cg calls below to own optimised version.
 
 		if iters > opt_n_iters # take largest number of iterations to guarantee convergence.
 			opt_n_iters = iters
@@ -92,7 +93,7 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 	norm_data = zeros(Float64, nr_of_cg_sets)
 	for i in 1:nr_of_cg_sets
 		x .= 0
-		x, timing_data, normr0, normr, iters = ref_cg!(x, S.A_vec[l], b, timing_data, maxiter = opt_n_iters, tolerance = opt_tolerance, Pl = S, statevars = statevars)
+		x, timing_data, normr0, normr, iters = opt_cg!(x, S.A_vec[l], b, timing_data, maxiter = opt_n_iters, tolerance = opt_tolerance, Pl = S, statevars = statevars)
 		norm_data[i] = normr / normr0
 	end
 
