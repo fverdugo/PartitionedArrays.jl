@@ -57,6 +57,9 @@ function p_vector_tests(distribute)
 
     @test a == copy(a)
 
+    ac = pvector_from_split_blocks(own_values(aa),ghost_values(aa),row_partition)
+    @test aa == ac
+
     n = 10
     I,V = map(rank) do rank
         Random.seed!(rank)

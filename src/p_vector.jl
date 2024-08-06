@@ -129,19 +129,27 @@ function split_vector_blocks(own::A,ghost::A) where A
     SplitVectorBlocks(own,ghost)
 end
 
-struct SplitVector{A,T} <: AbstractVector{T}
+struct SplitVector{A,B,T} <: AbstractVector{T}
     blocks::SplitVectorBlocks{A}
-    permutation::UnitRange{Int32}
+    permutation::B
     function SplitVector(
         blocks::SplitVectorBlocks{A},permutation) where A
         T = eltype(blocks.own)
-        perm = convert(UnitRange{Int32},permutation)
-        new{A,T}(blocks,perm)
+        B = typeof(permutation)
+        new{A,B,T}(blocks,permutation)
     end
 end
 
-function split_vector(blocks::SplitVectorBlocks,permutation::UnitRange)
+function split_vector(blocks::SplitVectorBlocks,permutation)
     SplitVector(blocks,permutation)
+end
+
+function split_vector(
+    own::AbstractVector,
+    ghost::AbstractVector,
+    permutation)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,permutation)
 end
 
 Base.IndexStyle(::Type{<:SplitVector}) = IndexLinear()
@@ -972,6 +980,12 @@ function pvector!(C,V,cache)
         split_format!(C,B)
         C
     end
+end
+
+function pvector_from_split_blocks(own,ghost,row_partition)
+    perms = map(local_permutation,row_partition)
+    values = map(split_vector,own,ghost,perms)
+    PVector(values,row_partition)
 end
 
 function old_pvector!(I,V,index_partition;kwargs...)
