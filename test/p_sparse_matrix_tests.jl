@@ -187,6 +187,30 @@ function p_sparse_matrix_tests(distribute)
     end |> tuple_of_arrays
 
     A = psparse(I,J,V,row_partition,col_partition) |> fetch
+    x = pfill(3.0,axes(A,2);split_format=true)
+    b = similar(x,axes(A,1))
+    mul!(b,A,x)
+    map(own_values(b)) do values
+        @test all( values .== 6 )
+    end
+    consistent!(b) |> wait
+    map(partition(b)) do values
+      @test all( values .== 6 )
+    end
+
+    A = psparse_from_split_blocks(own_own_values(A),own_ghost_values(A),row_partition,col_partition)
+    x = pfill(3.0,axes(A,2);split_format=true)
+    b = similar(x,axes(A,1))
+    mul!(b,A,x)
+    map(own_values(b)) do values
+        @test all( values .== 6 )
+    end
+    consistent!(b) |> wait
+    map(partition(b)) do values
+      @test all( values .== 6 )
+    end
+
+    A = psparse(I,J,V,row_partition,col_partition) |> fetch
     x = pfill(3.0,axes(A,2))
     b = similar(x,axes(A,1))
     mul!(b,A,x)
@@ -289,6 +313,10 @@ function p_sparse_matrix_tests(distribute)
     cols = col_partition
     v = pvector(I2,V2,rows) |> fetch
     v,cache = pvector(I2,V2,rows;reuse=true) |> fetch
+    pvector!(v,V,cache) |> wait
+
+    v = pvector(I2,V2,rows;split_format=true) |> fetch
+    v,cache = pvector(I2,V2,rows;reuse=true,split_format=true) |> fetch
     pvector!(v,V,cache) |> wait
 
     v = pvector(I2,V2,rows;assemble=false) |> fetch

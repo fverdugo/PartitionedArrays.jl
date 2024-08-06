@@ -637,6 +637,16 @@ function split_matrix(
     SplitMatrix(blocks,row_permutation,col_permutation)
 end
 
+function split_matrix(
+    own_own::AbstractMatrix,
+    own_ghost::AbstractMatrix,
+    ghost_own::AbstractMatrix,
+    ghost_ghost::AbstractMatrix,
+    row_permutation,
+    col_permutation)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    split_matrix(blocks,row_permutation,col_permutation)
+end
 
 Base.size(a::AbstractSplitMatrix) = (length(a.row_permutation),length(a.col_permutation))
 Base.IndexStyle(::Type{<:AbstractSplitMatrix}) = IndexCartesian()
@@ -1292,6 +1302,33 @@ function psparse!(C,V,cache)
     else
         t = @fake_async C
     end
+end
+
+function psparse_from_split_blocks(oo,oh,ho,hh,rowp,colp;assembled=false)
+    rperms = map(local_permutation,rowp)
+    cperms = map(local_permutation,colp)
+    values = map(split_matrix,oo,oh,ho,hh,rperms,cperms)
+    PSparseMatrix(values,rowp,colp,assembled)
+end
+
+function psparse_from_split_blocks(oo,oh,rowp,colp;assembled=true)
+    ho = map(oo,rowp,colp) do oo, rows, cols
+        T = typeof(oo)
+        Tv = eltype(oo)
+        Ti = indextype(oo)
+        n_ghost_rows = ghost_length(rows)
+        n_own_cols = own_length(cols)
+        sparse_matrix(T,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
+    end
+    hh = map(oo,rowp,colp) do oo, rows, cols
+        T = typeof(oo)
+        Tv = eltype(oo)
+        Ti = indextype(oo)
+        n_ghost_rows = ghost_length(rows)
+        n_ghost_cols = ghost_length(cols)
+        sparse_matrix(T,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
+    end
+    psparse_from_split_blocks(oo,oh,ho,hh,rowp,colp;assembled)
 end
 
 function assemble(A::PSparseMatrix;kwargs...)
