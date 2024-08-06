@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## "master" branch
+
+### Added
+
+- Split format support for `PVector`.
+- Helper functions to build partitioned sparse matrices and vectors in split format, `pvector_from_split_blocks` and `psparse_from_split_blocks`.
+
+### Deprecated
+
+- `OwnAndGhostVectors` is replaced by `SplitVector`.
+
 ## [0.5.1] - 2024-07-26
 
 ### Added
