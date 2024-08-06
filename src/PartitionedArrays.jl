@@ -143,6 +143,7 @@ include("p_vector.jl")
 export SplitMatrix
 export split_matrix
 export split_matrix_blocks
+export psparse_from_split_blocks
 export PSparseMatrix
 export psparse
 export psparse!
