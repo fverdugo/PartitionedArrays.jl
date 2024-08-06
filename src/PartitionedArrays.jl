@@ -134,9 +134,14 @@ export repartition
 export repartition!
 export renumber
 export find_local_indices
+export SplitVector
+export split_vector
+export split_vector_blocks
 include("p_vector.jl")
 
 export SplitMatrix
+export split_matrix
+export split_matrix_blocks
 export PSparseMatrix
 export psparse
 export psparse!
