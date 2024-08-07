@@ -136,8 +136,6 @@ A_seq = centralize(A_dist)
 G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
 G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
 diff = G_seq - centralize(G_dist)
-println("Difference between sequential and parallel strength_graph:")
-display(diff)
 
 # Test sequential collect nodes in aggregate 
 diagG = dense_diag(centralize(G_dist))
@@ -171,10 +169,18 @@ map(partition(aggregate_to_nodes_dist), partition(node_to_aggregate_dist), parti
 end
 
 # Test tentative prolongator 
-function random_nullspace(ndofs, n_B)
+function random_nullspace(ndofs::Int, n_B)
     B = Array{Array{Float64, 1}, 1}(undef, n_B)
     for i = 1:n_B
         B[i] = rand(ndofs)
+    end
+    B
+end
+
+function random_nullspace(index_partition::AbstractArray, n_B)
+    B = Array{PVector}(undef, n_B)
+    for i = 1:n_B
+        B[i] = prand(index_partition)
     end
     B
 end
@@ -197,6 +203,21 @@ Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_n
 @test Pc * stack(Bc) ≈ stack(B)
 
 # Test tentative prolongator with parallel matrix 
+G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
+diagG = dense_diag(G_dist)
+node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_dist,diagG;epsilon)
+aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
+B_dist = random_nullspace(partition(axes(A_dist,1)), block_size)
+Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B_dist, block_size) 
+Bc_matrix = zeros(size(Pc,2), length(Bc))
+for (i,b) in enumerate(Bc)
+    Bc_matrix[:,i] = collect(b)
+end
+B_matrix = zeros(size(Pc,1), length(Bc))
+for (i,b) in enumerate(B)
+    B_matrix[:,i] = collect(b)
+end
+@test centralize(Pc) * Bc_matrix ≈ B_matrix # TODO: test fails 
 
 
 # Test spectral radius sequential & parallel 
@@ -285,9 +306,10 @@ plot!(p2, xlabel="size of matrix", ylabel="avg runtime (s)", xscale=:log10)
 p = plot(p1, p2, layout=(2,1), suptitle="Convergence of powm and spectral_radius")
 savefig(p, "C:/Users/gelie/Home/ComputationalScience/GSoC/powm_l-lprev_k$(maxiter)_m$(msizes[end]).png")    
 display(p)  
- =#
+
+
 # First with a sequential matrix
-#= nodes_per_dir = (100,100)
+nodes_per_dir = (100,100)
 A = laplace_matrix(nodes_per_dir)
 using Random
 Random.seed!(1)

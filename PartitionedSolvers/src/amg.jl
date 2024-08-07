@@ -298,19 +298,56 @@ end
 function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, block_size)
     # B vector of pvectors
     own_values_B = map(own_values, B)
-    P0_partition, Bc_partition = map(own_values(aggregate_to_nodes), own_values_B...) do own_aggregate_to_local_nodes, local_dof_to_b...
-        P0_own_own, local_coarse_dof_to_Bc = tentative_prolongator_with_block_size(own_aggregate_to_local_nodes, local_dof_to_b, block_size)
-        # create P0 sparse matrix as in strength graph
-        # partition in B 
-        # return tuple here 
+    n_B = length(B)
+    P0_partition, Bc_partition, coarse_dof_to_Bc... = map(aggregate_to_nodes.index_partition, B[1].index_partition, local_values(aggregate_to_nodes), own_values_B...) do local_aggregate_local_indices, local_dof_local_indices, local_aggregate_to_local_nodes, own_dof_to_b...
+        P0_own_own, local_coarse_dof_to_Bc = tentative_prolongator_with_block_size(local_aggregate_to_local_nodes, own_dof_to_b, block_size)
+        # Create P0 partition
+        n_global_aggregates = global_length(local_aggregate_local_indices)
+        n_own_aggregates = own_length(local_aggregate_local_indices)
+        n_local_aggregates = local_length(local_aggregate_local_indices)
+        n_ghost_aggregates = ghost_length(local_aggregate_local_indices)
+        n_own_dofs = length(own_dof_to_b[1])
+        n_own_coarse_dofs = n_own_aggregates * n_B
+        n_global_coarse_dofs = n_global_aggregates * n_B
+        @assert n_own_aggregates == n_local_aggregates
+        @assert n_ghost_aggregates == 0 
+        @assert size(P0_own_own, 1) == n_own_dofs 
+        @assert size(P0_own_own, 2) == n_own_coarse_dofs
+        @assert length(local_coarse_dof_to_Bc) == n_B 
+        @assert length(local_coarse_dof_to_Bc[1]) == n_own_coarse_dofs
+        P0_own_ghost = sparse(Int[], Int[], eltype(P0_own_own)[], n_own_aggregates, n_ghost_aggregates)
+        P0_ghost_own = sparse(Int[], Int[], eltype(P0_own_own)[], n_ghost_aggregates, n_own_aggregates)
+        P0_ghost_ghost = sparse(Int[], Int[], eltype(P0_own_own)[], n_ghost_aggregates, n_ghost_aggregates)
+        blocks = PartitionedArrays.split_matrix_blocks(P0_own_own, P0_own_ghost, P0_ghost_own, P0_ghost_ghost)
+        perm_aggs = PartitionedArrays.local_permutation(local_aggregate_local_indices) 
+        # Turn permutation of aggregates to permutation of null vectors 
+        perm_cols = zeros(Int, size(P0_own_own,2))
+        for (i, agg) in enumerate(perm_aggs)
+            cols = (agg - 1) * n_B + 1 : agg * n_B 
+            inds = (i - 1) * n_B + 1 : i * n_B 
+            perm_cols[inds] = cols 
+        end
+        perm_rows = PartitionedArrays.local_permutation(local_dof_local_indices) 
+        P0_partition = PartitionedArrays.split_matrix(blocks, perm_rows, perm_cols)
+        # Partition of Bc
+        own_to_global_coarse_dofs = zeros(Int, n_own_coarse_dofs)
+        for (i, agg) in enumerate(local_to_global(local_aggregate_local_indices))
+            inds = (i-1) * n_B + 1 : i * n_B
+            global_coarse_dofs = (agg-1) * n_B + 1 : agg * n_B 
+            own_to_global_coarse_dofs[inds] = global_coarse_dofs
+        end
+        own_coarse_dofs = OwnIndices(n_global_coarse_dofs, part_id(local_dof_local_indices), own_to_global_coarse_dofs)
+        ghost_coarse_dofs = GhostIndices(n_global_coarse_dofs, Int[], Int32[])
+        my_coarse_dofs = OwnAndGhostIndices(own_coarse_dofs, ghost_coarse_dofs)
+        P0_partition, my_coarse_dofs, local_coarse_dof_to_Bc...
     end |> tuple_of_arrays
     # partition for the coarse dofs 
-    P0 = PSparseMatrix(P0_partition, dof_partition, coarse_dof_partition)
-    Bc = map(Bc_partition) do bic_partition 
-
-        PVector(bic_partition, coarse_dof_partition)
-    end
-    P0, Bc
+    P0 = PSparseMatrix(P0_partition, B[1].index_partition, Bc_partition, true) 
+    Bc = Array{PVector}(undef, n_B)
+    for (i,b) in enumerate(coarse_dof_to_Bc)
+        Bc[i] = PVector(b, Bc_partition)
+    end  
+    P0, Bc 
 end
 
 
@@ -918,6 +955,4 @@ function amg_finalize!(setup)
     end
     coarse_solver_setup = setup.coarse_level.coarse_solver_setup
     finalize!(coarse_solver_setup)
-    nothing
 end
-
