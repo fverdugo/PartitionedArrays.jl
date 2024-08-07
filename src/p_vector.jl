@@ -1482,13 +1482,14 @@ function renumber(a::PVector;kwargs...)
     renumber(a,row_partition_2;kwargs...)
 end
 
-function renumber(a::PVector,row_partition_2;renumber_local_indices=true)
-    # TODO storing the vector in split format would help to return a view
-    # of the input
-    if renumber_local_indices
-        values = map(vcat,own_values(a),ghost_values(a))
+function renumber(a::PVector,row_partition_2;renumber_local_indices=Val(true))
+    if val_parameter(renumber_local_indices)
+        perms = map(row_partition_2) do myrows
+            Int32(1):Int32(local_length(myrows))
+        end
+        values = map(split_vector,own_values(a),ghost_values(a),perms)
     else
-        values = map(copy,local_values(a))
+        values = local_values(a)
     end
     PVector(values,row_partition_2)
 end
