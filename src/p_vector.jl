@@ -1494,3 +1494,82 @@ function renumber(a::PVector,row_partition_2;renumber_local_indices=Val(true))
     PVector(values,row_partition_2)
 end
 
+struct BlockPVector{A,T} <: BlockArrays.AbstractBlockVector{T}
+    blocks::A
+    function BlockPVector(blocks)
+      T = eltype(first(blocks))
+      @assert all(block->isa(block,PVector),blocks)
+      @assert all(block->eltype(block)==T,blocks)
+      A = typeof(blocks)
+      new{A,T}(blocks)
+    end
+end
+BlockArrays.blocks(a::BlockPVector) = a.blocks
+BlockArrays.viewblock(a::BlockPVector, i::Block) = blocks(a)[i.n...]
+Base.axes(a::BlockPVector) = (BlockedPRange(map(block->axes(block,1),blocks(a))),)
+Base.length(a::BlockPVector) = sum(length,blocks(a))
+Base.IndexStyle(::Type{<:BlockPVector}) = IndexLinear()
+function Base.getindex(a::BlockPVector,gid::Int)
+    scalar_indexing_action(a)
+end
+function Base.setindex(a::BlockPVector,v,gid::Int)
+    scalar_indexing_action(a)
+end
+function Base.show(io::IO,k::MIME"text/plain",data::BlockPVector)
+    T = eltype(data)
+    n = length(data)
+    ps = partition(axes(data,1))
+    np = length(ps)
+    nb = blocklength(data)
+    map_main(ps) do _
+        println(io,"$nb-blocked $n-element BlockPVector with eltype $T partitioned into $np parts.")
+    end
+end
+function Base.show(io::IO,data::BlockPVector)
+    print(io,"BlockPVector(…)")
+end
+
+function partition(a::BlockPVector)
+    local_values(a)
+end
+
+function local_values(a::BlockPVector)
+    r = local_block_ranges(axes(a,1))
+    v = map(local_values,blocks(a)) |> array_of_tuples
+    map(v,r) do myv, myr
+        mortar(collect(myv),(myr,))
+    end
+end
+
+function own_values(a::BlockPVector)
+    r = own_block_ranges(axes(a,1))
+    v = map(own_values,blocks(a)) |> array_of_tuples
+    map(v,r) do myv, myr
+        mortar(collect(myv),(myr,))
+    end
+end
+
+function ghost_values(a::BlockPVector)
+    r = ghost_block_ranges(axes(a,1))
+    v = map(ghost_values,blocks(a)) |> array_of_tuples
+    map(v,r) do myv, myr
+        mortar(collect(myv),(myr,))
+    end
+end
+
+function consistent!(a::BlockPVector)
+    ts = map(consistent!,blocks(a))
+    @fake_async begin
+        foreach(wait,ts)
+        a
+    end
+end
+
+function assemble!(a::BlockPVector)
+    ts = map(assemble!,blocks(a))
+    @fake_async begin
+        foreach(wait,ts)
+        a
+    end
+end
+

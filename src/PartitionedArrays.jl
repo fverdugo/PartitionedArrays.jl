@@ -145,6 +145,7 @@ export SplitVector
 export split_vector
 export split_vector_blocks
 export pvector_from_split_blocks
+export BlockPVector
 include("p_vector.jl")
 
 export SplitMatrix

@@ -1833,21 +1833,21 @@ end
 function local_block_ranges(a::BlockedPRange)
     ids = map(partition,blocks(a)) |> array_of_tuples
     map(ids) do myids
-        map(local_length,myids) |> blockedrange
+        map(local_length,myids) |> collect |> blockedrange
     end
 end
 
 function own_block_ranges(a::BlockedPRange)
     ids = map(partition,blocks(a)) |> array_of_tuples
     map(ids) do myids
-        map(own_length,myids) |> blockedrange
+        map(own_length,myids) |> collect |> blockedrange
     end
 end
 
 function ghost_block_ranges(a::BlockedPRange)
     ids = map(partition,blocks(a)) |> array_of_tuples
     map(ids) do myids
-        map(ghost_length,myids) |> blockedrange
+        map(ghost_length,myids) |> collect |> blockedrange
     end
 end
 
