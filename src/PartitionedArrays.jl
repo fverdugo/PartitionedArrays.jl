@@ -8,6 +8,7 @@ using CircularArrays
 import MPI
 import IterativeSolvers
 import Distances
+using BlockArrays
 
 export length_to_ptrs!
 export rewind_ptrs!
@@ -113,6 +114,10 @@ export map_ghost_to_global!
 export map_global_to_ghost!
 export map_own_to_global!
 export map_global_to_own!
+export BlockedPRange
+export local_block_ranges
+export own_block_ranges
+export ghost_block_ranges
 include("p_range.jl")
 
 export local_values

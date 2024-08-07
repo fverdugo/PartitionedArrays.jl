@@ -1,6 +1,7 @@
 
 using PartitionedArrays
 using Test
+using BlockArrays
 
 using PartitionedArrays: local_range
 
@@ -294,5 +295,19 @@ function p_range_tests(distribute)
    map(owners1,owners2) do ids1,ids2
        @test ids1 == ids2
    end
+
+   ids1 = uniform_partition(parts,(2,2),(5,4))
+   ids2 = uniform_partition(parts,(2,2),(6,3))
+   ax = BlockedPRange(PRange.([ids1,ids2]))
+   blockaxes(ax,1)
+   @test isa(ax[Block(1)],PRange)
+   @test isa(ax[Block(2)],PRange)
+   @test blocklasts(ax) == [20, 38]
+   @test findblock(ax,4) == Block(1)
+   @test findblock(ax,25) == Block(2)
+   partition(ax)
+   local_block_ranges(ax)
+   own_block_ranges(ax)
+   ghost_block_ranges(ax)
 
 end
