@@ -94,6 +94,7 @@ export own_to_local
 export ghost_to_local
 export local_to_own
 export local_to_ghost
+export global_to_owner
 export replace_ghost
 export remove_ghost
 export union_ghost
