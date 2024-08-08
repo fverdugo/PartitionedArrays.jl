@@ -226,4 +226,188 @@ function laplacian_fem(
     I,J,V,node_partition,node_partition
 end
 
+function linear_elasticity_fem(
+        nodes_per_dir, # free (== interior) nodes
+        parts_per_dir,
+        parts,
+        ;
+        E = 1,
+        ν = 0.25,
+        index_type::Type{Ti} = Int64,
+        value_type::Type{Tv} = Float64,
+    ) where {Ti,Tv}
+
+    cells_per_dir = nodes_per_dir .+ 1
+
+    function is_boundary_node(node_1d,nodes_1d)
+        !(node_1d in 1:nodes_1d)
+    end
+    function ref_matrix(cartesian_local_nodes,h_per_dir,::Type{value_type}) where value_type
+        D = ndims(cartesian_local_nodes)
+        gp_1d = value_type[-sqrt(3)/3,sqrt(3)/3]
+        sf_1d = zeros(value_type,length(gp_1d),2)
+        sf_1d[:,1] = 0.5 .* (1 .- gp_1d)
+        sf_1d[:,2] = 0.5 .* (gp_1d .+ 1)
+        sg_1d = zeros(value_type,length(gp_1d),2)
+        sg_1d[:,1] .= - 0.5
+        sg_1d[:,2] .=  0.5
+        cartesian_points = CartesianIndices(ntuple(d->length(gp_1d),Val{D}()))
+        cartesian_local_node_to_local_node = LinearIndices(cartesian_local_nodes)
+        cartesian_point_to_point = LinearIndices(cartesian_points)
+        n = 2^D
+        sg = Matrix{NTuple{D,value_type}}(undef,n,length(gp_1d)^D)
+        for cartesian_local_node in cartesian_local_nodes
+            local_node = cartesian_local_node_to_local_node[cartesian_local_node]
+            local_node_tuple = Tuple(cartesian_local_node)
+            for cartesian_point in cartesian_points
+                point = cartesian_point_to_point[cartesian_point]
+                point_tuple = Tuple(cartesian_point)
+                v = ntuple(Val{D}()) do d
+                    prod(1:D) do i
+                        if i == d
+                            (2/h_per_dir[d])*sg_1d[local_node_tuple[d],point_tuple[d]]
+                        else
+                            sf_1d[local_node_tuple[i],point_tuple[i]]
+                        end
+                    end
+                end
+                sg[local_node,point] = v
+            end
+        end
+        Aref = zeros(value_type,n*D,n*D)
+        dV = prod(h_per_dir)/(2^D)
+        ε_i = zeros(value_type,D,D)
+        ε_j = zeros(value_type,D,D)
+        λ = (E*ν)/((1+ν)*(1-2*ν))
+        μ = E/(2*(1+ν))
+        for i in 1:n
+            for j in 1:n
+                for ci in 1:D
+                    for cj in 1:D
+                        idof = (i-1)*D+ci
+                        jdof = (j-1)*D+cj
+                        ε_i .= 0
+                        ε_j .= 0
+                        for k in 1:n
+                            ε_i[ci,:] = collect(sg[k,i])
+                            ε_j[cj,:] = collect(sg[k,j])
+                            ε_i .= 0.5 .* ( ε_i .+ transpose(ε_i))
+                            ε_j .= 0.5 .* ( ε_j .+ transpose(ε_j))
+                            σ_j = λ*tr(ε_j)*one(ε_j) + 2*μ*ε_j
+                            Aref[idof,jdof] += tr(ε_i*σ_j)
+                        end
+                    end
+                end
+            end
+        end
+        Aref
+    end
+    function setup(cells,::Type{index_type},::Type{value_type}) where {index_type,value_type}
+        D = length(nodes_per_dir)
+        h_per_dir = map(i->1/(i+1),nodes_per_dir)
+        ttt = ntuple(d->2,Val{D}())
+        cartesian_local_nodes = CartesianIndices(ttt)
+        Aref = ref_matrix(cartesian_local_nodes,h_per_dir,value_type)#ones(value_type,2^D,2^D)
+        cell_to_cartesian_cell = CartesianIndices(cells_per_dir)
+        first_cartesian_cell = cell_to_cartesian_cell[first(cells)]
+        last_cartesian_cell = cell_to_cartesian_cell[last(cells)]
+        ranges = map(:,Tuple(first_cartesian_cell),Tuple(last_cartesian_cell))
+        cartesian_cells = CartesianIndices(ranges)
+        offset = CartesianIndex(ttt)
+        cartesian_local_node_to_local_node = LinearIndices(cartesian_local_nodes)
+        cartesian_node_to_node = LinearIndices(nodes_per_dir)
+        nnz = 0 
+        for cartesian_cell in cartesian_cells
+            for cartesian_local_node_i in cartesian_local_nodes
+                local_node_i = cartesian_local_node_to_local_node[cartesian_local_node_i]
+                # This is ugly to support Julia 1.6 (idem below)
+                cartesian_node_i = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_i) .- Tuple(offset))
+                boundary = any(map(is_boundary_node,Tuple(cartesian_node_i),nodes_per_dir))
+                if boundary
+                    continue
+                end
+                node_i = cartesian_node_to_node[cartesian_node_i]
+                for cartesian_local_node_j in cartesian_local_nodes
+                    local_node_j = cartesian_local_node_to_local_node[cartesian_local_node_j]
+                    cartesian_node_j = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_j) .- Tuple(offset))
+                    boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                    if boundary
+                        continue
+                    end
+                    node_j = cartesian_node_to_node[cartesian_node_j]
+                    nnz += D*D
+                end
+            end
+        end
+        myI = zeros(index_type,nnz)
+        myJ = zeros(index_type,nnz)
+        myV = zeros(value_type,nnz)
+        k = 0 
+        for cartesian_cell in cartesian_cells
+            for cartesian_local_node_i in cartesian_local_nodes
+                local_node_i = cartesian_local_node_to_local_node[cartesian_local_node_i]
+                cartesian_node_i = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_i) .- Tuple(offset))
+                boundary = any(map(is_boundary_node,Tuple(cartesian_node_i),nodes_per_dir))
+                if boundary
+                    continue
+                end
+                node_i = cartesian_node_to_node[cartesian_node_i]
+                for cartesian_local_node_j in cartesian_local_nodes
+                    local_node_j = cartesian_local_node_to_local_node[cartesian_local_node_j]
+                    cartesian_node_j = CartesianIndex(Tuple(cartesian_cell) .+ Tuple(cartesian_local_node_j) .- Tuple(offset))
+                    boundary = any(map(is_boundary_node,Tuple(cartesian_node_j),nodes_per_dir))
+                    if boundary
+                        continue
+                    end
+                    node_j = cartesian_node_to_node[cartesian_node_j]
+                    for ci in 1:D
+                        for cj in 1:D
+                            dof_i = (node_i-1)*D + ci
+                            dof_j = (node_j-1)*D + cj
+                            local_dof_i = (local_node_i-1)*D + ci
+                            local_dof_j = (local_node_j-1)*D + cj
+                            k += 1
+                            myI[k] = dof_i
+                            myJ[k] = dof_j
+                            myV[k] = Aref[local_dof_i,local_dof_j]
+                        end
+                    end
+                end
+            end
+        end
+        myI,myJ,myV
+    end
+    node_partition = uniform_partition(parts,parts_per_dir,nodes_per_dir)
+    global_node_to_owner = global_to_owner(node_partition)
+    dof_partition = map(node_partition) do mynodes
+        D = length(nodes_per_dir)
+        own_to_global_node = own_to_global(mynodes)
+        n_own_nodes = length(own_to_global_node)
+        own_to_global_dof = zeros(Int,D*n_own_nodes)
+        for own_node in 1:n_own_nodes
+            for ci in 1:D
+                own_dof = (own_node-1)*D+ci
+                global_node = own_to_global_node[own_node]
+                global_dof = (global_node-1)*D+ci
+                own_to_global_dof[own_dof] = global_dof
+            end
+        end
+        n_global_dofs = global_length(mynodes)*D
+        owner = part_id(mynodes)
+        own_dofs = OwnIndices(n_global_dofs,owner,own_to_global_dof)
+        ghost_dofs = GhostIndices(n_global_dofs,Int[],Int32[])
+        global_dof_to_owner = global_dof -> begin
+            global_node = div(global_dof-1,D)+1 
+            global_node_to_owner[global_node]
+        end
+        mydofs = OwnAndGhostIndices(own_dofs,ghost_dofs,global_dof_to_owner)
+        mydofs
+    end
+    cell_partition = uniform_partition(parts,parts_per_dir,cells_per_dir)
+    I,J,V = map(cell_partition) do cells
+        setup(cells,Ti,Tv)
+    end |> tuple_of_arrays
+    I,J,V,dof_partition,dof_partition
+end
+
 

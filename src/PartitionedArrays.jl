@@ -177,6 +177,7 @@ include("p_timer.jl")
 
 export laplacian_fdm
 export laplacian_fem
+export linear_elasticity_fem
 include("gallery.jl")
 
 end # module

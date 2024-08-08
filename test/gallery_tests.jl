@@ -34,6 +34,13 @@ function gallery_tests(distribute,parts_per_dir)
     A |> centralize |> display
     Y = A*pones(axes(A,2))
     @test isa(y,PVector)
+
+    args = linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+    A = psparse(args...) |> fetch
+    A |> centralize |> display
+    Y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+
 end
 
 
