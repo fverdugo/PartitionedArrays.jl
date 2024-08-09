@@ -96,6 +96,29 @@ function tuple_of_arrays(a)
     take(a,eltype(a))
 end
 
+# We don't need a real task since MPI already is able to do
+# fake_asynchronous (nonblocking) operations.
+# We want to avoid heap allocations of standard tasks.
+struct FakeTask{T} # TODO possibly rename
+    work::T
+end
+
+function Base.wait(t::FakeTask)
+    t.work()
+    nothing
+end
+
+function Base.fetch(t::FakeTask)
+    t.work()
+end
+
+macro fake_async(expr) # TODO possibly rename
+    quote
+        FakeTask() do
+            $expr
+        end
+    end |> esc
+end
 
 """
 """
@@ -189,11 +212,6 @@ julia> gather(snd,destination=:all)
 ```
 """
 function gather(snd;destination=MAIN)
-    T = eltype(snd)
-    gather_impl(snd,destination,T)
-end
-
-function gather_impl(snd,destination,::Type{T}) where T
     rcv = allocate_gather(snd;destination)
     gather!(rcv,snd;destination)
     rcv
@@ -205,6 +223,10 @@ end
 Allocate an array to be used in the first argument of [`gather!`](@ref).
 """
 function allocate_gather(snd;destination=MAIN)
+    allocate_gather_impl(snd,destination)
+end
+
+function allocate_gather_impl(snd,destination)
     T = eltype(snd)
     allocate_gather_impl(snd,destination,T)
 end
@@ -237,7 +259,16 @@ function allocate_gather_impl(snd,destination,::Type{T}) where T<:AbstractVector
             data = Vector{eltype(snd)}(undef,0)
             JaggedArray(data,ptrs)
         end
-        rcv = map_main(f,l_dest,snd;otherwise=g,main=destination)
+        ranks = linear_indices(snd)
+        rcv = map(l_dest,snd,ranks) do l,snd,rank
+            if rank == destination
+                f(l,snd)
+            else
+                g(l,snd)
+            end
+        end
+        # This caused a type instability
+        #rcv = map_main(f,l_dest,snd;otherwise=g,main=destination)
     else
         @assert destination === :all
         rcv = map(f,l_dest,snd)
@@ -253,6 +284,10 @@ The result array `rcv` can be allocated with the helper function [`allocate_gath
 """
 function gather!(rcv,snd;destination=MAIN)
     @assert size(rcv) == size(snd)
+    gather_impl!(rcv,snd,destination)
+end
+
+function gather_impl!(rcv,snd,destination)
     T = eltype(snd)
     gather_impl!(rcv,snd,destination,T)
 end
@@ -299,16 +334,31 @@ julia> scatter(a,source=2)
  3
 ```
 """
-function scatter(snd;source=1)
+function scatter(snd;source=MAIN)
+    scatter_impl(snd,source)
+end
+
+#function setup_scatter(snd;source=MAIN)
+#    setup_scatter_impl(snd,source)
+#end
+#
+#function setup_scatter_impl(snd,source)
+#    T = eltype(eltype(snd))
+#    setup_scatter_impl(snd,source,T)
+#end
+#
+#function setup_scatter_impl(snd,source,T)
+#    nothing
+#end
+
+function scatter_impl(snd,source)
     T = eltype(eltype(snd))
     scatter_impl(snd,source,T)
 end
 
 function scatter_impl(snd,source,::Type{T}) where T
-    @assert source !== :all "All to all not implemented"
-    rcv = allocate_scatter(snd;source)
-    scatter!(rcv,snd;source)
-    rcv
+    rcv = allocate_scatter_impl(snd,source)
+    scatter_impl!(rcv,snd,source)
 end
 
 """
@@ -318,6 +368,10 @@ Allocate an array to be used in the first argument of [`scatter!`](@ref).
 """
 function allocate_scatter(snd;source=1)
     @assert source !== :all "All to all not implemented"
+    allocate_scatter_impl(snd,source)
+end
+
+function allocate_scatter_impl(snd,source)
     T = eltype(eltype(snd))
     allocate_scatter_impl(snd,source,T)
 end
@@ -327,13 +381,13 @@ function allocate_scatter_impl(snd,source,::Type{T}) where T
 end
 
 function allocate_scatter_impl(snd,source,::Type{T}) where T <:AbstractVector
-    counts = map(snd) do snd
-        map(length,snd)
+    counts = map(snd) do mysnd
+        map(length,mysnd)
     end
     counts_scat = scatter(counts;source)
-    S = eltype(T)
-    map(counts_scat) do count
-        Vector{S}(undef,count)
+    map(counts_scat) do mycount
+        S = eltype(T)
+        Vector{S}(undef,mycount)
     end
 end
 
@@ -344,7 +398,11 @@ In-place version of [`scatter`](@ref). The destination array `rcv`
 can be generated with the helper function [`allocate_scatter`](@ref).
 It returns `rcv`.
 """
-function scatter!(rcv,snd;source=1)
+function scatter!(rcv,snd;source=MAIN)
+    scatter_impl!(rcv,snd,source)
+end
+
+function scatter_impl!(rcv,snd,source)
     T = eltype(eltype(snd))
     scatter_impl!(rcv,snd,source,T)
 end
@@ -389,34 +447,67 @@ julia> multicast(a,source=3)
 ```
 """
 function multicast(snd;source=MAIN)
+    multicast_impl(snd,source)
+end
+
+#function setup_multicast(snd;source=MAIN)
+#    setup_multicast_impl(snd,source)
+#end
+#
+#function setup_multicast_impl(snd,source)
+#    T = eltype(eltype(snd))
+#    setup_multicast_impl(snd,source,T)
+#end
+#
+#function setup_multicast_impl(snd,source,T)
+#    nothing
+#end
+
+function multicast_impl(snd,source)
     T = eltype(snd)
     multicast_impl(snd,source,T)
 end
 
 function multicast_impl(snd,source,::Type{T}) where T
-    @assert source !== :all "All to all not implemented"
     rcv = allocate_multicast(snd;source)
     multicast!(rcv,snd;source)
     rcv
+    #rcv = similar(snd,T)
+    #@assert source !== :all "multicast to all not implemented"
+    #for i in eachindex(rcv)
+    #    rcv[i] = snd[source]
+    #end
+    #rcv
 end
 
+#function multicast_impl(snd,source,::Type{T}) where T
+#    @assert source !== :all "All to all not implemented"
+#    rcv = allocate_multicast(snd;source)
+#    multicast!(rcv,snd;source)
+#    rcv
+#end
+#
 """
     allocate_multicast(snd;source=1)
 
 Allocate an array to be used in the first argument of [`multicast!`](@ref).
 """
 function allocate_multicast(snd;source=1)
+    allocate_multicast_impl(snd,source)
+end
+
+function allocate_multicast_impl(snd,source)
     T = eltype(snd)
     allocate_multicast_impl(snd,source,T)
 end
 
 function allocate_multicast_impl(snd,source,::Type{T}) where T
-    @assert source !== :all "Scatter all not implemented"
+    @assert source !== :all "Multicast to all not implemented"
     similar(snd)
 end
 
 function allocate_multicast_impl(snd,source,::Type{T}) where T<:AbstractVector
-    @assert source !== :all "Scatter all not implemented"
+    @assert source !== :all "Multicast to all not implemented"
     n = map(length,snd)
     n_all = multicast(n;source)
     S = eltype(T)
@@ -433,12 +524,16 @@ can be generated with the helper function [`allocate_multicast`](@ref).
 It returns `rcv`.
 """
 function multicast!(rcv,snd;source=1)
+    multicast_impl!(rcv,snd,source)
+end
+
+function multicast_impl!(rcv,snd,source)
     T = eltype(snd)
     multicast_impl!(rcv,snd,source,T)
 end
 
 function multicast_impl!(rcv,snd,source,::Type{T}) where T
-    @assert source !== :all "Emit all not implemented"
+    @assert source !== :all "Multicast to all not implemented"
     for i in eachindex(rcv)
         rcv[i] = snd[source]
     end
@@ -482,16 +577,18 @@ julia> scan(+,a,type=:exclusive,init=1)
 
 """
 function scan(op,a;init,type)
-    b = similar(a)
-    scan!(op,b,a;init,type)
+    scan_impl(op,a,init,type)
 end
 
-"""
-    scan!(op,b,a;init,type)
+#function setup_scan(op,a;init,type)
+#    setup_scatter_impl(op,a,init,type)
+#end
+#
+#function setup_scatter_impl(op,a,init,type)
+#    nothing
+#end
 
-In-place version of [`scan`](@ref) on the result `b`.
-"""
-function scan!(op,b,a;init,type)
+function scan_impl(op,a,init,type)
     @assert type in (:inclusive,:exclusive)
     c = gather(a)
     map(c) do c
@@ -507,9 +604,33 @@ function scan!(op,b,a;init,type)
             c[1] = init
         end
     end
-    scatter!(b,c)
-    b
+    scatter(c)
 end
+
+#"""
+#    scan!(op,b,a;init,type)
+#
+#In-place version of [`scan`](@ref) on the result `b`.
+#"""
+#function scan!(op,b,a;init,type)
+#    @assert type in (:inclusive,:exclusive)
+#    c = gather(a)
+#    map(c) do c
+#        n = length(c)
+#        if init !== nothing && n > 0
+#            c[1] = op(c[1],init)
+#        end
+#        for i in 1:(n-1)
+#            c[i+1] = op(c[i+1],c[i])
+#        end
+#        if type === :exclusive && n > 0
+#            rewind_ptrs!(c)
+#            c[1] = init
+#        end
+#    end
+#    scatter!(b,c)
+#    b
+#end
 
 """
     reduction(op, a; destination=MAIN [,init])
@@ -537,21 +658,35 @@ julia> reduction(+,a;init=0,destination=2)
   0
 ```
 """
-function reduction(op,a;kwargs...)
+function reduction(op,a;destination=MAIN,kwargs...)
+    reduction_impl(op,a,destination;kwargs...)
+end
+
+#function setup_reduction(op,a;destination=MAIN)
+#    setup_reduction_impl(op,a,destination)
+#end
+#
+#function setup_reduction_impl(op,a,destination)
+#    nothing
+#end
+
+function reduction_impl(op,a,destination;kwargs...)
     b = similar(a)
-    reduction!(op,b,a;kwargs...)
+    c = gather(a;destination)
+    map!(i->reduce(op,i;kwargs...),b,c)
+    b
 end
 
-"""
-    reduction!(op, b, a;destination=MAIN [,init])
-
-In-place version of [`reduction`](@ref) on the result `b`.
-"""
-function reduction!(op,b,a;destination=MAIN,kwargs...)
-  c = gather(a;destination)
-  map!(i->reduce(op,i;kwargs...),b,c)
-  b
-end
+#"""
+#    reduction!(op, b, a;destination=MAIN [,init])
+#
+#In-place version of [`reduction`](@ref) on the result `b`.
+#"""
+#function reduction!(op,b,a;destination=MAIN,kwargs...)
+#  c = gather(a;destination)
+#  map!(i->reduce(op,i;kwargs...),b,c)
+#  b
+#end
 
 """
     struct ExchangeGraph{A}
@@ -780,6 +915,10 @@ Allocate the result to be used in the first argument
 of [`exchange!`](@ref).
 """
 function allocate_exchange(snd,graph::ExchangeGraph)
+    allocate_exchange_impl(snd,graph)
+end
+
+function allocate_exchange_impl(snd,graph)
     T = eltype(eltype(snd))
     allocate_exchange_impl(snd,graph,T)
 end
@@ -808,24 +947,42 @@ function allocate_exchange_impl(snd,graph,::Type{T}) where T<:AbstractVector
     rcv
 end
 
+function setup_exchange(rcv,snd,graph)
+    T = eltype(eltype(snd))
+    setup_exchange_impl(rcv,snd,graph,T)
+end
+
+function setup_exchange_impl(rcv,snd,graph)
+    T = eltype(eltype(snd))
+    setup_exchange_impl(rcv,snd,graph,T)
+end
+
+function setup_exchange_impl(rcv,snd,graph,T)
+    nothing
+end
+
 """
     exchange!(rcv,snd,graph::ExchangeGraph) -> Task
 
-In-place and asynchronous version of [`exchange`](@ref). This function
+In-place and fake_asynchronous version of [`exchange`](@ref). This function
 returns immediately and returns a task that produces `rcv` with the updated values.
 Use `fetch` to get the updated version of `rcv`.
 The input `rcv` can be allocated with [`allocate_exchange`](@ref).
 """
-function exchange!(rcv,snd,graph::ExchangeGraph)
-    T = eltype(eltype(snd))
-    exchange_impl!(rcv,snd,graph,T)
+function exchange!(rcv,snd,graph::ExchangeGraph,setup=setup_exchange(rcv,snd,graph))
+    exchange_impl!(rcv,snd,graph,setup)
 end
 
 function exchange_fetch!(rcv,snd,graph::ExchangeGraph)
     fetch(exchange!(rcv,snd,graph))
 end
 
-function exchange_impl!(rcv,snd,graph,::Type{T}) where T
+function exchange_impl!(rcv,snd,graph,setup)
+    T = eltype(eltype(snd))
+    exchange_impl!(rcv,snd,graph,setup,T)
+end
+
+function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T
     @assert is_consistent(graph)
     snd_ids = graph.snd
     rcv_ids = graph.rcv
@@ -837,10 +994,10 @@ function exchange_impl!(rcv,snd,graph,::Type{T}) where T
             rcv[rcv_id][i] = snd[snd_id][j]
         end
     end
-    @async rcv
+    @fake_async rcv
 end
 
-function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
+function exchange_impl!(rcv,snd,graph,setup,::Type{T}) where T<:AbstractVector
     @assert is_consistent(graph)
     @assert eltype(rcv) <: JaggedArray
     snd_ids = graph.snd
@@ -861,6 +1018,6 @@ function exchange_impl!(rcv,snd,graph,::Type{T}) where T<:AbstractVector
             end
         end
     end
-    @async rcv
+    @fake_async rcv
 end
 

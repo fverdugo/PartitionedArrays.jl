@@ -25,14 +25,13 @@ function ghost_values(values,indices)
     view(values,ghost_to_local(indices))
 end
 
+# OwnAndGhostVectors is deprecated in favor of SplitVector (for consistency with SplitMatrix)
+
 """
     struct OwnAndGhostVectors{A,C,T}
 
 Vector type that stores the local values of a [`PVector`](@ref) instance
 using a vector of own values, a vector of ghost values, and a permutation.
-This is not the default data layout of [`PVector`](@ref) (which is a plain vector),
-but corresponds to the layout of distributed vectors in other packages, such as PETSc.
-Use this type to avoid duplicating memory when passing data to these other packages.
 
 # Properties
 
@@ -116,6 +115,184 @@ function allocate_local_values(::Type{<:OwnAndGhostVectors{A}},indices) where {A
     ghost_values = similar(A,n_ghost)
     perm = local_permutation(indices)
     OwnAndGhostVectors{A}(own_values,ghost_values,perm)
+end
+
+struct SplitVectorBlocks{A}
+    own::A
+    ghost::A
+end
+function split_vector_blocks(own,ghost)
+    T = typeof(own)
+    SplitVectorBlocks(own,convert(T,ghost))
+end
+function split_vector_blocks(own::A,ghost::A) where A
+    SplitVectorBlocks(own,ghost)
+end
+
+struct SplitVector{A,B,T} <: AbstractVector{T}
+    blocks::SplitVectorBlocks{A}
+    permutation::B
+    function SplitVector(
+        blocks::SplitVectorBlocks{A},permutation) where A
+        T = eltype(blocks.own)
+        B = typeof(permutation)
+        new{A,B,T}(blocks,permutation)
+    end
+end
+
+function split_vector(blocks::SplitVectorBlocks,permutation)
+    SplitVector(blocks,permutation)
+end
+
+function split_vector(
+    own::AbstractVector,
+    ghost::AbstractVector,
+    permutation)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,permutation)
+end
+
+Base.IndexStyle(::Type{<:SplitVector}) = IndexLinear()
+Base.size(a::SplitVector) = (length(a.blocks.own)+length(a.blocks.ghost),)
+function Base.getindex(a::SplitVector,local_id::Int)
+    T = eltype(a)
+    n_own = length(a.blocks.own)
+    j = a.permutation[local_id]
+    v = if j > n_own
+        a.blocks.ghost[j-n_own]
+    else
+        a.blocks.own[j]
+    end
+    convert(T,v)
+end
+function Base.setindex!(a::SplitVector,v,local_id::Int)
+    n_own = length(a.blocks.own)
+    j = a.permutation[local_id]
+    if j > n_own
+        a.blocks.ghost[j-n_own] = v
+    else
+        a.blocks.own[j] = v
+    end
+    v
+end
+
+function own_values(values::SplitVector,indices)
+    values.blocks.own
+end
+
+function ghost_values(values::SplitVector,indices)
+    values.blocks.ghost
+end
+
+function allocate_local_values(values::SplitVector,::Type{T},indices) where T
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
+    own_values = similar(values.blocks.own,T,n_own)
+    ghost_values = similar(values.blocks.ghost,T,n_ghost)
+    perm = local_permutation(indices)
+    blocks = split_vector_blocks(own_values,ghost_values)
+    split_vector(blocks,perm)
+end
+
+function allocate_local_values(::Type{<:SplitVector{A}},indices) where {A}
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
+    own_values = similar(A,n_own)
+    ghost_values = similar(A,n_ghost)
+    blocks = split_vector_blocks(own_values,ghost_values)
+    perm = local_permutation(indices)
+    split_vector(blocks,perm)
+end
+
+Base.similar(a::SplitVector) = similar(a,eltype(a))
+function Base.similar(a::SplitVector,::Type{T}) where T
+    own = similar(a.blocks.own,T)
+    ghost = similar(a.blocks.ghost,T)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,a.permutation)
+end
+
+function Base.copy(a::SplitVector)
+    own = copy(a.blocks.own)
+    ghost = copy(a.blocks.ghost)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,a.permutation)
+end
+
+function Base.copy!(a::SplitVector,b::SplitVector)
+    copy!(a.blocks.own,b.blocks.own)
+    copy!(a.blocks.ghost,b.blocks.ghost)
+    a
+end
+function Base.copyto!(a::SplitVector,b::SplitVector)
+    copyto!(a.blocks.own,b.blocks.own)
+    copyto!(a.blocks.ghost,b.blocks.ghost)
+    a
+end
+
+function Base.fill!(a::SplitVector,v)
+    LinearAlgebra.fill!(a.blocks.own,v)
+    LinearAlgebra.fill!(a.blocks.ghost,v)
+    a
+end
+
+function Base.:*(a::Number,b::SplitVector)
+    own_own = a*b.blocks.own
+    ghost_ghost = a*b.blocks.ghost
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,b.permutation)
+end
+
+function Base.:*(b::SplitVector,a::Number)
+    a*b
+end
+
+for op in (:+,:-)
+    @eval begin
+        function Base.$op(a::SplitVector)
+            own = $op(a.blocks.own)
+            ghost = $op(a.blocks.ghost)
+            blocks = split_vector_blocks(own,ghost)
+            split_vector(blocks,a.permutation)
+        end
+        function Base.$op(a::SplitVector,b::SplitVector)
+            @boundscheck @assert a.permutation == b.permutation
+            own = $op(a.blocks.own,b.blocks.own)
+            ghost = $op(a.blocks.ghost,b.blocks.ghost)
+            blocks = split_vector_blocks(own,ghost)
+            split_vector(blocks,b.permutation)
+        end
+    end
+end
+
+function split_format_locally(a::SplitVector,rows)
+    a
+end
+
+function split_format_locally(a::AbstractVector,rows)
+    n_own = own_length(rows)
+    n_ghost = ghost_length(rows)
+    perm = local_permutation(rows)
+    own = similar(a,n_own)
+    ghost = similar(a,n_ghost)
+    blocks = split_vector_blocks(own,ghost)
+    b = split_vector(blocks,perm)
+    split_format_locally!(b,a,rows)
+    b
+end
+
+function split_format_locally!(b::SplitVector,a::AbstractVector,rows)
+    b.blocks.own .= view(a,own_to_local(rows))
+    b.blocks.ghost .= view(a,ghost_to_local(rows))
+    b
+end
+
+function split_format_locally!(b::SplitVector,a::SplitVector,rows)
+    if b !== a
+        b.blocks.own .= a.blocks.own
+        b.blocks.ghost .= a.blocks.ghost
+    end
+    b
 end
 
 """
@@ -238,13 +415,14 @@ function p_vector_cache(vector_partition,index_partition)
     p_vector_cache_impl(eltype(vector_partition),vector_partition,index_partition)
 end
 
-struct VectorAssemblyCache{T}
-    neighbors_snd::Vector{Int32}
-    neighbors_rcv::Vector{Int32}
-    local_indices_snd::JaggedArray{Int32,Int32}
-    local_indices_rcv::JaggedArray{Int32,Int32}
-    buffer_snd::JaggedArray{T,Int32}
-    buffer_rcv::JaggedArray{T,Int32}
+struct VectorAssemblyCache{A,B,C,D}
+    neighbors_snd::A
+    neighbors_rcv::A
+    local_indices_snd::B
+    local_indices_rcv::B
+    buffer_snd::C
+    buffer_rcv::C
+    exchange_setup::D
 end
 function Base.reverse(a::VectorAssemblyCache)
     VectorAssemblyCache(
@@ -253,24 +431,30 @@ function Base.reverse(a::VectorAssemblyCache)
                     a.local_indices_rcv,
                     a.local_indices_snd,
                     a.buffer_rcv,
-                    a.buffer_snd)
+                    a.buffer_snd,
+                    a.exchange_setup,
+                   )
 end
 function copy_cache(a::VectorAssemblyCache)
-    buffer_snd = JaggedArray(copy(a.buffer_snd.data),a.buffer_snd.ptrs)
-    buffer_rcv = JaggedArray(copy(a.buffer_rcv.data),a.buffer_rcv.ptrs)
+    buffer_snd = deepcopy(a.buffer_snd) # TODO ugly
+    buffer_rcv = deepcopy(a.buffer_rcv)
     VectorAssemblyCache(
                     a.neighbors_snd,
                     a.neighbors_rcv,
                     a.local_indices_snd,
                     a.local_indices_rcv,
                     buffer_snd,
-                    buffer_rcv)
+                    buffer_rcv,
+                    a.exchange_setup
+                   )
 end
 function p_vector_cache_impl(::Type,vector_partition,index_partition)
     neighbors_snd,neighbors_rcv= assembly_neighbors(index_partition)
     indices_snd,indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
     buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,indices_snd,indices_rcv) |> tuple_of_arrays
-    map(VectorAssemblyCache,neighbors_snd,neighbors_rcv,indices_snd,indices_rcv,buffers_snd,buffers_rcv)
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    exchange_setup = setup_exchange(buffers_rcv,buffers_snd,graph)
+    VectorAssemblyCache(neighbors_snd,neighbors_rcv,indices_snd,indices_rcv,buffers_snd,buffers_rcv,exchange_setup)
 end
 function assembly_buffers(values,local_indices_snd,local_indices_rcv)
     T = eltype(values)
@@ -283,8 +467,8 @@ function assembly_buffers(values,local_indices_snd,local_indices_rcv)
     buffer_snd, buffer_rcv
 end
 
-struct JaggedArrayAssemblyCache{T}
-    cache::VectorAssemblyCache{T}
+struct JaggedArrayAssemblyCache{T<:VectorAssemblyCache}
+    cache::T
 end
 Base.reverse(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(reverse(a.cache))
 copy_cache(a::JaggedArrayAssemblyCache) = JaggedArrayAssemblyCache(copy_cache(a.cache))
@@ -321,51 +505,137 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
         rewind_ptrs!(ptrs)
         JaggedArray(data,ptrs)
     end
-    neighbors = assembly_neighbors(index_partition)
-    local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors...)
+    neighbors_snd,neighbors_rcv = assembly_neighbors(index_partition)
+    local_indices_snd, local_indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
     p_snd = map(data_index_snd,local_indices_snd,vector_partition)
     p_rcv = map(data_index_snd,local_indices_rcv,vector_partition)
     data = map(getdata,vector_partition)
-    buffers = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
-    cache = map(VectorAssemblyCache,neighbors...,p_snd,p_rcv,buffers...)
-    map(JaggedArrayAssemblyCache,cache)
+    buffer_snd, buffer_rcv = map(assembly_buffers,data,p_snd,p_rcv) |> tuple_of_arrays
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    exchange_setup = setup_exchange(buffer_rcv,buffer_snd,graph)
+    cache = VectorAssemblyCache(neighbors_snd,neighbors_rcv,p_snd,p_rcv,buffer_snd,buffer_rcv,exchange_setup)
+    JaggedArrayAssemblyCache(cache)
 end
 
+# NB these fields could be removed if the ghost
+# are sorted according to their owner
+struct SplitVectorAssemblyCache{A,B,C,D}
+    neighbors_snd::A
+    neighbors_rcv::A
+    ghost_indices_snd::B # NB
+    own_indices_rcv::B
+    buffer_snd::C # NB
+    buffer_rcv::C
+    exchange_setup::D
+end
+function Base.reverse(a::SplitVectorAssemblyCache)
+    SplitVectorAssemblyCache(
+                    a.neighbors_rcv,
+                    a.neighbors_snd,
+                    a.own_indices_rcv,
+                    a.ghost_indices_snd,
+                    a.buffer_rcv,
+                    a.buffer_snd,
+                    a.exchange_setup,
+                   )
+end
+function copy_cache(a::SplitVectorAssemblyCache)
+    buffer_snd = deepcopy(a.buffer_snd) # TODO ugly
+    buffer_rcv = deepcopy(a.buffer_rcv) # TODO ugly
+    VectorAssemblyCache(
+                    a.neighbors_snd,
+                    a.neighbors_rcv,
+                    a.ghost_indices_snd,
+                    a.own_indices_rcv,
+                    buffer_snd,
+                    buffer_rcv,
+                    a.exchange_setup
+                   )
+end
+
+function p_vector_cache_impl(::Type{<:SplitVector},vector_partition,index_partition)
+    neighbors_snd,neighbors_rcv= assembly_neighbors(index_partition)
+    indices_snd,indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
+    map(indices_snd,indices_rcv,index_partition) do ids_snd,ids_rcv,myids
+        map_local_to_ghost!(ids_snd.data,myids)
+        map_local_to_own!(ids_rcv.data,myids)
+    end
+    ghost_indices_snd = indices_snd
+    own_indices_rcv = indices_rcv
+    buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,indices_snd,indices_rcv) |> tuple_of_arrays
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    exchange_setup = setup_exchange(buffers_rcv,buffers_snd,graph)
+    SplitVectorAssemblyCache(neighbors_snd,neighbors_rcv,ghost_indices_snd,own_indices_rcv,buffers_snd,buffers_rcv,exchange_setup)
+end
+
+function p_vector_cache_impl(::Type{<:SplitVector{<:JaggedArray}},vector_partition,index_partition)
+    error("Case not implemented yet")
+end
 
 function assemble!(f,vector_partition,cache)
-    assemble_impl!(f,vector_partition,cache,eltype(cache))
+    assemble_impl!(f,vector_partition,cache)
 end
 
-function assemble_impl!(f,vector_partition,cache,::Type{<:VectorAssemblyCache})
-    buffer_snd = map(vector_partition,cache) do values,cache
-        local_indices_snd = cache.local_indices_snd
+function assemble_impl!(f,vector_partition,cache::VectorAssemblyCache)
+    local_indices_snd=cache.local_indices_snd
+    local_indices_rcv=cache.local_indices_rcv
+    neighbors_snd=cache.neighbors_snd
+    neighbors_rcv=cache.neighbors_rcv
+    buffer_snd=cache.buffer_snd
+    buffer_rcv=cache.buffer_rcv
+    exchange_setup=cache.exchange_setup
+    foreach(vector_partition,local_indices_snd,buffer_snd) do values,local_indices_snd,buffer_snd
         for (p,lid) in enumerate(local_indices_snd.data)
-            cache.buffer_snd.data[p] = values[lid]
+            buffer_snd.data[p] = values[lid]
         end
-        cache.buffer_snd
     end
-    neighbors_snd, neighbors_rcv, buffer_rcv = map(cache) do cache
-        cache.neighbors_snd, cache.neighbors_rcv, cache.buffer_rcv
-    end |> tuple_of_arrays
     graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
-    t = exchange!(buffer_rcv,buffer_snd,graph)
-    # Fill values from rcv buffer asynchronously
-    @async begin
+    t = exchange!(buffer_rcv,buffer_snd,graph,exchange_setup)
+    # Fill values from rcv buffer fake_asynchronously
+    @fake_async begin
         wait(t)
-        map(vector_partition,cache) do values,cache
-            local_indices_rcv = cache.local_indices_rcv
+        foreach(vector_partition,local_indices_rcv,buffer_rcv) do values,local_indices_rcv,buffer_rcv
             for (p,lid) in enumerate(local_indices_rcv.data)
-                values[lid] = f(values[lid],cache.buffer_rcv.data[p])
+                values[lid] = f(values[lid],buffer_rcv.data[p])
             end
         end
         nothing
     end
 end
 
-function assemble_impl!(f,vector_partition,cache,::Type{<:JaggedArrayAssemblyCache})
-    vcache = map(i->i.cache,cache)
+function assemble_impl!(f,vector_partition,cache::JaggedArrayAssemblyCache)
+    vcache = cache.cache
     data = map(getdata,vector_partition)
     assemble!(f,data,vcache)
+end
+
+function assemble_impl!(f,vector_partition,cache::SplitVectorAssemblyCache)
+    ghost_indices_snd=cache.ghost_indices_snd
+    own_indices_rcv=cache.own_indices_rcv
+    neighbors_snd=cache.neighbors_snd
+    neighbors_rcv=cache.neighbors_rcv
+    buffer_snd=cache.buffer_snd
+    buffer_rcv=cache.buffer_rcv
+    exchange_setup=cache.exchange_setup
+    foreach(vector_partition,ghost_indices_snd,buffer_snd) do values,ghost_indices_snd,buffer_snd
+        ghost_vals = values.blocks.ghost
+        for (p,hid) in enumerate(ghost_indices_snd.data)
+            buffer_snd.data[p] = ghost_vals[hid]
+        end
+    end
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    t = exchange!(buffer_rcv,buffer_snd,graph,exchange_setup)
+    # Fill values from rcv buffer fake_asynchronously
+    @fake_async begin
+        wait(t)
+        foreach(vector_partition,own_indices_rcv,buffer_rcv) do values,own_indices_rcv,buffer_rcv
+            own_vals = values.blocks.own
+            for (p,oid) in enumerate(own_indices_rcv.data)
+                own_vals[oid] = f(own_vals[oid],buffer_rcv.data[p])
+            end
+        end
+        nothing
+    end
 end
 
 """
@@ -411,7 +681,7 @@ end
 
 function assemble!(o,a::PVector)
     t = assemble!(o,partition(a),a.cache)
-    @async begin
+    @fake_async begin
         wait(t)
         map(ghost_values(a)) do a
             fill!(a,zero(eltype(a)))
@@ -458,9 +728,9 @@ julia> local_values(a)
 ```
 """
 function consistent!(a::PVector)
-    cache = map(reverse,a.cache)
+    cache = reverse(a.cache)
     t = assemble!(insert,partition(a),cache)
-    @async begin
+    @fake_async begin
         wait(t)
         a
     end
@@ -534,11 +804,15 @@ Equivalent to
     PVector(vector_partition,index_partition)
 
 """
-@inline function pvector(f,index_partition)
+@inline function pvector(f,index_partition;split_format=Val(false))
     vector_partition = map(f,index_partition)
-    PVector(vector_partition,index_partition)
+    b = PVector(vector_partition,index_partition)
+    if !(val_parameter(split_format))
+        return b
+    end
+    PartitionedArrays.split_format(b)
 end
-pvector(f,r::PRange) = pvector(f,partition(r))
+pvector(f,r::PRange;kwargs...) = pvector(f,partition(r);kwargs...)
 
 function old_pvector!(f,I,V,index_partition;discover_rows=true)
     if discover_rows
@@ -589,6 +863,7 @@ function pvector(f,I,V,rows;
         subassembled=false,
         assembled=false,
         assemble=true,
+        split_format = Val(false),
         restore_ids = true,
         indices = :global,
         reuse=Val(false),
@@ -620,7 +895,7 @@ function pvector(f,I,V,rows;
         if assemble
             t = PartitionedArrays.assemble(A,rows;reuse=true)
         else
-            t = @async A, nothing
+            t = @fake_async A, nothing
         end
     elseif subassembled
         if assembled_rows === nothing
@@ -641,7 +916,7 @@ function pvector(f,I,V,rows;
         if assemble
             t = PartitionedArrays.assemble(A,assembled_rows;reuse=true)
         else
-            t = @async A, nothing
+            t = @fake_async A, nothing
         end
     elseif assembled
         rows_fa = rows
@@ -656,20 +931,30 @@ function pvector(f,I,V,rows;
             map(map_local_to_global!,I,rows_fa)
         end
         A = PVector(values_fa,rows_fa)
-        t = @async A, nothing
+        t = @fake_async A, nothing
     else
         error("This line should not be reached")
     end
     if val_parameter(reuse) == false
-        return @async begin
+        return @fake_async begin
             B, cacheB = fetch(t)
-            B
+            C = if val_parameter(split_format)
+                PartitionedArrays.split_format(B)
+            else
+                B
+            end
+            C
         end
     else
-        return @async begin
+        return @fake_async begin
             B, cacheB = fetch(t)
-            cache = (A,cacheB,assemble,assembled,K) 
-            (B, cache)
+            C = if val_parameter(split_format)
+                PartitionedArrays.split_format(B)
+            else
+                B
+            end
+            cache = (A,B,cacheB,assemble,assembled,K,split_format) 
+            (C, cache)
         end
     end
 end
@@ -677,16 +962,30 @@ end
 """
     pvector!(B::PVector,V,cache)
 """
-function pvector!(B,V,cache)
-    (A,cacheB,assemble,assembled,K) = cache
+function pvector!(C,V,cache)
+    (A,B,cacheB,assemble,assembled,K,split_format) = cache
     rows_sa = partition(axes(A,1))
     values_sa = partition(A)
     map(dense_vector!,values_sa,K,V)
-    if !assembled && assemble
-        t = PartitionedArrays.assemble!(B,A,cacheB)
+    t = if !assembled && assemble
+        PartitionedArrays.assemble!(B,A,cacheB)
     else
-        t = @async B
+        @fake_async B
     end
+    if !val_parameter(split_format)
+        return t
+    end
+    @fake_async begin
+        wait(t)
+        split_format!(C,B)
+        C
+    end
+end
+
+function pvector_from_split_blocks(own,ghost,row_partition)
+    perms = map(local_permutation,row_partition)
+    values = map(split_vector,own,ghost,perms)
+    PVector(values,row_partition)
 end
 
 function old_pvector!(I,V,index_partition;kwargs...)
@@ -707,10 +1006,23 @@ function default_local_values(I,V,indices)
     values
 end
 
+function split_format(A::PVector)
+    rows = partition(axes(A,1))
+    values = map(split_format_locally,partition(A),rows)
+    b = PVector(values,rows)
+    b
+end
+
+function split_format!(B,A::PVector)
+    rows = partition(axes(A,1))
+    map(split_format_locally!,partition(B),partition(A),rows)
+    B
+end
+
 """
     pfill(v,index_partition)
 """
-pfill(v,index_partition) = pvector(indices->fill(v,local_length(indices)),index_partition)
+pfill(v,index_partition;kwargs...) = pvector(indices->fill(v,local_length(indices)),index_partition;kwargs...)
 
 """
     pzeros([T,]index_partition)
@@ -719,8 +1031,8 @@ Equivalent to
 
     pfill(zero(T),index_partition)
 """
-pzeros(index_partition) = pzeros(Float64,index_partition)
-pzeros(::Type{T},index_partition) where T = pvector(indices->zeros(T,local_length(indices)),index_partition)
+pzeros(index_partition;kwargs...) = pzeros(Float64,index_partition;kwargs...)
+pzeros(::Type{T},index_partition;kwargs...) where T = pvector(indices->zeros(T,local_length(indices)),index_partition;kwargs...)
 
 """
     pones([T,]index_partition)
@@ -729,8 +1041,8 @@ Equivalent to
 
     pfill(one(T),index_partition)
 """
-pones(index_partition) = pones(Float64,index_partition)
-pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(indices)),index_partition)
+pones(index_partition;kwargs...) = pones(Float64,index_partition;kwargs...)
+pones(::Type{T},index_partition;kwargs...) where T = pvector(indices->ones(T,local_length(indices)),index_partition;kwargs...)
 
 """
     prand([rng,][s,]index_partition)
@@ -738,9 +1050,9 @@ pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(
 Create a [`PVector`](@ref) object with uniform random values and the data partition in `index_partition`.
 The optional arguments have the same meaning and default values as in `rand`.
 """
-prand(index_partition) = pvector(indices->rand(local_length(indices)),index_partition)
-prand(s,index_partition) = pvector(indices->rand(s,local_length(indices)),index_partition)
-prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)),index_partition)
+prand(index_partition;kwargs...) = pvector(indices->rand(local_length(indices)),index_partition;kwargs...)
+prand(s,index_partition;kwargs...) = pvector(indices->rand(s,local_length(indices)),index_partition;kwargs...)
+prand(rng,s,index_partition;kwargs...) = pvector(indices->rand(rng,s,local_length(indices)),index_partition;kwargs...)
 
 """
     prandn([rng,][s,]index_partition)
@@ -748,9 +1060,9 @@ prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)
 Create a [`PVector`](@ref) object with normally distributed random values and the data partition in `index_partition`.
 The optional arguments have the same meaning and default values as in `randn`.
 """
-prandn(index_partition) = pvector(indices->randn(local_length(indices)),index_partition)
-prandn(s,index_partition) = pvector(indices->randn(s,local_length(indices)),index_partition)
-prandn(rng,s,index_partition) = pvector(indices->randn(rng,s,local_length(indices)),index_partition)
+prandn(index_partition;kwargs...) = pvector(indices->randn(local_length(indices)),index_partition;kwargs...)
+prandn(s,index_partition;kwargs...) = pvector(indices->randn(s,local_length(indices)),index_partition;kwargs...)
+prandn(rng,s,index_partition;kwargs...) = pvector(indices->randn(rng,s,local_length(indices)),index_partition;kwargs...)
 
 function Base.:(==)(a::PVector,b::PVector)
     @boundscheck @assert matching_own_indices(axes(a,1),axes(b,1))
@@ -994,7 +1306,7 @@ function assemble(v::PVector,rows;reuse=Val(false))
     w = similar(v,PRange(rows))
     v2 = copy(v)
     t = assemble!(v2)
-    @async begin
+    @fake_async begin
         wait(t)
         w .= v2
         if val_parameter(reuse)
@@ -1016,7 +1328,7 @@ function assemble!(w::PVector,v::PVector,cache)
     v2 = cache
     copy!(v2,v)
     t = assemble!(v2)
-    @async begin
+    @fake_async begin
         wait(t)
         w .= v2
         w
@@ -1033,7 +1345,7 @@ function consistent(v::PVector,rows;reuse=Val(false))
     w = similar(v,PRange(rows))
     w .= v
     t = consistent!(w)
-    @async begin
+    @fake_async begin
         wait(t)
         if val_parameter(reuse)
             w,nothing
@@ -1049,7 +1361,7 @@ end
 function consistent!(w::PVector,v::PVector,cache)
     w .= v
     t = consistent!(w)
-    @async begin
+    @fake_async begin
         wait(t)
         w
     end
@@ -1075,7 +1387,7 @@ function repartition(v::PVector,new_partition;reuse=Val(false))
     w = similar(v,PRange(new_partition))
     cache = repartition_cache(v,new_partition)
     t = repartition!(w,v,cache)
-    @async begin
+    @fake_async begin
         wait(t)
         if val_parameter(reuse) == true
             w, cache
@@ -1103,7 +1415,7 @@ function repartition!(w::PVector,v::PVector,cache;reversed=false)
         fill!(v_sa,0)
         map(setindex!,partition(v_sa),V,I)
         t = assemble!(v_sa)
-        return @async begin
+        return @fake_async begin
             wait(t)
             w .= v_sa
             w
@@ -1111,7 +1423,7 @@ function repartition!(w::PVector,v::PVector,cache;reversed=false)
     else
         v_sa .= v
         t = consistent!(v_sa)
-        return @async begin
+        return @fake_async begin
             wait(t)
             map(partition(v_sa),partition(w),I) do v_sa,w,I
                 for k in 1:length(I)
@@ -1162,5 +1474,22 @@ function find_local_indices(node_to_mask::PVector)
     end
     map(finalize!,partition(node_to_global_dof),partition(node_to_local_dof),partition(dof_to_local_node),dof_partition)
     dof_to_local_node, node_to_local_dof
+end
+
+function renumber(a::PVector;kwargs...)
+    row_partition = partition(axes(a,1))
+    row_partition_2 = renumber_partition(row_partition;kwargs...)
+    renumber(a,row_partition_2;kwargs...)
+end
+
+function renumber(a::PVector,row_partition_2;renumber_local_indices=true)
+    # TODO storing the vector in split format would help to return a view
+    # of the input
+    if renumber_local_indices
+        values = map(vcat,own_values(a),ghost_values(a))
+    else
+        values = map(copy,local_values(a))
+    end
+    PVector(values,row_partition_2)
 end
 

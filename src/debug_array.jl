@@ -58,9 +58,10 @@ function Base.getindex(a::DebugArray,i::Int)
     a.items[i]
 end
 function Base.setindex!(a::DebugArray,v,i::Int)
-    scalar_indexing_action(a)
-    a.items[i] = v
-    v
+    error("DebugArray is inmutable for performance reasons")
+    #scalar_indexing_action(a)
+    #a.items[i] = v
+    #v
 end
 linear_indices(a::DebugArray) = DebugArray(collect(LinearIndices(a)))
 cartesian_indices(a::DebugArray) = DebugArray(collect(CartesianIndices(a)))
@@ -96,21 +97,29 @@ end
 getany(a::DebugArray) = getany(a.items)
 
 function Base.similar(a::DebugArray,::Type{T},dims::Dims) where T
-  DebugArray(similar(a.items,T,dims))
+    error("DebugArray is inmutable for performance reasons")
+    #DebugArray(similar(a.items,T,dims))
 end
 
 function Base.copyto!(b::DebugArray,a::DebugArray)
-    copyto!(b.items,a.items)
-    b
+    error("DebugArray is inmutable for performance reasons")
+    #copyto!(b.items,a.items)
+    #b
 end
 
 function Base.map(f,args::DebugArray...)
     DebugArray(map(f,map(i->i.items,args)...))
 end
 
+function Base.foreach(f,args::DebugArray...)
+    foreach(f,map(i->i.items,args)...)
+    nothing
+end
+
 function Base.map!(f,r::DebugArray,args::DebugArray...)
-    map!(f,r.items,map(i->i.items,args)...)
-    r
+    error("DebugArray is inmutable for performance reasons")
+    #map!(f,r.items,map(i->i.items,args)...)
+    #r
 end
 
 function Base.all(a::DebugArray)
@@ -121,41 +130,100 @@ function Base.all(p::Function,a::DebugArray)
     all(b)
 end
 
-function gather_impl!(
-    rcv::DebugArray, snd::DebugArray,
-    destination, ::Type{T}) where T
-    gather_impl!(rcv.items,snd.items,destination,T)
-end
+#function allocate_gather_impl(snd::DebugArray,destination)
+#    rcv = allocate_gather_impl(snd.items,destination)
+#    DebugArray(rcv)
+#end
 
 function gather_impl!(
     rcv::DebugArray, snd::DebugArray,
-    destination, ::Type{T}) where T <: AbstractVector
-    gather_impl!(rcv.items,snd.items,destination,T)
+    destination)
+    gather_impl!(rcv.items,snd.items,destination)
 end
 
-function scatter_impl!(
-    rcv::DebugArray,snd::DebugArray,
-    source,::Type{T}) where T
-    scatter_impl!(rcv.items,snd.items,source,T)
+#function setup_scatter_impl(snd::DebugArray,source)
+#    setup_scatter_impl(snd.items,source)
+#end
+
+function scatter_impl(snd::DebugArray,source)
+    rcv = scatter_impl(snd.items,source)
+    DebugArray(rcv)
 end
 
-function scatter_impl!(
-    rcv::DebugArray,snd::DebugArray,
-    source,::Type{T}) where T<:AbstractVector
-    scatter_impl!(rcv.items,snd.items,source,T)
+function scatter_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T
+    error("In place scatter only for vectors")
 end
 
-function multicast_impl!(
-    rcv::DebugArray,snd::DebugArray,
-    source,::Type{T}) where T
-    multicast_impl!(rcv.items,snd.items,source,T)
+function scatter_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T<:AbstractVector
+    scatter_impl!(rcv.items,snd.items,source)
+    rcv
 end
 
-function multicast_impl!(
-    rcv::DebugArray,snd::DebugArray,
-    source,::Type{T}) where T<:AbstractVector
-    multicast_impl!(rcv.items,snd.items,source,T)
+#function setup_multicast_impl(snd::DebugArray,source)
+#    setup_multicast_impl(snd.items,source)
+#end
+
+function multicast_impl(snd::DebugArray,source)
+    rcv = multicast_impl(snd.items,source)
+    DebugArray(rcv)
 end
+
+function multicast_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T
+    error("In place multicast only for vectors")
+end
+
+function multicast_impl!(rcv::DebugArray,snd::DebugArray,source,::Type{T}) where T<:AbstractVector
+    multicast_impl!(rcv.items,snd.items,source)
+    rcv
+end
+
+#function setup_scatter_impl(op,a::DebugArray,init,type)
+#    setup_scatter_impl(op,a.items,init,type)
+#end
+
+function scan_impl(op,a::DebugArray,init,type)
+    b = scan_impl(op,a.items,init,type)
+    DebugArray(b)
+end
+
+#function setup_reduction_impl(op,a::DebugArray,destination)
+#    setup_reduction_impl(op,a.items,destination)
+#end
+
+function reduction_impl(op,a::DebugArray,destination;kwargs...)
+    b = reduction_impl(op,a.items,destination;kwargs...)
+    DebugArray(b)
+end
+
+#function gather_impl!(
+#    rcv::DebugArray, snd::DebugArray,
+#    destination, ::Type{T}) where T <: AbstractVector
+#    gather_impl!(rcv.items,snd.items,destination,T)
+#end
+
+#function scatter_impl!(
+#    rcv::DebugArray,snd::DebugArray,
+#    source,::Type{T}) where T
+#    scatter_impl!(rcv.items,snd.items,source,T)
+#end
+#
+#function scatter_impl!(
+#    rcv::DebugArray,snd::DebugArray,
+#    source,::Type{T}) where T<:AbstractVector
+#    scatter_impl!(rcv.items,snd.items,source,T)
+#end
+#
+#function multicast_impl!(
+#    rcv::DebugArray,snd::DebugArray,
+#    source,::Type{T}) where T
+#    multicast_impl!(rcv.items,snd.items,source,T)
+#end
+#
+#function multicast_impl!(
+#    rcv::DebugArray,snd::DebugArray,
+#    source,::Type{T}) where T<:AbstractVector
+#    multicast_impl!(rcv.items,snd.items,source,T)
+#end
 
 Base.reduce(op,a::DebugArray;kwargs...) = reduce(op,a.items;kwargs...)
 Base.sum(a::DebugArray) = reduce(+,a)
@@ -166,29 +234,51 @@ function is_consistent(graph::ExchangeGraph{<:DebugArray})
     is_consistent(g)
 end
 
-function exchange_impl!(
-    rcv::DebugArray,
-    snd::DebugArray,
-    graph::ExchangeGraph{<:DebugArray},
-    ::Type{T}) where T
-    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    @async begin
-        yield() # This is to make more likely to have errors if we don't wait
-        exchange_impl!(rcv.items,snd.items,g,T) |> wait
-        rcv
-    end
+function allocate_exchange_impl(
+    snd::DebugArray,graph::ExchangeGraph{<:DebugArray})
+    graph2 = ExchangeGraph(graph.snd.items,graph.rcv.items)
+    rcv = allocate_exchange_impl(snd.items,graph2)
+    DebugArray(rcv)
+end
+
+function setup_exchange_impl(
+    rcv::DebugArray,snd::DebugArray,graph::ExchangeGraph{<:DebugArray})
+    graph2 = ExchangeGraph(graph.snd.items,graph.rcv.items)
+    setup_exchange_impl(rcv.items,snd.items,graph2)
 end
 
 function exchange_impl!(
-    rcv::DebugArray,
-    snd::DebugArray,
-    graph::ExchangeGraph{<:DebugArray},
-    ::Type{T}) where T <: AbstractVector
-    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
-    @async begin
-        yield() # This is to make more likely to have errors if we don't wait
-        exchange_impl!(rcv.items,snd.items,g,T) |> wait
-        rcv
-    end
+    rcv::DebugArray,snd::DebugArray,graph::ExchangeGraph{<:DebugArray},setup)
+    graph2 = ExchangeGraph(graph.snd.items,graph.rcv.items)
+    exchange_impl!(rcv.items,snd.items,graph2,setup)
+    @fake_async rcv
 end
+
+#function exchange_impl!(
+#    rcv::DebugArray,
+#    snd::DebugArray,
+#    graph::ExchangeGraph{<:DebugArray},
+#    setup,
+#    ::Type{T}) where T
+#    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
+#    @fake_async begin
+#        yield() # This is to make more likely to have errors if we don't wait
+#        exchange_impl!(rcv.items,snd.items,g,setup,T) |> wait
+#        rcv
+#    end
+#end
+#
+#function exchange_impl!(
+#    rcv::DebugArray,
+#    snd::DebugArray,
+#    graph::ExchangeGraph{<:DebugArray},
+#    setup,
+#    ::Type{T}) where T <: AbstractVector
+#    g = ExchangeGraph(graph.snd.items,graph.rcv.items)
+#    @fake_async begin
+#        yield() # This is to make more likely to have errors if we don't wait
+#        exchange_impl!(rcv.items,snd.items,g,setup,T) |> wait
+#        rcv
+#    end
+#end
 

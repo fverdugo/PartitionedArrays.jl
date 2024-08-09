@@ -1,6 +1,7 @@
 
 using PartitionedArrays
 using Test
+using SparseMatricesCSR
 
 function gallery_tests(distribute)
     gallery_tests(distribute,(4,))
@@ -13,10 +14,39 @@ function gallery_tests(distribute,parts_per_dir)
     ranks = distribute(LinearIndices((p,)))
     nodes_per_dir = map(i->2*i,parts_per_dir)
     args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
-    A = psparse(args...) |> fetch |> centralize |> display
+    A = psparse(args...) |> fetch
+    A |> centralize |> display
+    y = A*pones(axes(A,2))
+    @test isa(y,PVector)
     A = psparse(args...;assembled=true) |> fetch
+    y = A*pones(axes(A,2))
+    @test isa(y,PVector)
     args = laplacian_fem(nodes_per_dir,parts_per_dir,ranks)
-    A = psparse(args...) |> fetch |> centralize |> display
+    A = psparse(args...) |> fetch
+    A |> centralize |> display
+    Y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+    A = psparse(sparsecsr,args...) |> fetch
+    A |> centralize |> display
+    Y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+    A = psparse(SparseMatrixCSR{1,Float64,Int32},args...) |> fetch
+    A |> centralize |> display
+    Y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+
+    args = linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+    A = psparse(args...) |> fetch
+    A |> centralize |> display
+    Y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+
+    x = node_coorinates_unit_cube(nodes_per_dir,parts_per_dir,ranks)
+    B = near_nullspace_linear_elasticity(x)
+    @test isa(B[1],PVector)
+    B = near_nullspace_linear_elasticity(x,partition(axes(A,2)))
+    @test isa(B[1],PVector)
+
 end
 
 

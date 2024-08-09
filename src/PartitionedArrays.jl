@@ -5,6 +5,7 @@ using SparseMatricesCSR
 using LinearAlgebra
 using Printf
 using CircularArrays
+using StaticArrays
 import MPI
 import IterativeSolvers
 import Distances
@@ -94,6 +95,7 @@ export own_to_local
 export ghost_to_local
 export local_to_own
 export local_to_ghost
+export global_to_owner
 export replace_ghost
 export remove_ghost
 export union_ghost
@@ -132,13 +134,19 @@ export assemble
 export consistent
 export repartition
 export repartition!
+export renumber
 export find_local_indices
+export SplitVector
+export split_vector
+export split_vector_blocks
+export pvector_from_split_blocks
 include("p_vector.jl")
 
-export OldPSparseMatrix
 export SplitMatrix
+export split_matrix
+export split_matrix_blocks
+export psparse_from_split_blocks
 export PSparseMatrix
-export old_psparse
 export psparse
 export psparse!
 export split_format
@@ -154,6 +162,8 @@ export dense_diag
 export dense_diag!
 export rap
 export rap!
+export spmv!
+export spmtv!
 export spmm
 export spmm!
 export spmtm
@@ -169,6 +179,9 @@ include("p_timer.jl")
 
 export laplacian_fdm
 export laplacian_fem
+export linear_elasticity_fem
+export node_coorinates_unit_cube
+export near_nullspace_linear_elasticity
 include("gallery.jl")
 
 end # module

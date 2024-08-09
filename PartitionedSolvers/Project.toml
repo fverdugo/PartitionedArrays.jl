@@ -1,7 +1,7 @@
 name = "PartitionedSolvers"
 uuid = "11b65f7f-80ac-401b-9ef2-3db765482d62"
 authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl>"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
@@ -13,7 +13,7 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 [compat]
 
 IterativeSolvers = "0.9"
-PartitionedArrays = "0.4.4"
+PartitionedArrays = "0.4.4, 0.5"
 SparseArrays = "1"
 julia = "1.6"
 
