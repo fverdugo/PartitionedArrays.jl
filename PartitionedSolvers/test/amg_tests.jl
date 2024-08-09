@@ -205,19 +205,23 @@ Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_n
 # Test tentative prolongator with parallel matrix 
 G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
 diagG = dense_diag(G_dist)
+n_B = block_size
 node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_dist,diagG;epsilon)
 aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-B_dist = random_nullspace(partition(axes(A_dist,1)), block_size)
+B_dist = random_nullspace(partition(axes(A_dist,1)), n_B)
 Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B_dist, block_size) 
+for i in 1:n_B
+    @test isa(Bc[i], PVector)
+end
 Bc_matrix = zeros(size(Pc,2), length(Bc))
 for (i,b) in enumerate(Bc)
     Bc_matrix[:,i] = collect(b)
 end
 B_matrix = zeros(size(Pc,1), length(Bc))
-for (i,b) in enumerate(B)
+for (i,b) in enumerate(B_dist)
     B_matrix[:,i] = collect(b)
 end
-@test centralize(Pc) * Bc_matrix ≈ B_matrix # TODO: test fails 
+@test centralize(Pc) * Bc_matrix ≈ B_matrix  
 
 
 # Test spectral radius sequential & parallel 

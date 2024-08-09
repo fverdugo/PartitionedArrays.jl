@@ -338,8 +338,8 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, bl
         end
         own_coarse_dofs = OwnIndices(n_global_coarse_dofs, part_id(local_dof_local_indices), own_to_global_coarse_dofs)
         ghost_coarse_dofs = GhostIndices(n_global_coarse_dofs, Int[], Int32[])
-        my_coarse_dofs = OwnAndGhostIndices(own_coarse_dofs, ghost_coarse_dofs)
-        P0_partition, my_coarse_dofs, local_coarse_dof_to_Bc...
+        Bc_partition = OwnAndGhostIndices(own_coarse_dofs, ghost_coarse_dofs)
+        P0_partition, Bc_partition, local_coarse_dof_to_Bc...
     end |> tuple_of_arrays
     # partition for the coarse dofs 
     P0 = PSparseMatrix(P0_partition, B[1].index_partition, Bc_partition, true) 
