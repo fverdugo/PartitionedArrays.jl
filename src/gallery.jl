@@ -378,9 +378,18 @@ function linear_elasticity_fem(
         myI,myJ,myV
     end
     node_partition = uniform_partition(parts,parts_per_dir,nodes_per_dir)
+    dof_partition = node_to_dof_partition(node_partition,length(nodes_per_dir))
+    cell_partition = uniform_partition(parts,parts_per_dir,cells_per_dir)
+    I,J,V = map(cell_partition) do cells
+        setup(cells,Ti,Tv)
+    end |> tuple_of_arrays
+    I,J,V,dof_partition,dof_partition
+end
+
+function node_to_dof_partition(node_partition,D)
     global_node_to_owner = global_to_owner(node_partition)
     dof_partition = map(node_partition) do mynodes
-        D = length(nodes_per_dir)
+        @assert ghost_length(mynodes) == 0
         own_to_global_node = own_to_global(mynodes)
         n_own_nodes = length(own_to_global_node)
         own_to_global_dof = zeros(Int,D*n_own_nodes)
@@ -403,11 +412,140 @@ function linear_elasticity_fem(
         mydofs = OwnAndGhostIndices(own_dofs,ghost_dofs,global_dof_to_owner)
         mydofs
     end
-    cell_partition = uniform_partition(parts,parts_per_dir,cells_per_dir)
-    I,J,V = map(cell_partition) do cells
-        setup(cells,Ti,Tv)
-    end |> tuple_of_arrays
-    I,J,V,dof_partition,dof_partition
+    dof_partition
 end
+
+function node_coorinates_unit_cube(
+        nodes_per_dir, # free (== interior) nodes
+        parts_per_dir,
+        parts,
+        ;
+        split_format = Val(true),
+        value_type::Type{Tv} = Float64,) where Tv
+
+    function setup!(own_x,mynodes)
+        D = length(nodes_per_dir)
+        h_per_dir = map(i->1/(i+1),nodes_per_dir)
+        global_node_to_cartesian_global_node = CartesianIndices(nodes_per_dir)
+        n_own_nodes = own_length(mynodes)
+        own_to_global_node = own_to_global(mynodes)
+        for own_node in 1:n_own_nodes
+            global_node = own_to_global_node[own_node]
+            cartesian_global_node = global_node_to_cartesian_global_node[global_node]
+            xi = Tuple(cartesian_global_node)
+            own_x[own_node] = h_per_dir .* xi
+        end
+    end
+    node_partition = uniform_partition(parts,parts_per_dir,nodes_per_dir)
+    T = SVector{length(nodes_per_dir),Tv}
+    x = pzeros(T,node_partition;split_format)
+    foreach(setup!,own_values(x),node_partition)
+    x
+end
+
+function near_nullspace_linear_elasticity(x,
+        row_partition = node_to_dof_partition(partition(axes(x,1)),length(eltype(x)))
+    )
+    T = eltype(x)
+    D = length(T)
+    Tv = eltype(T)
+    if D == 1
+        nb = 1
+    elseif D==2
+        nb=3
+    elseif D == 3
+        nb = 6
+    else
+        error("case not implemented")
+    end
+    dof_partition = row_partition
+    split_format = Val(eltype(partition(x)) <: SplitVector)
+    B = [ pzeros(Tv,dof_partition;split_format) for _ in 1:nb ]
+    near_nullspace_linear_elasticity!(B,x)
+end
+
+function near_nullspace_linear_elasticity!(B,x)
+    D = length(eltype(x))
+    if D == 1
+        foreach(own_values(B[1])) do own_b
+            fill!(own_b,1)
+        end
+    elseif D==2
+        foreach(own_values(B[1]),own_values(B[2]),own_values(x)) do own_b1,own_b2,own_x
+            T = eltype(own_b1)
+            n_own_nodes = length(own_x)
+            for own_node in 1:n_own_nodes
+                dof_x1 = (own_node-1)*2 + 1
+                dof_x2 = (own_node-1)*2 + 2
+                #
+                own_b1[dof_x1] = one(T)
+                own_b1[dof_x2] = zero(T)
+                #
+                own_b2[dof_x1] = zero(T)
+                own_b2[dof_x2] = one(T)
+            end
+        end
+        foreach(own_values(B[3]),own_values(x)) do own_b3,own_x
+            T = eltype(own_b3)
+            n_own_nodes = length(own_x)
+            for own_node in 1:n_own_nodes
+                x1,x2 = own_x[own_node]
+                dof_x1 = (own_node-1)*2 + 1
+                dof_x2 = (own_node-1)*2 + 2
+                #
+                own_b3[dof_x1] = -x2
+                own_b3[dof_x2] = x1
+            end
+        end
+    elseif D == 3
+        foreach(own_values(B[1]),own_values(B[2]),own_values(B[3]),own_values(x)) do own_b1,own_b2,own_b3,own_x
+            T = eltype(own_b1)
+            n_own_nodes = length(own_x)
+            for own_node in 1:n_own_nodes
+                dof_x1 = (own_node-1)*3 + 1
+                dof_x2 = (own_node-1)*3 + 2
+                dof_x3 = (own_node-1)*3 + 3
+                #
+                own_b1[dof_x1] = one(T)
+                own_b1[dof_x2] = zero(T)
+                own_b1[dof_x3] = zero(T)
+                #
+                own_b2[dof_x1] = zero(T)
+                own_b2[dof_x2] = one(T)
+                own_b2[dof_x3] = zero(T)
+                #
+                own_b3[dof_x1] = zero(T)
+                own_b3[dof_x2] = zero(T)
+                own_b3[dof_x3] = one(T)
+            end
+        end
+        foreach(own_values(B[4]),own_values(B[5]),own_values(B[6]),own_values(x)) do own_b4,own_b5,own_b6,own_x
+            T = eltype(own_b4)
+            n_own_nodes = length(own_x)
+            for own_node in 1:n_own_nodes
+                x1,x2,x3 = own_x[own_node]
+                dof_x1 = (own_node-1)*3 + 1
+                dof_x2 = (own_node-1)*3 + 2
+                dof_x3 = (own_node-1)*3 + 3
+                #
+                own_b4[dof_x1] = -x2
+                own_b4[dof_x2] = x1
+                own_b4[dof_x3] = zero(T)
+                #
+                own_b5[dof_x1] = zero(T)
+                own_b5[dof_x2] = -x3
+                own_b5[dof_x3] = x2
+                #
+                own_b6[dof_x1] = x3
+                own_b6[dof_x2] = zero(T)
+                own_b6[dof_x3] = -x1
+            end
+        end
+    else
+        error("case not implemented")
+    end
+    B
+end
+
 
 

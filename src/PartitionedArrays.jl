@@ -5,6 +5,7 @@ using SparseMatricesCSR
 using LinearAlgebra
 using Printf
 using CircularArrays
+using StaticArrays
 import MPI
 import IterativeSolvers
 import Distances
@@ -179,6 +180,8 @@ include("p_timer.jl")
 export laplacian_fdm
 export laplacian_fem
 export linear_elasticity_fem
+export node_coorinates_unit_cube
+export near_nullspace_linear_elasticity
 include("gallery.jl")
 
 end # module
