@@ -5,6 +5,7 @@ using SparseMatricesCSR
 using LinearAlgebra
 using Printf
 using CircularArrays
+using StaticArrays
 import MPI
 import IterativeSolvers
 import Distances
@@ -94,6 +95,7 @@ export own_to_local
 export ghost_to_local
 export local_to_own
 export local_to_ghost
+export global_to_owner
 export replace_ghost
 export remove_ghost
 export union_ghost
@@ -177,6 +179,9 @@ include("p_timer.jl")
 
 export laplacian_fdm
 export laplacian_fem
+export linear_elasticity_fem
+export node_coorinates_unit_cube
+export near_nullspace_linear_elasticity
 include("gallery.jl")
 
 end # module

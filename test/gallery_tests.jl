@@ -34,6 +34,19 @@ function gallery_tests(distribute,parts_per_dir)
     A |> centralize |> display
     Y = A*pones(axes(A,2))
     @test isa(y,PVector)
+
+    args = linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+    A = psparse(args...) |> fetch
+    A |> centralize |> display
+    Y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+
+    x = node_coorinates_unit_cube(nodes_per_dir,parts_per_dir,ranks)
+    B = near_nullspace_linear_elasticity(x)
+    @test isa(B[1],PVector)
+    B = near_nullspace_linear_elasticity(x,partition(axes(A,2)))
+    @test isa(B[1],PVector)
+
 end
 
 

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Split format support for `PVector`.
 - Helper functions to build partitioned sparse matrices and vectors in split format, `pvector_from_split_blocks` and `psparse_from_split_blocks`.
+- Gallery function `linear_elasticity_fem`.
+- Function `global_to_owner`.
 
 ### Deprecated
 
