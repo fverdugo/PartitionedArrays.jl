@@ -296,7 +296,6 @@ function tentative_prolongator_for_laplace(P0,B)
 end
 
 function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, block_size)
-    # B vector of pvectors
     own_values_B = map(own_values, B)
     n_B = length(B)
     P0_partition, Bc_partition, coarse_dof_to_Bc... = map(aggregate_to_nodes.index_partition, B[1].index_partition, local_values(aggregate_to_nodes), own_values_B...) do local_aggregate_local_indices, local_dof_local_indices, local_aggregate_to_local_nodes, own_dof_to_b...
@@ -341,7 +340,6 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, bl
         Bc_partition = OwnAndGhostIndices(own_coarse_dofs, ghost_coarse_dofs)
         P0_partition, Bc_partition, local_coarse_dof_to_Bc...
     end |> tuple_of_arrays
-    # partition for the coarse dofs 
     P0 = PSparseMatrix(P0_partition, B[1].index_partition, Bc_partition, true) 
     Bc = Array{PVector}(undef, n_B)
     for (i,b) in enumerate(coarse_dof_to_Bc)

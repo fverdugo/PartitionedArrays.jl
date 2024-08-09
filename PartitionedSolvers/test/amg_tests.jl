@@ -9,7 +9,6 @@ using PartitionedSolvers
 using LinearAlgebra
 using IterativeSolvers
 using IterativeSolvers: cg!
-using Plots
 using Statistics
 using Test
 using SparseArrays
@@ -223,7 +222,6 @@ for (i,b) in enumerate(B_dist)
 end
 @test centralize(Pc) * Bc_matrix ≈ B_matrix  
 
-
 # Test spectral radius sequential & parallel 
 diagA = dense_diag(A_dist)
 invD = 1 ./ diagA
@@ -237,79 +235,6 @@ l, x = PartitionedSolvers.spectral_radius(M, x0, 10)
 lseq, x = PartitionedSolvers.spectral_radius(centralize(M), x0_seq, 10)
 @test l ≈ lseq 
 @test abs((l-exp)/exp) < 2*10^-1
-
-# Test spectral radius estimation 
-#= maxiter = 5000
-nnodes = [8, 16, 32]
-exp = [1.9396926207859075, 1.9829730996838997, 1.9954719225730886]
-msizes = zeros(Int, length(nnodes))
-parts_per_dir = (2,2,2)
-p = prod(parts_per_dir)
-ranks = DebugArray(LinearIndices((p,)))
-n_trials = 3
-A_dims = zeros(length(nnodes))
-errors_powm = zeros(length(nnodes), n_trials, maxiter)
-time_powm = zeros(length(nnodes), n_trials)
-errors_spectrad = zeros(length(nnodes), n_trials, maxiter)
-time_spectrad = zeros(length(nnodes), n_trials)
-
-for (n_i, n) in enumerate(nnodes)
-    nodes_per_dir = (n, n, n)
-    args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
-    A = psparse(args...) |> fetch |> centralize
-    println("dims A: $(size(A))")
-    msizes[n_i] = size(A,1)
-    diagA = dense_diag(A)
-    invD = 1 ./ diagA
-    M = invD .* A
-    #M_dense = Array(M)
-    #exp[n_i] = max(abs(eigmax(M_dense)), abs(eigmin(M_dense)))
-    for t in 1:n_trials
-        x0 = rand(size(A,2))
-        lprev, x = powm!(M, x0, maxiter=1)
-        tic = time_ns()
-        for i in 1:maxiter
-            # Power method
-            l, x = powm!(M, x, maxiter = 1)
-            errors_powm[n_i, t, i] = abs(l-lprev) 
-            lprev = l
-        end
-        toc = time_ns()
-        time_powm[n_i,t] = (toc - tic)/10^9
-        ρprev, x = PartitionedSolvers.spectral_radius(M,x0, 1)
-        tic = time_ns()
-        for i in 1:maxiter
-            # own implementation
-            ρ, x = PartitionedSolvers.spectral_radius(M,x, 1)
-            errors_spectrad[n_i, t, i] = abs(ρ-ρprev)
-            ρprev = ρ
-        end
-        toc = time_ns()
-        time_spectrad[n_i, t] = (toc-tic)/10^9
-    end
-end
-avg_time_powm = median(time_powm, dims=2)
-avg_time_spectrad = median(time_spectrad, dims=2)
-avg_error_powm = median(errors_powm, dims=2)
-avg_error_spectrad = median(errors_spectrad, dims=2)
-
-p1 = plot()
-plot!(p1, [1], [0], color="black", label="powm")
-plot!(p1, [1], [0], color="black", ls=:dash, label="spectrad")
-for (n_i, n) in enumerate(msizes)
-    plot!(p1, 1:maxiter, avg_error_powm[n_i,:,:]', label = "($(n),$(n))", color= n_i)
-    plot!(p1, 1:maxiter, avg_error_spectrad[n_i,:,:]', label = "", color=n_i, ls=:dash)
-end
-
-p2 = plot(msizes, [avg_time_powm avg_time_spectrad], label = ["powm" "spectrad"], color="black", marker=[:c :x])
-yticks=[10^-16, 10^-14, 10^-12, 10^-10, 10^-8, 10^-6, 10^-4, 10^-2, 10^0]
-xticks=[10^0, 10^1, 10^2, 10^3]
-plot!(p1, xlabel="#iterations (k)", ylabel="|λ(k) - λ(k-1)|", legend=:outertopleft, xscale=:log,
-    xticks=xticks, yscale=:log, ylim=(10^-16, 1), yticks=yticks)
-plot!(p2, xlabel="size of matrix", ylabel="avg runtime (s)", xscale=:log10)
-p = plot(p1, p2, layout=(2,1), suptitle="Convergence of powm and spectral_radius")
-savefig(p, "C:/Users/gelie/Home/ComputationalScience/GSoC/powm_l-lprev_k$(maxiter)_m$(msizes[end]).png")    
-display(p)  
 
 
 # First with a sequential matrix
@@ -334,7 +259,7 @@ amg_statistics(S) |> display
 # Non-default options
 
 level_params = amg_level_params(;
-    pre_smoother = jacobi(;iters=10,omega=2/3),
+    pre_smoother = PartitionedSolvers.jacobi(;iters=10,omega=2/3),
     cycle = v_cycle,
    )
 
@@ -361,7 +286,7 @@ finalize!(S)
 # Now as a preconditioner
 
 level_params = amg_level_params(;
-   pre_smoother = gauss_seidel(;iters=1),
+   pre_smoother = PartitionedSolvers.gauss_seidel(;iters=1),
    )
 
 fine_params = amg_fine_params(;level_params)
@@ -409,7 +334,7 @@ solve!(y,S,b)
 finalize!(S)
 
 level_params = amg_level_params(;
-    pre_smoother = jacobi(;iters=1,omega=2/3),
+    pre_smoother = PartitionedSolvers.jacobi(;iters=1,omega=2/3),
     coarsening = smoothed_aggregation(;repartition_threshold=10000000)
    )
 
@@ -434,5 +359,5 @@ x = similar(b,axes(A,2))
 x .= 0
 Pl = setup(amg(),x,A,b)
 _, history = cg!(x,A,b;Pl,log=true)
-display(history) =#
+display(history)
 end
