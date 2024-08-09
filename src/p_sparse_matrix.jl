@@ -1357,146 +1357,322 @@ function psparse_assemble_impl(A,::Type,rows)
     error("Case not implemented yet")
 end
 
-function psparse_assemble_impl(
-        A,
-        ::Type{<:AbstractSplitMatrix},
-        rows;
-        reuse=Val(false),
-        assembly_neighbors_options_cols=(;))
+# function psparse_assemble_impl(
+#         A,
+#         ::Type{<:AbstractSplitMatrix},
+#         rows;
+#         reuse=Val(false),
+#         assembly_neighbors_options_cols=(;))
 
-    function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
-        A_ghost_own   = A.blocks.ghost_own
-        A_ghost_ghost = A.blocks.ghost_ghost
-        gen = ( owner=>i for (i,owner) in enumerate(parts_snd) )
-        owner_to_p = Dict(gen)
-        ptrs = zeros(Int32,length(parts_snd)+1)
-        ghost_to_owner_row = ghost_to_owner(rows_sa)
-        ghost_to_global_row = ghost_to_global(rows_sa)
-        own_to_global_col = own_to_global(cols_sa)
-        ghost_to_global_col = ghost_to_global(cols_sa)
-        for (i,_,_) in nziterator(A_ghost_own)
-            owner = ghost_to_owner_row[i]
-            ptrs[owner_to_p[owner]+1] += 1
-        end
-        for (i,_,_) in nziterator(A_ghost_ghost)
-            owner = ghost_to_owner_row[i]
-            ptrs[owner_to_p[owner]+1] += 1
-        end
-        length_to_ptrs!(ptrs)
-        Tv = eltype(A_ghost_own)
-        ndata = ptrs[end]-1
-        I_snd_data = zeros(Int,ndata)
-        J_snd_data = zeros(Int,ndata)
-        V_snd_data = zeros(Tv,ndata)
-        k_snd_data = zeros(Int32,ndata)
-        nnz_ghost_own = 0
-        for (k,(i,j,v)) in enumerate(nziterator(A_ghost_own))
-            owner = ghost_to_owner_row[i]
-            p = ptrs[owner_to_p[owner]]
-            I_snd_data[p] = ghost_to_global_row[i]
-            J_snd_data[p] = own_to_global_col[j]
-            V_snd_data[p] = v
-            k_snd_data[p] = k
-            ptrs[owner_to_p[owner]] += 1
-            nnz_ghost_own += 1
-        end
-        for (k,(i,j,v)) in enumerate(nziterator(A_ghost_ghost))
-            owner = ghost_to_owner_row[i]
-            p = ptrs[owner_to_p[owner]]
-            I_snd_data[p] = ghost_to_global_row[i]
-            J_snd_data[p] = ghost_to_global_col[j]
-            V_snd_data[p] = v
-            k_snd_data[p] = k+nnz_ghost_own
-            ptrs[owner_to_p[owner]] += 1
-        end
-        rewind_ptrs!(ptrs)
-        I_snd = JaggedArray(I_snd_data,ptrs)
-        J_snd = JaggedArray(J_snd_data,ptrs)
-        V_snd = JaggedArray(V_snd_data,ptrs)
-        k_snd = JaggedArray(k_snd_data,ptrs)
-        (;I_snd,J_snd,V_snd,k_snd,parts_snd)
+#     function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
+#         A_ghost_own   = A.blocks.ghost_own
+#         A_ghost_ghost = A.blocks.ghost_ghost
+#         gen = ( owner=>i for (i,owner) in enumerate(parts_snd) )
+#         owner_to_p = Dict(gen)
+#         ptrs = zeros(Int32,length(parts_snd)+1)
+#         ghost_to_owner_row = ghost_to_owner(rows_sa)
+#         ghost_to_global_row = ghost_to_global(rows_sa)
+#         own_to_global_col = own_to_global(cols_sa)
+#         ghost_to_global_col = ghost_to_global(cols_sa)
+#         for (i,_,_) in nziterator(A_ghost_own)
+#             owner = ghost_to_owner_row[i]
+#             ptrs[owner_to_p[owner]+1] += 1
+#         end
+#         for (i,_,_) in nziterator(A_ghost_ghost)
+#             owner = ghost_to_owner_row[i]
+#             ptrs[owner_to_p[owner]+1] += 1
+#         end
+#         length_to_ptrs!(ptrs)
+#         Tv = eltype(A_ghost_own)
+#         ndata = ptrs[end]-1
+#         I_snd_data = zeros(Int,ndata)
+#         J_snd_data = zeros(Int,ndata)
+#         V_snd_data = zeros(Tv,ndata)
+#         k_snd_data = zeros(Int32,ndata)
+#         nnz_ghost_own = 0
+#         for (k,(i,j,v)) in enumerate(nziterator(A_ghost_own))
+#             owner = ghost_to_owner_row[i]
+#             p = ptrs[owner_to_p[owner]]
+#             I_snd_data[p] = ghost_to_global_row[i]
+#             J_snd_data[p] = own_to_global_col[j]
+#             V_snd_data[p] = v
+#             k_snd_data[p] = k
+#             ptrs[owner_to_p[owner]] += 1
+#             nnz_ghost_own += 1
+#         end
+#         for (k,(i,j,v)) in enumerate(nziterator(A_ghost_ghost))
+#             owner = ghost_to_owner_row[i]
+#             p = ptrs[owner_to_p[owner]]
+#             I_snd_data[p] = ghost_to_global_row[i]
+#             J_snd_data[p] = ghost_to_global_col[j]
+#             V_snd_data[p] = v
+#             k_snd_data[p] = k+nnz_ghost_own
+#             ptrs[owner_to_p[owner]] += 1
+#         end
+#         rewind_ptrs!(ptrs)
+#         I_snd = JaggedArray(I_snd_data,ptrs)
+#         J_snd = JaggedArray(J_snd_data,ptrs)
+#         V_snd = JaggedArray(V_snd_data,ptrs)
+#         k_snd = JaggedArray(k_snd_data,ptrs)
+#         (;I_snd,J_snd,V_snd,k_snd,parts_snd)
+#     end
+#     function setup_cache_rcv(I_rcv,J_rcv,V_rcv,parts_rcv)
+#         k_rcv_data = zeros(Int32,length(I_rcv.data))
+#         k_rcv = JaggedArray(k_rcv_data,I_rcv.ptrs)
+#         (;I_rcv,J_rcv,V_rcv,k_rcv,parts_rcv)
+#     end
+#     function setup_own_triplets(A,cache_rcv,rows_sa,cols_sa)
+#         nz_own_own = findnz(A.blocks.own_own)
+#         nz_own_ghost = findnz(A.blocks.own_ghost)
+#         I_rcv_data = cache_rcv.I_rcv.data
+#         J_rcv_data = cache_rcv.J_rcv.data
+#         V_rcv_data = cache_rcv.V_rcv.data
+#         k_rcv_data = cache_rcv.k_rcv.data
+#         global_to_own_col = global_to_own(cols_sa)
+#         is_ghost = findall(j->global_to_own_col[j]==0,J_rcv_data)
+#         is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
+#         I_rcv_own = view(I_rcv_data,is_own)
+#         J_rcv_own = view(J_rcv_data,is_own)
+#         V_rcv_own = view(V_rcv_data,is_own)
+#         k_rcv_own = view(k_rcv_data,is_own)
+#         I_rcv_ghost = view(I_rcv_data,is_ghost)
+#         J_rcv_ghost = view(J_rcv_data,is_ghost)
+#         V_rcv_ghost = view(V_rcv_data,is_ghost)
+#         k_rcv_ghost = view(k_rcv_data,is_ghost)
+#         # After this col ids in own_ghost triplet remain global
+#         map_global_to_own!(I_rcv_own,rows_sa)
+#         map_global_to_own!(J_rcv_own,cols_sa)
+#         map_global_to_own!(I_rcv_ghost,rows_sa)
+#         map_ghost_to_global!(nz_own_ghost[2],cols_sa)
+#         own_own_I = vcat(nz_own_own[1],I_rcv_own)
+#         own_own_J = vcat(nz_own_own[2],J_rcv_own)
+#         own_own_V = vcat(nz_own_own[3],V_rcv_own)
+#         own_own_triplet = (own_own_I,own_own_J,own_own_V)
+#         own_ghost_I = vcat(nz_own_ghost[1],I_rcv_ghost)
+#         own_ghost_J = vcat(nz_own_ghost[2],J_rcv_ghost)
+#         own_ghost_V = vcat(nz_own_ghost[3],V_rcv_ghost)
+#         map_global_to_ghost!(nz_own_ghost[2],cols_sa)
+#         own_ghost_triplet = (own_ghost_I,own_ghost_J,own_ghost_V)
+#         triplets = (own_own_triplet,own_ghost_triplet)
+#         aux = (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost)
+#         triplets, own_ghost_J, aux
+#     end
+#     function finalize_values(A,rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux)
+#         (own_own_triplet,own_ghost_triplet) = triplets
+#         (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost) = aux
+#         map_global_to_ghost!(own_ghost_triplet[2],cols_fa)
+#         map_global_to_ghost!(J_rcv_ghost,cols_fa)
+#         TA = typeof(A.blocks.own_own)
+#         n_own_rows = own_length(rows_fa)
+#         n_own_cols = own_length(cols_fa)
+#         n_ghost_rows = ghost_length(rows_fa)
+#         n_ghost_cols = ghost_length(cols_fa)
+#         Ti = indextype(A.blocks.own_own)
+#         Tv = eltype(A.blocks.own_own)
+#         own_own = compresscoo(TA,own_own_triplet...,n_own_rows,n_own_cols)
+#         own_ghost = compresscoo(TA,own_ghost_triplet...,n_own_rows,n_ghost_cols)
+#         ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
+#         ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
+#         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+#         values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(cols_fa))
+#         nnz_own_own = nnz(own_own)
+#         k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
+#         k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
+#         for p in 1:length(I_rcv_own)
+#             i = I_rcv_own[p]
+#             j = J_rcv_own[p]
+#             k_rcv_own[p] = nzindex(own_own,i,j)
+#         end
+#         for p in 1:length(I_rcv_ghost)
+#             i = I_rcv_ghost[p]
+#             j = J_rcv_ghost[p]
+#             k_rcv_ghost[p] = nzindex(own_ghost,i,j) + nnz_own_own
+#         end
+#         cache = (;k_own_sa,k_ghost_sa,cache_snd...,cache_rcv...)
+#         values, cache
+#     end
+#     rows_sa = partition(axes(A,1))
+#     cols_sa = partition(axes(A,2))
+#     #rows = map(remove_ghost,rows_sa)
+#     cols = map(remove_ghost,cols_sa)
+#     parts_snd, parts_rcv = assembly_neighbors(rows_sa)
+#     cache_snd = map(setup_cache_snd,partition(A),parts_snd,rows_sa,cols_sa)
+#     I_snd = map(i->i.I_snd,cache_snd)
+#     J_snd = map(i->i.J_snd,cache_snd)
+#     V_snd = map(i->i.V_snd,cache_snd)
+#     graph = ExchangeGraph(parts_snd,parts_rcv)
+#     t_I = exchange(I_snd,graph)
+#     t_J = exchange(J_snd,graph)
+#     t_V = exchange(V_snd,graph)
+#     @fake_async begin
+#         I_rcv = fetch(t_I)
+#         J_rcv = fetch(t_J)
+#         V_rcv = fetch(t_V)
+#         cache_rcv = map(setup_cache_rcv,I_rcv,J_rcv,V_rcv,parts_rcv)
+#         triplets,J,aux = map(setup_own_triplets,partition(A),cache_rcv,rows_sa,cols_sa) |> tuple_of_arrays
+#         J_owner = find_owner(cols_sa,J)
+#         rows_fa = rows
+#         cols_fa = map(union_ghost,cols,J,J_owner)
+#         assembly_neighbors(cols_fa;assembly_neighbors_options_cols...)
+#         vals_fa, cache = map(finalize_values,partition(A),rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux) |> tuple_of_arrays
+#         assembled = true
+#         B = PSparseMatrix(vals_fa,rows_fa,cols_fa,assembled)
+#         if val_parameter(reuse) == false
+#             B
+#         else
+#             B, cache
+#         end
+#     end
+# end
+
+# New assemble
+####################
+
+function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
+    A_ghost_own   = A.blocks.ghost_own
+    A_ghost_ghost = A.blocks.ghost_ghost
+    gen = ( owner=>i for (i,owner) in enumerate(parts_snd) )
+    owner_to_p = Dict(gen)
+    ptrs = zeros(Int32,length(parts_snd)+1)
+    ghost_to_owner_row = ghost_to_owner(rows_sa)
+    ghost_to_global_row = ghost_to_global(rows_sa)
+    own_to_global_col = own_to_global(cols_sa)
+    ghost_to_global_col = ghost_to_global(cols_sa)
+    for (i,_,_) in nziterator(A_ghost_own)
+        owner = ghost_to_owner_row[i]
+        ptrs[owner_to_p[owner]+1] += 1
     end
-    function setup_cache_rcv(I_rcv,J_rcv,V_rcv,parts_rcv)
-        k_rcv_data = zeros(Int32,length(I_rcv.data))
-        k_rcv = JaggedArray(k_rcv_data,I_rcv.ptrs)
-        (;I_rcv,J_rcv,V_rcv,k_rcv,parts_rcv)
+    for (i,_,_) in nziterator(A_ghost_ghost)
+        owner = ghost_to_owner_row[i]
+        ptrs[owner_to_p[owner]+1] += 1
     end
-    function setup_own_triplets(A,cache_rcv,rows_sa,cols_sa)
-        nz_own_own = findnz(A.blocks.own_own)
-        nz_own_ghost = findnz(A.blocks.own_ghost)
-        I_rcv_data = cache_rcv.I_rcv.data
-        J_rcv_data = cache_rcv.J_rcv.data
-        V_rcv_data = cache_rcv.V_rcv.data
-        k_rcv_data = cache_rcv.k_rcv.data
-        global_to_own_col = global_to_own(cols_sa)
-        is_ghost = findall(j->global_to_own_col[j]==0,J_rcv_data)
-        is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
-        I_rcv_own = view(I_rcv_data,is_own)
-        J_rcv_own = view(J_rcv_data,is_own)
-        V_rcv_own = view(V_rcv_data,is_own)
-        k_rcv_own = view(k_rcv_data,is_own)
-        I_rcv_ghost = view(I_rcv_data,is_ghost)
-        J_rcv_ghost = view(J_rcv_data,is_ghost)
-        V_rcv_ghost = view(V_rcv_data,is_ghost)
-        k_rcv_ghost = view(k_rcv_data,is_ghost)
-        # After this col ids in own_ghost triplet remain global
-        map_global_to_own!(I_rcv_own,rows_sa)
-        map_global_to_own!(J_rcv_own,cols_sa)
-        map_global_to_own!(I_rcv_ghost,rows_sa)
-        map_ghost_to_global!(nz_own_ghost[2],cols_sa)
-        own_own_I = vcat(nz_own_own[1],I_rcv_own)
-        own_own_J = vcat(nz_own_own[2],J_rcv_own)
-        own_own_V = vcat(nz_own_own[3],V_rcv_own)
-        own_own_triplet = (own_own_I,own_own_J,own_own_V)
-        own_ghost_I = vcat(nz_own_ghost[1],I_rcv_ghost)
-        own_ghost_J = vcat(nz_own_ghost[2],J_rcv_ghost)
-        own_ghost_V = vcat(nz_own_ghost[3],V_rcv_ghost)
-        map_global_to_ghost!(nz_own_ghost[2],cols_sa)
-        own_ghost_triplet = (own_ghost_I,own_ghost_J,own_ghost_V)
-        triplets = (own_own_triplet,own_ghost_triplet)
-        aux = (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost)
-        triplets, own_ghost_J, aux
+    length_to_ptrs!(ptrs)
+    Tv = eltype(A_ghost_own)
+    ndata = ptrs[end]-1
+    I_snd_data = zeros(Int,ndata)
+    J_snd_data = zeros(Int,ndata)
+    V_snd_data = zeros(Tv,ndata)
+    k_snd_data = zeros(Int32,ndata)
+    nnz_ghost_own = 0
+    for (k,(i,j,v)) in enumerate(nziterator(A_ghost_own))
+        owner = ghost_to_owner_row[i]
+        p = ptrs[owner_to_p[owner]]
+        I_snd_data[p] = ghost_to_global_row[i]
+        J_snd_data[p] = own_to_global_col[j]
+        V_snd_data[p] = v
+        k_snd_data[p] = k
+        ptrs[owner_to_p[owner]] += 1
+        nnz_ghost_own += 1
     end
-    function finalize_values(A,rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux)
-        (own_own_triplet,own_ghost_triplet) = triplets
-        (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost) = aux
-        map_global_to_ghost!(own_ghost_triplet[2],cols_fa)
-        map_global_to_ghost!(J_rcv_ghost,cols_fa)
-        TA = typeof(A.blocks.own_own)
-        n_own_rows = own_length(rows_fa)
-        n_own_cols = own_length(cols_fa)
-        n_ghost_rows = ghost_length(rows_fa)
-        n_ghost_cols = ghost_length(cols_fa)
-        Ti = indextype(A.blocks.own_own)
-        Tv = eltype(A.blocks.own_own)
-        own_own = compresscoo(TA,own_own_triplet...,n_own_rows,n_own_cols)
-        own_ghost = compresscoo(TA,own_ghost_triplet...,n_own_rows,n_ghost_cols)
-        ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
-        ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
-        blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(cols_fa))
-        nnz_own_own = nnz(own_own)
-        k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
-        k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
-        for p in 1:length(I_rcv_own)
-            i = I_rcv_own[p]
-            j = J_rcv_own[p]
-            k_rcv_own[p] = nzindex(own_own,i,j)
-        end
-        for p in 1:length(I_rcv_ghost)
-            i = I_rcv_ghost[p]
-            j = J_rcv_ghost[p]
-            k_rcv_ghost[p] = nzindex(own_ghost,i,j) + nnz_own_own
-        end
-        cache = (;k_own_sa,k_ghost_sa,cache_snd...,cache_rcv...)
-        values, cache
+    for (k,(i,j,v)) in enumerate(nziterator(A_ghost_ghost))
+        owner = ghost_to_owner_row[i]
+        p = ptrs[owner_to_p[owner]]
+        I_snd_data[p] = ghost_to_global_row[i]
+        J_snd_data[p] = ghost_to_global_col[j]
+        V_snd_data[p] = v
+        k_snd_data[p] = k+nnz_ghost_own
+        ptrs[owner_to_p[owner]] += 1
     end
+    rewind_ptrs!(ptrs)
+    I_snd = JaggedArray(I_snd_data,ptrs)
+    J_snd = JaggedArray(J_snd_data,ptrs)
+    V_snd = JaggedArray(V_snd_data,ptrs)
+    k_snd = JaggedArray(k_snd_data,ptrs)
+    (;I_snd,J_snd,V_snd,k_snd,parts_snd)
+end
+
+function setup_cache_rcv(I_rcv,J_rcv,V_rcv,parts_rcv)
+    k_rcv_data = zeros(Int32,length(I_rcv.data))
+    k_rcv = JaggedArray(k_rcv_data,I_rcv.ptrs)
+    (;I_rcv,J_rcv,V_rcv,k_rcv,parts_rcv)
+end
+
+function setup_own_triplets(A,cache_rcv,rows_sa,cols_sa)
+    nz_own_own = findnz(A.blocks.own_own)
+    nz_own_ghost = findnz(A.blocks.own_ghost)
+    I_rcv_data = cache_rcv.I_rcv.data
+    J_rcv_data = cache_rcv.J_rcv.data
+    V_rcv_data = cache_rcv.V_rcv.data
+    k_rcv_data = cache_rcv.k_rcv.data
+    global_to_own_col = global_to_own(cols_sa)
+    is_ghost = findall(j->global_to_own_col[j]==0,J_rcv_data)
+    is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
+    I_rcv_own = view(I_rcv_data,is_own)
+    J_rcv_own = view(J_rcv_data,is_own)
+    V_rcv_own = view(V_rcv_data,is_own)
+    k_rcv_own = view(k_rcv_data,is_own)
+    I_rcv_ghost = view(I_rcv_data,is_ghost)
+    J_rcv_ghost = view(J_rcv_data,is_ghost)
+    V_rcv_ghost = view(V_rcv_data,is_ghost)
+    k_rcv_ghost = view(k_rcv_data,is_ghost)
+    # After this col ids in own_ghost triplet remain global
+    map_global_to_own!(I_rcv_own,rows_sa)
+    map_global_to_own!(J_rcv_own,cols_sa)
+    map_global_to_own!(I_rcv_ghost,rows_sa)
+    map_ghost_to_global!(nz_own_ghost[2],cols_sa)
+    own_own_I = vcat(nz_own_own[1],I_rcv_own)
+    own_own_J = vcat(nz_own_own[2],J_rcv_own)
+    own_own_V = vcat(nz_own_own[3],V_rcv_own)
+    own_own_triplet = (own_own_I,own_own_J,own_own_V)
+    own_ghost_I = vcat(nz_own_ghost[1],I_rcv_ghost)
+    own_ghost_J = vcat(nz_own_ghost[2],J_rcv_ghost)
+    own_ghost_V = vcat(nz_own_ghost[3],V_rcv_ghost)
+    map_global_to_ghost!(nz_own_ghost[2],cols_sa)
+    own_ghost_triplet = (own_ghost_I,own_ghost_J,own_ghost_V)
+    triplets = (own_own_triplet,own_ghost_triplet)
+    aux = (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost)
+    triplets, own_ghost_J, aux
+end
+
+function finalize_values(A,rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux)
+    (own_own_triplet,own_ghost_triplet) = triplets
+    (I_rcv_own,J_rcv_own,k_rcv_own,I_rcv_ghost,J_rcv_ghost,k_rcv_ghost,nz_own_own,nz_own_ghost) = aux
+    map_global_to_ghost!(own_ghost_triplet[2],cols_fa)
+    map_global_to_ghost!(J_rcv_ghost,cols_fa)
+    TA = typeof(A.blocks.own_own)
+    n_own_rows = own_length(rows_fa)
+    n_own_cols = own_length(cols_fa)
+    n_ghost_rows = ghost_length(rows_fa)
+    n_ghost_cols = ghost_length(cols_fa)
+    Ti = indextype(A.blocks.own_own)
+    Tv = eltype(A.blocks.own_own)
+    own_own = compresscoo(TA,own_own_triplet...,n_own_rows,n_own_cols)
+    own_ghost = compresscoo(TA,own_ghost_triplet...,n_own_rows,n_ghost_cols)
+    ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
+    ghost_ghost = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_ghost_cols)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    values = split_matrix(blocks,local_permutation(rows_fa),local_permutation(cols_fa))
+    nnz_own_own = nnz(own_own)
+    k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
+    k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
+    for p in 1:length(I_rcv_own)
+        i = I_rcv_own[p]
+        j = J_rcv_own[p]
+        k_rcv_own[p] = nzindex(own_own,i,j)
+    end
+    for p in 1:length(I_rcv_ghost)
+        i = I_rcv_ghost[p]
+        j = J_rcv_ghost[p]
+        k_rcv_ghost[p] = nzindex(own_ghost,i,j) + nnz_own_own
+    end
+    cache = (;k_own_sa,k_ghost_sa,cache_snd...,cache_rcv...)
+    values, cache
+end
+
+function PartitionedArrays.psparse_assemble_impl(
+                            A,
+                            ::Type{<:AbstractSplitMatrix},
+                            rows;
+                            reuse=Val(false),
+                            assembly_neighbors_options_cols=(;))
+
+
     rows_sa = partition(axes(A,1))
     cols_sa = partition(axes(A,2))
-    #rows = map(remove_ghost,rows_sa)
     cols = map(remove_ghost,cols_sa)
     parts_snd, parts_rcv = assembly_neighbors(rows_sa)
     cache_snd = map(setup_cache_snd,partition(A),parts_snd,rows_sa,cols_sa)
+
     I_snd = map(i->i.I_snd,cache_snd)
     J_snd = map(i->i.J_snd,cache_snd)
     V_snd = map(i->i.V_snd,cache_snd)
@@ -1524,6 +1700,9 @@ function psparse_assemble_impl(
         end
     end
 end
+
+# End new assemble
+####################
 
 function psparse_assemble_impl!(B,A,::Type,cache)
     error("case not implemented")
@@ -1603,136 +1782,306 @@ function consistent!(B::PSparseMatrix,A::PSparseMatrix,cache)
     psparse_consistent_impl!(B,A,T,cache)
 end
 
-function psparse_consistent_impl(
-    A,
-    ::Type{<:AbstractSplitMatrix},
-    rows_co;
-    reuse=Val(false))
+# function psparse_consistent_impl(
+#     A,
+#     ::Type{<:AbstractSplitMatrix},
+#     rows_co;
+#     reuse=Val(false))
 
-    function setup_snd(A,parts_snd,lids_snd,rows_co,cols_fa)
-        own_to_local_row = own_to_local(rows_co)
-        own_to_global_row = own_to_global(rows_co)
-        own_to_global_col = own_to_global(cols_fa)
-        ghost_to_global_col = ghost_to_global(cols_fa)
-        nl = size(A,1)
-        li_to_ps_ptrs = zeros(Int32,nl+1)
-        for p in 1:length(lids_snd)
-            for li in lids_snd[p]
-                li_to_ps_ptrs[li+1] += 1
-            end
+#     function setup_snd(A,parts_snd,lids_snd,rows_co,cols_fa)
+#         own_to_local_row = own_to_local(rows_co)
+#         own_to_global_row = own_to_global(rows_co)
+#         own_to_global_col = own_to_global(cols_fa)
+#         ghost_to_global_col = ghost_to_global(cols_fa)
+#         nl = size(A,1)
+#         li_to_ps_ptrs = zeros(Int32,nl+1)
+#         for p in 1:length(lids_snd)
+#             for li in lids_snd[p]
+#                 li_to_ps_ptrs[li+1] += 1
+#             end
+#         end
+#         length_to_ptrs!(li_to_ps_ptrs)
+#         ndata = li_to_ps_ptrs[end]-1
+#         li_to_ps_data = zeros(Int32,ndata)
+#         for p in 1:length(lids_snd)
+#             for li in lids_snd[p]
+#                 q = li_to_ps_ptrs[li]
+#                 li_to_ps_data[q] = p
+#                 li_to_ps_ptrs[li] = q + 1
+#             end
+#         end
+#         rewind_ptrs!(li_to_ps_ptrs)
+#         li_to_ps = JaggedArray(li_to_ps_data,li_to_ps_ptrs)
+#         ptrs = zeros(Int32,length(parts_snd)+1)
+#         for (i,j,v) in nziterator(A.blocks.own_own)
+#             li = own_to_local_row[i]
+#             for p in li_to_ps[li]
+#                 ptrs[p+1] += 1
+#             end
+#         end
+#         for (i,j,v) in nziterator(A.blocks.own_ghost)
+#             li = own_to_local_row[i]
+#             for p in li_to_ps[li]
+#                 ptrs[p+1] += 1
+#             end
+#         end
+#         length_to_ptrs!(ptrs)
+#         ndata = ptrs[end]-1
+#         T = eltype(A)
+#         I_snd = JaggedArray(zeros(Int,ndata),ptrs)
+#         J_snd = JaggedArray(zeros(Int,ndata),ptrs)
+#         V_snd = JaggedArray(zeros(T,ndata),ptrs)
+#         k_snd = JaggedArray(zeros(Int32,ndata),ptrs)
+#         for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_own))
+#             li = own_to_local_row[i]
+#             for p in li_to_ps[li]
+#                 q = ptrs[p]
+#                 I_snd.data[q] = own_to_global_row[i]
+#                 J_snd.data[q] = own_to_global_col[j]
+#                 V_snd.data[q] = v
+#                 k_snd.data[q] = k
+#                 ptrs[p] += 1
+#             end
+#         end
+#         nnz_own_own = nnz(A.blocks.own_own)
+#         for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_ghost))
+#             li = own_to_local_row[i]
+#             for p in li_to_ps[li]
+#                 q = ptrs[p]
+#                 I_snd.data[q] = own_to_global_row[i]
+#                 J_snd.data[q] = ghost_to_global_col[j]
+#                 V_snd.data[q] = v
+#                 k_snd.data[q] = k+nnz_own_own
+#                 ptrs[p] += 1
+#             end
+#         end
+#         rewind_ptrs!(ptrs)
+#         cache_snd = (;parts_snd,lids_snd,I_snd,J_snd,V_snd,k_snd)
+#         cache_snd
+#     end
+#     function setup_rcv(parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
+#         cache_rcv = (;parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
+#         cache_rcv
+#     end
+#     function finalize(A,cache_snd,cache_rcv,rows_co,cols_fa,cols_co)
+#         I_rcv_data = cache_rcv.I_rcv.data
+#         J_rcv_data = cache_rcv.J_rcv.data
+#         V_rcv_data = cache_rcv.V_rcv.data
+#         global_to_own_col = global_to_own(cols_co)
+#         global_to_ghost_col = global_to_ghost(cols_co)
+#         is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
+#         is_ghost = findall(j->global_to_ghost_col[j]!=0,J_rcv_data)
+#         I_rcv_own = I_rcv_data[is_own]
+#         J_rcv_own = J_rcv_data[is_own]
+#         V_rcv_own = V_rcv_data[is_own]
+#         I_rcv_ghost = I_rcv_data[is_ghost]
+#         J_rcv_ghost = J_rcv_data[is_ghost]
+#         V_rcv_ghost = V_rcv_data[is_ghost]
+#         map_global_to_ghost!(I_rcv_own,rows_co)
+#         map_global_to_ghost!(I_rcv_ghost,rows_co)
+#         map_global_to_own!(J_rcv_own,cols_co)
+#         map_global_to_ghost!(J_rcv_ghost,cols_co)
+#         I2,J2,V2 = findnz(A.blocks.own_ghost)
+#         map_ghost_to_global!(J2,cols_fa)
+#         map_global_to_ghost!(J2,cols_co)
+#         n_own_rows = own_length(rows_co)
+#         n_ghost_rows = ghost_length(rows_co)
+#         n_own_cols = own_length(cols_co)
+#         n_ghost_cols = ghost_length(cols_co)
+#         TA = typeof(A.blocks.ghost_own)
+#         own_own = A.blocks.own_own
+#         own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols) # TODO this can be improved
+#         ghost_own = compresscoo(TA,I_rcv_own,J_rcv_own,V_rcv_own,n_ghost_rows,n_own_cols)
+#         ghost_ghost = compresscoo(TA,I_rcv_ghost,J_rcv_ghost,V_rcv_ghost,n_ghost_rows,n_ghost_cols)
+#         K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
+#         K_ghost = precompute_nzindex(ghost_ghost,I_rcv_ghost,J_rcv_ghost)
+#         blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+#         values = split_matrix(blocks,local_permutation(rows_co),local_permutation(cols_co))
+#         k_snd = cache_snd.k_snd
+#         V_snd = cache_snd.V_snd
+#         V_rcv = cache_rcv.V_rcv
+#         parts_snd = cache_snd.parts_snd
+#         parts_rcv = cache_rcv.parts_rcv
+#         cache = (;parts_snd,parts_rcv,k_snd,V_snd,V_rcv,is_ghost,is_own,V_rcv_own,V_rcv_ghost,K_own,K_ghost)
+#         values,cache
+#     end
+#     @assert matching_own_indices(axes(A,1),PRange(rows_co))
+#     rows_fa = partition(axes(A,1))
+#     cols_fa = partition(axes(A,2))
+#     # snd and rcv are swapped on purpose
+#     parts_rcv,parts_snd = assembly_neighbors(rows_co)
+#     lids_rcv,lids_snd = assembly_local_indices(rows_co)
+#     cache_snd = map(setup_snd,partition(A),parts_snd,lids_snd,rows_co,cols_fa)
+#     I_snd = map(i->i.I_snd,cache_snd)
+#     J_snd = map(i->i.J_snd,cache_snd)
+#     V_snd = map(i->i.V_snd,cache_snd)
+#     graph = ExchangeGraph(parts_snd,parts_rcv)
+#     t_I = exchange(I_snd,graph)
+#     t_J = exchange(J_snd,graph)
+#     t_V = exchange(V_snd,graph)
+#     @fake_async begin
+#         I_rcv = fetch(t_I)
+#         J_rcv = fetch(t_J)
+#         V_rcv = fetch(t_V)
+#         J_rcv_data = map(x->x.data,J_rcv)
+#         J_rcv_owner = find_owner(cols_fa,J_rcv_data)
+#         cols_co = map(union_ghost,cols_fa,J_rcv_data,J_rcv_owner)
+#         cache_rcv = map(setup_rcv,parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
+#         values,cache = map(finalize,partition(A),cache_snd,cache_rcv,rows_co,cols_fa,cols_co) |> tuple_of_arrays
+#         B = PSparseMatrix(values,rows_co,cols_co,A.assembled)
+#         if val_parameter(reuse) == false
+#             B
+#         else
+#             B,cache
+#         end
+#     end
+# end
+
+# New consistent
+####################
+
+function consistent_setup_snd(A,parts_snd,lids_snd,rows_co,cols_fa)
+    own_to_local_row::UnitRange{Int32} = own_to_local(rows_co)
+    own_to_global_row = own_to_global(rows_co)
+    own_to_global_col = own_to_global(cols_fa)
+    ghost_to_global_col = ghost_to_global(cols_fa)
+    nl = size(A,1)
+    li_to_ps_ptrs = zeros(Int32,nl+1)
+    for p in 1:length(lids_snd)
+        for li_ptr in jagged_range(lids_snd,p)
+            li = lids_snd.data[li_ptr]
+            li_to_ps_ptrs[li+1] += 1
         end
-        length_to_ptrs!(li_to_ps_ptrs)
-        ndata = li_to_ps_ptrs[end]-1
-        li_to_ps_data = zeros(Int32,ndata)
-        for p in 1:length(lids_snd)
-            for li in lids_snd[p]
-                q = li_to_ps_ptrs[li]
-                li_to_ps_data[q] = p
-                li_to_ps_ptrs[li] = q + 1
-            end
-        end
-        rewind_ptrs!(li_to_ps_ptrs)
-        li_to_ps = JaggedArray(li_to_ps_data,li_to_ps_ptrs)
-        ptrs = zeros(Int32,length(parts_snd)+1)
-        for (i,j,v) in nziterator(A.blocks.own_own)
-            li = own_to_local_row[i]
-            for p in li_to_ps[li]
-                ptrs[p+1] += 1
-            end
-        end
-        for (i,j,v) in nziterator(A.blocks.own_ghost)
-            li = own_to_local_row[i]
-            for p in li_to_ps[li]
-                ptrs[p+1] += 1
-            end
-        end
-        length_to_ptrs!(ptrs)
-        ndata = ptrs[end]-1
-        T = eltype(A)
-        I_snd = JaggedArray(zeros(Int,ndata),ptrs)
-        J_snd = JaggedArray(zeros(Int,ndata),ptrs)
-        V_snd = JaggedArray(zeros(T,ndata),ptrs)
-        k_snd = JaggedArray(zeros(Int32,ndata),ptrs)
-        for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_own))
-            li = own_to_local_row[i]
-            for p in li_to_ps[li]
-                q = ptrs[p]
-                I_snd.data[q] = own_to_global_row[i]
-                J_snd.data[q] = own_to_global_col[j]
-                V_snd.data[q] = v
-                k_snd.data[q] = k
-                ptrs[p] += 1
-            end
-        end
-        nnz_own_own = nnz(A.blocks.own_own)
-        for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_ghost))
-            li = own_to_local_row[i]
-            for p in li_to_ps[li]
-                q = ptrs[p]
-                I_snd.data[q] = own_to_global_row[i]
-                J_snd.data[q] = ghost_to_global_col[j]
-                V_snd.data[q] = v
-                k_snd.data[q] = k+nnz_own_own
-                ptrs[p] += 1
-            end
-        end
-        rewind_ptrs!(ptrs)
-        cache_snd = (;parts_snd,lids_snd,I_snd,J_snd,V_snd,k_snd)
-        cache_snd
     end
-    function setup_rcv(parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
-        cache_rcv = (;parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
-        cache_rcv
+    length_to_ptrs!(li_to_ps_ptrs)
+    ndata = li_to_ps_ptrs[end]-1
+    li_to_ps_data = zeros(Int32,ndata)
+    for p in 1:length(lids_snd)
+        for li_ptr in jagged_range(lids_snd,p)
+            li = lids_snd.data[li_ptr]
+            q = li_to_ps_ptrs[li]
+            li_to_ps_data[q] = p
+            li_to_ps_ptrs[li] = q + 1
+        end
     end
-    function finalize(A,cache_snd,cache_rcv,rows_co,cols_fa,cols_co)
-        I_rcv_data = cache_rcv.I_rcv.data
-        J_rcv_data = cache_rcv.J_rcv.data
-        V_rcv_data = cache_rcv.V_rcv.data
-        global_to_own_col = global_to_own(cols_co)
-        global_to_ghost_col = global_to_ghost(cols_co)
-        is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
-        is_ghost = findall(j->global_to_ghost_col[j]!=0,J_rcv_data)
-        I_rcv_own = I_rcv_data[is_own]
-        J_rcv_own = J_rcv_data[is_own]
-        V_rcv_own = V_rcv_data[is_own]
-        I_rcv_ghost = I_rcv_data[is_ghost]
-        J_rcv_ghost = J_rcv_data[is_ghost]
-        V_rcv_ghost = V_rcv_data[is_ghost]
-        map_global_to_ghost!(I_rcv_own,rows_co)
-        map_global_to_ghost!(I_rcv_ghost,rows_co)
-        map_global_to_own!(J_rcv_own,cols_co)
-        map_global_to_ghost!(J_rcv_ghost,cols_co)
-        I2,J2,V2 = findnz(A.blocks.own_ghost)
-        map_ghost_to_global!(J2,cols_fa)
-        map_global_to_ghost!(J2,cols_co)
-        n_own_rows = own_length(rows_co)
-        n_ghost_rows = ghost_length(rows_co)
-        n_own_cols = own_length(cols_co)
-        n_ghost_cols = ghost_length(cols_co)
-        TA = typeof(A.blocks.ghost_own)
-        own_own = A.blocks.own_own
-        own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols) # TODO this can be improved
-        ghost_own = compresscoo(TA,I_rcv_own,J_rcv_own,V_rcv_own,n_ghost_rows,n_own_cols)
-        ghost_ghost = compresscoo(TA,I_rcv_ghost,J_rcv_ghost,V_rcv_ghost,n_ghost_rows,n_ghost_cols)
-        K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
-        K_ghost = precompute_nzindex(ghost_ghost,I_rcv_ghost,J_rcv_ghost)
-        blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
-        values = split_matrix(blocks,local_permutation(rows_co),local_permutation(cols_co))
-        k_snd = cache_snd.k_snd
-        V_snd = cache_snd.V_snd
-        V_rcv = cache_rcv.V_rcv
-        parts_snd = cache_snd.parts_snd
-        parts_rcv = cache_rcv.parts_rcv
-        cache = (;parts_snd,parts_rcv,k_snd,V_snd,V_rcv,is_ghost,is_own,V_rcv_own,V_rcv_ghost,K_own,K_ghost)
-        values,cache
+
+    rewind_ptrs!(li_to_ps_ptrs)
+    li_to_ps = JaggedArray(li_to_ps_data,li_to_ps_ptrs)
+    ptrs = zeros(Int32,length(parts_snd)+1)
+    for (i,j,v) in nziterator(A.blocks.own_own)
+        # @show(typeof(own_to_local_row))
+        li = own_to_local_row[i]
+        for li_ptr in jagged_range(li_to_ps,li)
+            p = li_to_ps.data[li_ptr]
+            ptrs[p+1] += 1
+        end
     end
+
+    for (i,j,v) in nziterator(A.blocks.own_ghost)
+        li = own_to_local_row[i]
+        for ptr in jagged_range(li_to_ps,li)
+            p=li_to_ps.data[ptr]
+            ptrs[p+1] += 1
+        end
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    T = eltype(A)
+    I_snd = JaggedArray(zeros(Int,ndata),ptrs)
+    J_snd = JaggedArray(zeros(Int,ndata),ptrs)
+    V_snd = JaggedArray(zeros(T,ndata),ptrs)
+    k_snd = JaggedArray(zeros(Int32,ndata),ptrs)
+    for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_own))
+        li = own_to_local_row[i]
+        for p_ptr in jagged_range(li_to_ps,li)
+            p = li_to_ps.data[p_ptr]
+            q = ptrs[p]
+            I_snd.data[q] = own_to_global_row[i]
+            J_snd.data[q] = own_to_global_col[j]
+            V_snd.data[q] = v
+            k_snd.data[q] = k
+            ptrs[p] += 1
+        end
+    end
+
+    nnz_own_own = nnz(A.blocks.own_own)
+    for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_ghost))
+        li = own_to_local_row[i]
+        for p_ptr in jagged_range(li_to_ps,li)
+            p=li_to_ps.data[p_ptr]
+            q = ptrs[p]
+            I_snd.data[q] = own_to_global_row[i]
+            J_snd.data[q] = ghost_to_global_col[j]
+            V_snd.data[q] = v
+            k_snd.data[q] = k+nnz_own_own
+            ptrs[p] += 1
+        end
+    end
+    rewind_ptrs!(ptrs)
+    cache_snd = (;parts_snd,lids_snd,I_snd,J_snd,V_snd,k_snd)
+    cache_snd
+end
+
+function consistent_setup_rcv(parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
+    cache_rcv = (;parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
+    cache_rcv
+end
+
+function consistent_finalize(A,cache_snd,cache_rcv,rows_co,cols_fa,cols_co)
+    I_rcv_data = cache_rcv.I_rcv.data
+    J_rcv_data = cache_rcv.J_rcv.data
+    V_rcv_data = cache_rcv.V_rcv.data
+    global_to_own_col = global_to_own(cols_co)
+    global_to_ghost_col = global_to_ghost(cols_co)
+    is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
+    is_ghost = findall(j->global_to_ghost_col[j]!=0,J_rcv_data)
+    I_rcv_own = I_rcv_data[is_own]
+    J_rcv_own = J_rcv_data[is_own]
+    V_rcv_own = V_rcv_data[is_own]
+    I_rcv_ghost = I_rcv_data[is_ghost]
+    J_rcv_ghost = J_rcv_data[is_ghost]
+    V_rcv_ghost = V_rcv_data[is_ghost]
+    map_global_to_ghost!(I_rcv_own,rows_co)
+    map_global_to_ghost!(I_rcv_ghost,rows_co)
+    map_global_to_own!(J_rcv_own,cols_co)
+    map_global_to_ghost!(J_rcv_ghost,cols_co)
+    I2,J2,V2 = findnz(A.blocks.own_ghost)
+    map_ghost_to_global!(J2,cols_fa)
+    map_global_to_ghost!(J2,cols_co)
+    n_own_rows = own_length(rows_co)
+    n_ghost_rows = ghost_length(rows_co)
+    n_own_cols = own_length(cols_co)
+    n_ghost_cols = ghost_length(cols_co)
+    TA = typeof(A.blocks.ghost_own)
+    own_own = A.blocks.own_own
+    own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols) # TODO this can be improved
+    ghost_own = compresscoo(TA,I_rcv_own,J_rcv_own,V_rcv_own,n_ghost_rows,n_own_cols)
+    ghost_ghost = compresscoo(TA,I_rcv_ghost,J_rcv_ghost,V_rcv_ghost,n_ghost_rows,n_ghost_cols)
+    K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
+    K_ghost = precompute_nzindex(ghost_ghost,I_rcv_ghost,J_rcv_ghost)
+    blocks = split_matrix_blocks(own_own,own_ghost,ghost_own,ghost_ghost)
+    values = split_matrix(blocks,local_permutation(rows_co),local_permutation(cols_co))
+    k_snd = cache_snd.k_snd
+    V_snd = cache_snd.V_snd
+    V_rcv = cache_rcv.V_rcv
+    parts_snd = cache_snd.parts_snd
+    parts_rcv = cache_rcv.parts_rcv
+    cache = (;parts_snd,parts_rcv,k_snd,V_snd,V_rcv,is_ghost,is_own,V_rcv_own,V_rcv_ghost,K_own,K_ghost)
+    values,cache
+end
+
+function psparse_consistent_impl(
+                            A,
+                            ::Type{<:AbstractSplitMatrix},
+                            rows_co;
+                            reuse=Val(false))
     @assert matching_own_indices(axes(A,1),PRange(rows_co))
     rows_fa = partition(axes(A,1))
     cols_fa = partition(axes(A,2))
     # snd and rcv are swapped on purpose
     parts_rcv,parts_snd = assembly_neighbors(rows_co)
     lids_rcv,lids_snd = assembly_local_indices(rows_co)
-    cache_snd = map(setup_snd,partition(A),parts_snd,lids_snd,rows_co,cols_fa)
+    cache_snd = map(consistent_setup_snd,partition(A),parts_snd,lids_snd,rows_co,cols_fa)
     I_snd = map(i->i.I_snd,cache_snd)
     J_snd = map(i->i.J_snd,cache_snd)
     V_snd = map(i->i.V_snd,cache_snd)
@@ -1747,8 +2096,8 @@ function psparse_consistent_impl(
         J_rcv_data = map(x->x.data,J_rcv)
         J_rcv_owner = find_owner(cols_fa,J_rcv_data)
         cols_co = map(union_ghost,cols_fa,J_rcv_data,J_rcv_owner)
-        cache_rcv = map(setup_rcv,parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
-        values,cache = map(finalize,partition(A),cache_snd,cache_rcv,rows_co,cols_fa,cols_co) |> tuple_of_arrays
+        cache_rcv = map(consistent_setup_rcv,parts_rcv,lids_rcv,I_rcv,J_rcv,V_rcv)
+        values,cache = map(consistent_finalize,partition(A),cache_snd,cache_rcv,rows_co,cols_fa,cols_co) |> tuple_of_arrays
         B = PSparseMatrix(values,rows_co,cols_co,A.assembled)
         if val_parameter(reuse) == false
             B
@@ -1757,6 +2106,9 @@ function psparse_consistent_impl(
         end
     end
 end
+
+# End new consistent
+####################
 
 function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
     function setup_snd(A,cache)
