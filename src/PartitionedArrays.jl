@@ -11,6 +11,7 @@ import Distances
 
 export length_to_ptrs!
 export rewind_ptrs!
+export jagged_range
 export jagged_array
 export GenericJaggedArray
 export JaggedArray

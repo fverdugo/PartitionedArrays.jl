@@ -162,7 +162,6 @@ function jagged_range(a::Union{JaggedArray,GenericJaggedArray},i::Integer)
   pini:pend
 end
 
-
 ###########
 
 Base.size(a::Union{JaggedArray,GenericJaggedArray}) = (length(a.ptrs)-1,)
