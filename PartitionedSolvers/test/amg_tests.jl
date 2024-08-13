@@ -3,8 +3,7 @@ module AMGTests
 # just for debugging
 using Pkg
 Pkg.activate("PartitionedSolvers")
-using PartitionedArrays 
-using PartitionedArrays: laplace_matrix
+using PartitionedArrays
 using PartitionedSolvers
 using LinearAlgebra
 using IterativeSolvers
@@ -123,22 +122,26 @@ G = PartitionedSolvers.strength_graph(M, 3, epsilon=epsilon)
 solution = sparse([1], [1], 1.0, 1, 1)
 @test solution ≈ G 
 
-# Create Psparse Test matrix (Linear Elasticity)
-block_size = 3
+# Create Test matrices (Linear Elasticity)
 parts_per_dir = (2,2,2)
+block_size = length(parts_per_dir) 
 p = prod(parts_per_dir)
 ranks = DebugArray(LinearIndices((p,)))
 nodes_per_dir = map(i->block_size*i,parts_per_dir)
 args = PartitionedArrays.linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
 A_dist = psparse(args...) |> fetch
 A_seq = centralize(A_dist)
-display(A_seq)
 
 # Test strength graph with sequential and parallel linear elasticity matrix
 G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
 G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
-diff = G_seq - centralize(G_dist)
-display(diff)
+G_dist_centralized = centralize(G_dist)
+diff = G_seq - G_dist_centralized
+diff_nnz = nnz(diff)
+println("$(round(diff_nnz/(G_seq.m^2); digits=3))% of total entries are different between sequential and parallel G.") 
+println("G_dist has $(round(1-nnz(G_dist_centralized)/nnz(G_seq);digits=2))% fewer nnz entries than G_seq.")
+println("(G_dist nnz entries: $(nnz(G_dist_centralized)), G_seq nnz entries: $(nnz(G_seq)))")
+@test isa(G_dist, PSparseMatrix)
 
 # Test sequential collect nodes in aggregate 
 diagG = dense_diag(centralize(G_dist))
@@ -171,40 +174,25 @@ map(partition(aggregate_to_nodes_dist), partition(node_to_aggregate_dist), parti
     end
 end
 
-# Test tentative prolongator 
-function random_nullspace(ndofs::Int, n_B)
-    B = Array{Array{Float64, 1}, 1}(undef, n_B)
-    for i = 1:n_B
-        B[i] = rand(ndofs)
-    end
-    B
-end
+# Create nullspace vectors for tentative prolongator
+x_dist = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir,ranks)
+B_dist = near_nullspace_linear_elasticity(x_dist, partition(axes(A_dist,2)))
+B_seq = [collect(b) for b in B_dist]
 
-function random_nullspace(index_partition::AbstractArray, n_B)
-    B = Array{PVector}(undef, n_B)
-    for i = 1:n_B
-        B[i] = prand(index_partition)
-    end
-    B
-end
-
-# Test tentative prolongator with laplace matrix
+# Test tentative prolongator with sequential linear elasticity matrix
 G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
-diagG = dense_diag(G_seq)
-B = random_nullspace(size(A_seq, 1), block_size)
-node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_seq,diagG;epsilon)
+node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_seq, dense_diag(G_seq);epsilon)
 aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B, block_size) 
-@test Pc * stack(Bc) ≈ stack(B)
+Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B_seq, block_size) 
+@test Pc * stack(Bc) ≈ stack(B_seq)
+
 
 # Test tentative prolongator with parallel matrix 
 G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
-diagG = dense_diag(G_dist)
-n_B = block_size
-node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_dist,diagG;epsilon)
+node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_dist,dense_diag(G_dist);epsilon)
 aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-B_dist = random_nullspace(partition(axes(A_dist,1)), n_B)
 Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B_dist, block_size) 
+n_B = length(B_dist)
 for i in 1:n_B
     @test isa(Bc[i], PVector)
 end
@@ -217,6 +205,7 @@ for (i,b) in enumerate(B_dist)
     B_matrix[:,i] = collect(b)
 end
 @test centralize(Pc) * Bc_matrix ≈ B_matrix  
+
 
 # Test spectral radius sequential & parallel 
 diagA = dense_diag(A_dist)
@@ -232,10 +221,11 @@ lseq, x = PartitionedSolvers.spectral_radius(centralize(M), x0_seq, 10)
 @test l ≈ lseq 
 @test abs((l-exp)/exp) < 2*10^-1
 
-
-# First with a sequential matrix
+#=
+# Test amg 
+# first with a sequential matrix
 nodes_per_dir = (100,100)
-A = laplace_matrix(nodes_per_dir)
+A = PartitionedArrays.laplace_matrix(nodes_per_dir)
 using Random
 Random.seed!(1)
 x = rand(size(A,2))
@@ -304,7 +294,7 @@ np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 
 nodes_per_dir = (100,100)
-A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
 x = pones(partition(axes(A,2)))
 b = A*x
 
@@ -346,9 +336,9 @@ cg!(y,A,b;Pl,verbose=true)
 
 nodes_per_dir = (40,40,40)
 parts_per_dir = (2,2,1)
-nparts = prod(parts_per_dir)
-parts = LinearIndices((nparts,))
-A = laplace_matrix(nodes_per_dir,parts_per_dir,parts)
+np = prod(parts_per_dir)
+parts = LinearIndices((np,))
+A = PartitionedArrays.laplace_matrix(nodes_per_dir,parts_per_dir,parts)
 x_exact = pones(partition(axes(A,2)))
 b = A*x_exact
 x = similar(b,axes(A,2))
@@ -356,4 +346,5 @@ x .= 0
 Pl = setup(amg(),x,A,b)
 _, history = cg!(x,A,b;Pl,log=true)
 display(history)
+=#
 end
