@@ -415,7 +415,7 @@ function node_to_dof_partition(node_partition,D)
     dof_partition
 end
 
-function node_coorinates_unit_cube(
+function node_coordinates_unit_cube(
         nodes_per_dir, # free (== interior) nodes
         parts_per_dir,
         parts,

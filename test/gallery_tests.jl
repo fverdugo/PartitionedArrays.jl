@@ -41,7 +41,7 @@ function gallery_tests(distribute,parts_per_dir)
     Y = A*pones(axes(A,2))
     @test isa(y,PVector)
 
-    x = node_coorinates_unit_cube(nodes_per_dir,parts_per_dir,ranks)
+    x = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir,ranks)
     B = near_nullspace_linear_elasticity(x)
     @test isa(B[1],PVector)
     B = near_nullspace_linear_elasticity(x,partition(axes(A,2)))
