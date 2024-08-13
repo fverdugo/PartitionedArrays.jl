@@ -3,7 +3,7 @@ module AMGTests
 # just for debugging
 using Pkg
 Pkg.activate("PartitionedSolvers")
-using PartitionedArrays
+using PartitionedArrays 
 using PartitionedArrays: laplace_matrix
 using PartitionedSolvers
 using LinearAlgebra
@@ -123,18 +123,22 @@ G = PartitionedSolvers.strength_graph(M, 3, epsilon=epsilon)
 solution = sparse([1], [1], 1.0, 1, 1)
 @test solution ≈ G 
 
-# Test strength_graph with psparse matrix 
+# Create Psparse Test matrix (Linear Elasticity)
 block_size = 3
 parts_per_dir = (2,2,2)
 p = prod(parts_per_dir)
 ranks = DebugArray(LinearIndices((p,)))
 nodes_per_dir = map(i->block_size*i,parts_per_dir)
-args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
-A_dist = psparse(args...) |> fetch 
+args = PartitionedArrays.linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+A_dist = psparse(args...) |> fetch
 A_seq = centralize(A_dist)
+display(A_seq)
+
+# Test strength graph with sequential and parallel linear elasticity matrix
 G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
 G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
 diff = G_seq - centralize(G_dist)
+display(diff)
 
 # Test sequential collect nodes in aggregate 
 diagG = dense_diag(centralize(G_dist))
@@ -185,18 +189,10 @@ function random_nullspace(index_partition::AbstractArray, n_B)
 end
 
 # Test tentative prolongator with laplace matrix
-block_size = 3
-parts_per_dir = (2,2,2)
-p = prod(parts_per_dir)
-ranks = DebugArray(LinearIndices((p,)))
-nodes_per_dir = map(i->block_size*i,parts_per_dir)
-args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks)
-A_dist = psparse(args...) |> fetch 
-A = centralize(A_dist)
-G = PartitionedSolvers.strength_graph(A, block_size, epsilon=epsilon)
-diagG = dense_diag(G)
-B = random_nullspace(size(A, 1), block_size)
-node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G,diagG;epsilon)
+G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
+diagG = dense_diag(G_seq)
+B = random_nullspace(size(A_seq, 1), block_size)
+node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_seq,diagG;epsilon)
 aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
 Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B, block_size) 
 @test Pc * stack(Bc) ≈ stack(B)
