@@ -6,13 +6,18 @@ using Distances
 using BlockArrays
 
 function block_arrays_tests(distribute)
+    block_arrays_tests(distribute,false)
+    block_arrays_tests(distribute,true)
+end
+
+function block_arrays_tests(distribute,split_format)
 
     np = 4
     rank = distribute(LinearIndices((np,)))
     row_partition = uniform_partition(rank,(2,2),(6,6))
 
-    a1 = pones(row_partition,split_format=true)
-    a2 = pzeros(row_partition,split_format=true)
+    a1 = pones(row_partition;split_format)
+    a2 = pzeros(row_partition;split_format)
     a = mortar([a1,a2])
     display(a)
     rows = axes(a,1)
