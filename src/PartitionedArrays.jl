@@ -116,10 +116,6 @@ export map_ghost_to_global!
 export map_global_to_ghost!
 export map_own_to_global!
 export map_global_to_own!
-export BlockedPRange
-export local_block_ranges
-export own_block_ranges
-export ghost_block_ranges
 include("p_range.jl")
 
 export local_values
@@ -147,7 +143,6 @@ export SplitVector
 export split_vector
 export split_vector_blocks
 export pvector_from_split_blocks
-export BlockPVector
 include("p_vector.jl")
 
 export SplitMatrix
@@ -178,6 +173,13 @@ export spmtm
 export spmtm!
 export centralize
 include("p_sparse_matrix.jl")
+
+export BlockedPRange
+export local_block_ranges
+export own_block_ranges
+export ghost_block_ranges
+export BlockPVector
+include("block_arrays.jl")
 
 export PTimer
 export tic!
