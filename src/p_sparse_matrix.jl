@@ -1659,7 +1659,7 @@ function finalize_values(A,rows_fa,cols_fa,cache_snd,cache_rcv,triplets,aux)
     values, cache
 end
 
-function PartitionedArrays.psparse_assemble_impl(
+function psparse_assemble_impl(
                             A,
                             ::Type{<:AbstractSplitMatrix},
                             rows;
@@ -2033,11 +2033,12 @@ function consistent_finalize(A,cache_snd,cache_rcv,rows_co,cols_fa,cols_co)
     V_rcv_data = cache_rcv.V_rcv.data
     global_to_own_col = global_to_own(cols_co)
     global_to_ghost_col = global_to_ghost(cols_co)
-    is_own = findall(j->global_to_own_col[j]!=0,J_rcv_data)
-    is_ghost = findall(j->global_to_ghost_col[j]!=0,J_rcv_data)
+    is_own_condition = k -> global_to_own_col[k]!=0
+    is_own = is_own_condition.(J_rcv_data)
     I_rcv_own = I_rcv_data[is_own]
     J_rcv_own = J_rcv_data[is_own]
     V_rcv_own = V_rcv_data[is_own]
+    is_ghost = map!(!,is_own, is_own) # inverse is_own bitvector to effectively represent is_ghost mask
     I_rcv_ghost = I_rcv_data[is_ghost]
     J_rcv_ghost = J_rcv_data[is_ghost]
     V_rcv_ghost = V_rcv_data[is_ghost]
@@ -2066,7 +2067,7 @@ function consistent_finalize(A,cache_snd,cache_rcv,rows_co,cols_fa,cols_co)
     V_rcv = cache_rcv.V_rcv
     parts_snd = cache_snd.parts_snd
     parts_rcv = cache_rcv.parts_rcv
-    cache = (;parts_snd,parts_rcv,k_snd,V_snd,V_rcv,is_ghost,is_own,V_rcv_own,V_rcv_ghost,K_own,K_ghost)
+    cache = (;parts_snd,parts_rcv,k_snd,V_snd,V_rcv,V_rcv_own,V_rcv_ghost,K_own,K_ghost)
     values,cache
 end
 
@@ -2127,13 +2128,10 @@ function psparse_consistent_impl!(B,A,::Type{<:AbstractSplitMatrix},cache)
         end
     end
     function setup_rcv(B,cache)
-        is_ghost = cache.is_ghost
-        is_own = cache.is_own
-        V_rcv_data = cache.V_rcv.data
         K_own = cache.K_own
         K_ghost = cache.K_ghost
-        V_rcv_own = V_rcv_data[is_own]
-        V_rcv_ghost = V_rcv_data[is_ghost]
+        V_rcv_own = cache.V_rcv_own
+        V_rcv_ghost = cache.V_rcv_ghost
         setcoofast!(B.blocks.ghost_own,V_rcv_own,K_own)
         setcoofast!(B.blocks.ghost_ghost,V_rcv_ghost,K_ghost)
         B
