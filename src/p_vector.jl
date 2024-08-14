@@ -237,8 +237,8 @@ function Base.fill!(a::SplitVector,v)
 end
 
 function Base.:*(a::Number,b::SplitVector)
-    own_own = a*b.blocks.own
-    ghost_ghost = a*b.blocks.ghost
+    own = a*b.blocks.own
+    ghost = a*b.blocks.ghost
     blocks = split_vector_blocks(own,ghost)
     split_vector(blocks,b.permutation)
 end

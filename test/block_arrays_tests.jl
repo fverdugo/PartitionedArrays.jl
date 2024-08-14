@@ -11,15 +11,28 @@ function block_arrays_tests(distribute)
     rank = distribute(LinearIndices((np,)))
     row_partition = uniform_partition(rank,(2,2),(6,6))
 
-    a1 = pones(row_partition)
-    a2 = pzeros(row_partition)
+    a1 = pones(row_partition,split_format=true)
+    a2 = pzeros(row_partition,split_format=true)
     a = mortar([a1,a2])
     display(a)
+    rows = axes(a,1)
+    display(rows)
+    partition(rows)
+    local_block_ranges(rows)
+    own_block_ranges(rows)
+    ghost_block_ranges(rows)
+
     @test a[Block(1)] == a1
     @test a[Block(2)] == a2
     display(a[Block(1)])
     @test view(a,Block(1)) === a1
     @test view(a,Block(2)) === a2
+
+    partition(a)
+    #map(display,own_values(a))
+    local_values(a)
+    own_values(a)
+    ghost_values(a)
 
     b = similar(a)
     b = similar(a,Int)
