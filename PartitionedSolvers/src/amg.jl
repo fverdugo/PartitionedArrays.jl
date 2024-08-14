@@ -245,47 +245,6 @@ function collect_nodes_in_aggregate(node_to_aggregate,aggregates)
     aggregate_to_nodes
 end
 
-function remove_singleton_aggregates(aggregate_to_nodes_old)
-    typeof_nodes = eltype(aggregate_to_nodes_old[1])
-    n_aggregates_old = length(aggregate_to_nodes_old)
-    n_aggregates = 0
-    n_data = 0
-    for i in 1:n_aggregates_old
-        nnodes = aggregate_to_nodes_old.ptrs[i+1] - aggregate_to_nodes_old.ptrs[i]
-        if nnodes < 2
-            continue
-        end
-        n_aggregates += 1 
-        n_data += nnodes
-    end
-
-    # If there are no singleton aggregates, stop and return old array
-    if n_aggregates == n_aggregates_old
-        return aggregate_to_nodes_old
-    end
-
-    # Else copy non-singleton aggregates to new array
-    aggregate_to_nodes_ptrs = zeros(Int, n_aggregates+1)
-    aggregate_to_nodes_data = zeros(typeof_nodes, n_data)
-    aggregate_to_nodes_ptrs[1] = 1
-    agg = 1
-    for i in 1:n_aggregates_old
-        nnodes = aggregate_to_nodes_old.ptrs[i+1] - aggregate_to_nodes_old.ptrs[i]
-        if nnodes < 2
-            continue 
-        end
-        aggregate_to_nodes_ptrs[agg+1] = aggregate_to_nodes_ptrs[agg] + nnodes 
-        pini = aggregate_to_nodes_ptrs[agg]
-        pend = aggregate_to_nodes_ptrs[agg+1]-1
-        pini_old = aggregate_to_nodes_old.ptrs[i]
-        pend_old = aggregate_to_nodes_old.ptrs[i+1]-1
-        aggregate_to_nodes_data[pini:pend] = aggregate_to_nodes_old.data[pini_old:pend_old]
-        agg += 1     
-    end
-    aggregate_to_nodes = jagged_array(aggregate_to_nodes_data,aggregate_to_nodes_ptrs)
-    aggregate_to_nodes
-end
-
 function tentative_prolongator_for_laplace(P0,B)
     n_nullspace_vecs = length(B)
     if n_nullspace_vecs != 1
@@ -341,10 +300,7 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, bl
         P0_partition, Bc_partition, local_coarse_dof_to_Bc...
     end |> tuple_of_arrays
     P0 = PSparseMatrix(P0_partition, B[1].index_partition, Bc_partition, true) 
-    Bc = Array{PVector}(undef, n_B)
-    for (i,b) in enumerate(coarse_dof_to_Bc)
-        Bc[i] = PVector(b, Bc_partition)
-    end  
+    Bc = [PVector(b, Bc_partition) for b in coarse_dof_to_Bc]
     P0, Bc 
 end
 

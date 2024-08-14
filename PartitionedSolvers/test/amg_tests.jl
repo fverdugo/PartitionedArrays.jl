@@ -13,7 +13,7 @@ using Test
 using SparseArrays
 
 # Test strength graph computation 
-# First with Psparse matrix 
+# First with Psparse matrix and known solution
 ndofs = 18
 nnodes = 9
 nrows = 3
@@ -83,8 +83,7 @@ IJV = map(row_partition) do row_indices
 end
 
 I,J,V = tuple_of_arrays(IJV)
-col_partition = row_partition
-A = psparse(I,J,V,row_partition, col_partition) |> fetch 
+A = psparse(I,J,V,row_partition, row_partition) |> fetch 
 
 # build solution
 I = [1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 
@@ -104,12 +103,12 @@ solution = sparse(I, J, V, nnodes, nnodes)
 epsilon = 0.02
 
 # Test with CSC sparse matrix 
-# Test sample matrix with block size 2
+# Test sample matrix with known solution
 A_seq = centralize(A)
 G_seq = PartitionedSolvers.strength_graph(A_seq, 2, epsilon=epsilon)
 @test solution ≈ G_seq
 
-# Another test with 3 dims
+# Another test with blocksize 3
 M = rand([-2.0, -1, 1, 2], (3, 3))
 M = sparse(M)
 A = blockdiag(M, M, M)
@@ -122,7 +121,7 @@ G = PartitionedSolvers.strength_graph(M, 3, epsilon=epsilon)
 solution = sparse([1], [1], 1.0, 1, 1)
 @test solution ≈ G 
 
-# Create Test matrices (Linear Elasticity)
+# Create Test matrix for Linear Elasticity
 parts_per_dir = (2,2,2)
 block_size = length(parts_per_dir) 
 p = prod(parts_per_dir)
@@ -138,7 +137,7 @@ G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
 G_dist_centralized = centralize(G_dist)
 diff = G_seq - G_dist_centralized
 diff_nnz = nnz(diff)
-println("$(round(diff_nnz/(G_seq.m^2); digits=3))% of total entries are different between sequential and parallel G.") 
+println("Test strength graph: \n$(round(diff_nnz/(G_seq.m^2); digits=3))% of total entries are different between sequential and parallel G.") 
 println("G_dist has $(round(1-nnz(G_dist_centralized)/nnz(G_seq);digits=2))% fewer nnz entries than G_seq.")
 println("(G_dist nnz entries: $(nnz(G_dist_centralized)), G_seq nnz entries: $(nnz(G_seq)))")
 @test isa(G_dist, PSparseMatrix)
@@ -180,18 +179,11 @@ B_dist = near_nullspace_linear_elasticity(x_dist, partition(axes(A_dist,2)))
 B_seq = [collect(b) for b in B_dist]
 
 # Test tentative prolongator with sequential linear elasticity matrix
-G_seq = PartitionedSolvers.strength_graph(A_seq, block_size, epsilon=epsilon)
-node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_seq, dense_diag(G_seq);epsilon)
-aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B_seq, block_size) 
+Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes_seq,B_seq, block_size) 
 @test Pc * stack(Bc) ≈ stack(B_seq)
 
-
 # Test tentative prolongator with parallel matrix 
-G_dist = PartitionedSolvers.strength_graph(A_dist, block_size, epsilon=epsilon)
-node_to_aggregate, node_aggregates = PartitionedSolvers.aggregate(G_dist,dense_diag(G_dist);epsilon)
-aggregate_to_nodes = PartitionedSolvers.collect_nodes_in_aggregate(node_to_aggregate, node_aggregates)
-Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes,B_dist, block_size) 
+Pc, Bc = PartitionedSolvers.tentative_prolongator_with_block_size(aggregate_to_nodes_dist,B_dist, block_size) 
 n_B = length(B_dist)
 for i in 1:n_B
     @test isa(Bc[i], PVector)
@@ -216,10 +208,10 @@ exp = eigmax(Array(centralize(M)))
 cols = axes(M, 2) 
 x0 = prand(partition(cols))
 x0_seq = collect(x0)
-l, x = PartitionedSolvers.spectral_radius(M, x0, 10)
-lseq, x = PartitionedSolvers.spectral_radius(centralize(M), x0_seq, 10)
-@test l ≈ lseq 
-@test abs((l-exp)/exp) < 2*10^-1
+l_dist, x = PartitionedSolvers.spectral_radius(M, x0, 10)
+l_seq, x = PartitionedSolvers.spectral_radius(centralize(M), x0_seq, 10)
+@test l_dist ≈ l_seq 
+@test abs((l_dist-exp)/exp) < 2*10^-1
 
 #=
 # Test amg 
