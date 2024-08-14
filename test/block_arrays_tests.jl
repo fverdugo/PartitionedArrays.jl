@@ -4,6 +4,7 @@ using LinearAlgebra
 using Random
 using Distances
 using BlockArrays
+using SparseArrays
 
 function block_arrays_tests(distribute)
     block_arrays_tests(distribute,false)
@@ -20,6 +21,7 @@ function block_arrays_tests(distribute,split_format)
     a2 = pzeros(row_partition;split_format)
     a = mortar([a1,a2])
     display(a)
+    collect(a)
     rows = axes(a,1)
     display(rows)
     partition(rows)
@@ -86,6 +88,43 @@ function block_arrays_tests(distribute,split_format)
     w =  v .+ 1 .- u
     @test isa(w,BlockPVector)
     w .= u
+
+    nodes_per_dir = (4,4)
+    parts_per_dir = (2,2)
+    args = laplacian_fem(nodes_per_dir,parts_per_dir,rank)
+    A11 = psparse(args...) |> fetch
+    x1 = pones(axes(A11,2);split_format)
+    assemble!(x1) |> wait
+    consistent!(x1) |> wait
+
+    A = mortar(fill(A11,(2,2)))
+    display(A)
+    @show A
+    #display(centralize(A))
+    own_own_values(A)
+    own_ghost_values(A)
+    ghost_own_values(A)
+    ghost_ghost_values(A)
+    B = copy(A)
+    copy!(B,A)
+    copyto!(B,A)
+    nnz(A)
+    ax = axes(A,2)
+    axb = blocks(ax)
+    x = similar(a,axes(A,2))
+    fill!(x,1)
+    assemble!(x) |> wait
+    consistent!(x) |> wait
+    b = similar(x,axes(A,1))
+    mul!(b,A,x)
+    b = A*x
+    mul!(b,A,x)
+    B = 2*A
+    B = A*2
+    B = +A
+    B = -A
+    C = B+A
+    D = B-A
 
 end
 

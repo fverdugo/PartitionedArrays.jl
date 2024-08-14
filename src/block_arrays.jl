@@ -74,6 +74,7 @@ end
 BlockArrays.blocks(a::BlockPVector) = a.blocks
 BlockArrays.viewblock(a::BlockPVector, i::Block) = blocks(a)[i.n...]
 Base.axes(a::BlockPVector) = (BlockedPRange(map(block->axes(block,1),blocks(a))),)
+Base.size(a::BlockPVector) = (length(a),)
 Base.length(a::BlockPVector) = sum(length,blocks(a))
 Base.IndexStyle(::Type{<:BlockPVector}) = IndexLinear()
 function Base.getindex(a::BlockPVector,gid::Int)
@@ -174,6 +175,7 @@ end
 
 function Base.fill!(a::BlockPVector,v)
     foreach(ai->fill!(ai,v),blocks(a))
+    a
 end
 
 
@@ -313,4 +315,200 @@ function Base.materialize!(a::BlockPVector,b::BroadcastedBlockPVector)
     foreach(Base.materialize!,blocks(a),blocks(b))
     a
 end
+
+# BlockPSparseMatrix
+
+function BlockArrays.mortar(blocks::Matrix{<:PSparseMatrix})
+    BlockPSparseMatrix(blocks)
+end
+
+struct BlockPSparseMatrix{A,T} <: BlockArrays.AbstractBlockMatrix{T}
+    blocks::A
+    function BlockPSparseMatrix(blocks)
+      T = eltype(first(blocks))
+      @assert all(block->isa(block,PSparseMatrix),blocks)
+      @assert all(block->eltype(block)==T,blocks)
+      A = typeof(blocks)
+      new{A,T}(blocks)
+    end
+end
+BlockArrays.blocks(a::BlockPSparseMatrix) = a.blocks
+BlockArrays.viewblock(a::BlockPSparseMatrix, i::Block) = blocks(a)[i.n...]
+function Base.axes(a::BlockPSparseMatrix)
+    rows = BlockedPRange(map(block->axes(block,1),blocks(a)[:,1]))
+    cols = BlockedPRange(map(block->axes(block,2),blocks(a)[1,:]))
+    (rows,cols)
+end
+Base.size(a::BlockPSparseMatrix) = map(length,axes(a))
+function Base.getindex(a::BlockPSparseMatrix,gi::Int,gj::Int)
+    scalar_indexing_action(a)
+end
+function Base.setindex!(a::BlockPSparseMatrix,v,gi::Int,gj::Int)
+    scalar_indexing_action(a)
+end
+function Base.show(io::IO,k::MIME"text/plain",data::BlockPSparseMatrix)
+    T = eltype(data)
+    m,n = size(data)
+    ps = partition(axes(data,1))
+    np = length(ps)
+    mb,nb = blocksize(data)
+    map_main(ps) do _
+        println(io,"($(mb)×$(nb))-blocked ($(m)×$(n))-element BlockPSparseMatrix with eltype $T partitioned into $np parts.")
+    end
+end
+function Base.show(io::IO,data::BlockPSparseMatrix)
+    print(io,"BlockPSparseMatrix(…)")
+end
+function partition(a::BlockPSparseMatrix)
+    local_values(a)
+end
+function local_values(a::BlockPSparseMatrix)
+    rows = local_block_ranges(axes(a,1))
+    cols = local_block_ranges(axes(a,2))
+    v = map(local_values,blocks(a)) |> permute_nesting
+    map(v,rows,cols) do myv, myrows,mycols
+        mortar(myv,(myrows,mycols))
+    end
+end
+function own_own_values(a::BlockPSparseMatrix)
+    rows = own_block_ranges(axes(a,1))
+    cols = own_block_ranges(axes(a,2))
+    v = map(own_own_values,blocks(a)) |> permute_nesting
+    map(v,rows,cols) do myv, myrows,mycols
+        mortar(myv,(myrows,mycols))
+    end
+end
+function own_ghost_values(a::BlockPSparseMatrix)
+    rows = own_block_ranges(axes(a,1))
+    cols = ghost_block_ranges(axes(a,2))
+    v = map(own_ghost_values,blocks(a)) |> permute_nesting
+    map(v,rows,cols) do myv, myrows,mycols
+        mortar(myv,(myrows,mycols))
+    end
+end
+function ghost_own_values(a::BlockPSparseMatrix)
+    rows = ghost_block_ranges(axes(a,1))
+    cols = own_block_ranges(axes(a,2))
+    v = map(ghost_own_values,blocks(a)) |> permute_nesting
+    map(v,rows,cols) do myv, myrows,mycols
+        mortar(myv,(myrows,mycols))
+    end
+end
+function ghost_ghost_values(a::BlockPSparseMatrix)
+    rows = ghost_block_ranges(axes(a,1))
+    cols = ghost_block_ranges(axes(a,2))
+    v = map(ghost_ghost_values,blocks(a)) |> permute_nesting
+    map(v,rows,cols) do myv, myrows,mycols
+        mortar(myv,(myrows,mycols))
+    end
+end
+
+function Base.fill!(a::BlockPSparseMatrix,v)
+    foreach(ai->fill!(ai,v),blocks(a))
+    a
+end
+
+function LinearAlgebra.fillstored!(a::BlockPSparseMatrix,v)
+    foreach(ai->LinearAlgebra.fillstored!(ai,v),blocks(a))
+    a
+end
+
+Base.maximum(x::BlockPSparseMatrix) = maximum(identity,x)
+function Base.maximum(f::Function,x::BlockPSparseMatrix)
+    maximum(xi->maximum(f,xi),blocks(x))
+end
+
+Base.minimum(x::BlockPSparseMatrix) = minimum(identity,x)
+function Base.minimum(f::Function,x::BlockPSparseMatrix)
+    minimum(xi->minimum(f,xi),blocks(x))
+end
+
+function Base.collect(v::BlockPSparseMatrix)
+    reduce(vcat,map(collect,blocks(v)))
+end
+
+function centralize(v::BlockPSparseMatrix)
+    reduce((ai...)->cat(ai...,dims=(1,2)),map(centralize,blocks(v)))
+end
+
+function Base.copy(a::BlockPSparseMatrix)
+    bs = map(copy,blocks(a))
+    BlockPSparseMatrix(bs)
+end
+
+function Base.copy!(a::BlockPSparseMatrix,b::BlockPSparseMatrix)
+    foreach(copy!,blocks(a),blocks(b))
+    a
+end
+
+function Base.copyto!(a::BlockPSparseMatrix,b::BlockPSparseMatrix)
+    foreach(copyto!,blocks(a),blocks(b))
+    a
+end
+
+function SparseArrays.nnz(a::BlockPSparseMatrix)
+    ns = map(nnz,blocks(a))
+    sum(ns)
+end
+
+# This function could be removed if IterativeSolvers was implemented in terms
+# of axes(A,d) instead of size(A,d)
+function IterativeSolvers.zerox(A::BlockPSparseMatrix,b::BlockPVector)
+    T = IterativeSolvers.Adivtype(A, b)
+    x = similar(b, T, axes(A, 2))
+    fill!(x, zero(T))
+    return x
+end
+
+function Base.:*(a::BlockPSparseMatrix,b::BlockPVector)
+    Ta = eltype(a)
+    Tb = eltype(b)
+    T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
+    c = similar(b,T,axes(a,1))
+    mul!(c,a,b)
+    c
+end
+
+function Base.:*(a::Number,b::BlockPSparseMatrix)
+    bs = map(bi->a*bi,blocks(b))
+    BlockPSparseMatrix(bs)
+end
+
+function Base.:*(b::BlockPSparseMatrix,a::Number)
+    a*b
+end
+
+for op in (:+,:-)
+    @eval begin
+        function Base.$op(a::BlockPSparseMatrix)
+            bs = map($op,blocks(a))
+            BlockPSparseMatrix(bs)
+        end
+        function Base.$op(a::BlockPSparseMatrix,b::BlockPSparseMatrix)
+            bs = map($op,blocks(a),blocks(b))
+            BlockPSparseMatrix(bs)
+        end
+    end
+end
+
+function LinearAlgebra.mul!(b::BlockPVector,A::BlockPSparseMatrix,x::BlockPVector)
+    mul!(b,A,x,1,0)
+end
+
+function LinearAlgebra.mul!(b::BlockPVector,A::BlockPSparseMatrix,x::BlockPVector,α::Number,β::Number)
+    if β != 1
+        β != 0 ? rmul!(b, β) : fill!(b,zero(eltype(b)))
+    end
+    bb = blocks(b)
+    Ab = blocks(A)
+    xb = blocks(x)
+    o = one(eltype(b))
+    for i in 1:blocksize(A,1)
+        for j in 1:blocksize(A,2)
+            mul!(bb[i],Ab[i,j],xb[j],α,o)
+        end
+    end
+    b
+end
+
 
