@@ -468,7 +468,7 @@ function lambda_generic(invD,A,DinvA)
     # Perform a few iterations of Power method to estimate lambda 
     # (Remark 3.5.2. in https://mediatum.ub.tum.de/download/1229321/1229321.pdf)
     x0 = rand(size(DinvA,2))
-    ρ = spectral_radius(DinvA, x0, maxiter=20)
+    ρ, x = spectral_radius(DinvA, x0, 20)
     ω/ρ 
 end
 
@@ -542,11 +542,11 @@ function smoothed_aggregation_with_block_size(;
     )
     function coarsen(A,B)
         # build strength graph
-        G = strength_graph(A, block_size=block_size, epsilon=epsilon) # TODO parallel
+        G = strength_graph(A, block_size, epsilon=epsilon) # TODO parallel
         diagG = dense_diag(G)
         node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
-        aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates) # TODO: provide parallel version
-        Pc,Bc,perm = tentative_prolongator(aggregate_to_nodes,B, block_size) # TODO parallel
+        aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates) 
+        Pc,Bc = tentative_prolongator(aggregate_to_nodes,B, block_size) 
         diagA = dense_diag(A)
         P = smoothed_prolongator(A,Pc,diagA;approximate_omega) # the given approximate omega should work in parallel 
         R = transpose(P)
@@ -715,7 +715,7 @@ end
 
 function amg_level_params_linear_elasticity(;
     pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
-    coarsening = smoothed_aggregation(approximate_omega = lambda_generic,
+    coarsening = smoothed_aggregation_with_block_size(approximate_omega = lambda_generic,
     tentative_prolongator = tentative_prolongator_with_block_size),
     cycle = v_cycle,
     pos_smoother = pre_smoother,

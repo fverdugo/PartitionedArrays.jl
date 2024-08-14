@@ -213,7 +213,7 @@ l_seq, x = PartitionedSolvers.spectral_radius(centralize(M), x0_seq, 10)
 @test l_dist ≈ l_seq 
 @test abs((l_dist-exp)/exp) < 2*10^-1
 
-#=
+
 # Test amg 
 # first with a sequential matrix
 nodes_per_dir = (100,100)
@@ -279,6 +279,37 @@ solve!(y,S,b)
 update!(S,2*A)
 solve!(y,S,b)
 
+# Now for linear elasticity (sequential)
+
+
+level_params = amg_level_params_linear_elasticity()
+fine_params = amg_fine_params(;level_params)
+solver = amg(;fine_params)
+
+parts_per_dir = (2,2,2)
+block_size = length(parts_per_dir) 
+p = prod(parts_per_dir)
+ranks = DebugArray(LinearIndices((p,)))
+nodes_per_dir = map(i->block_size*i,parts_per_dir)
+args = PartitionedArrays.linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+A_dist = psparse(args...) |> fetch 
+A =  centralize(A_dist)
+
+x = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir, ranks)
+B_dist = near_nullspace_linear_elasticity(x, partition(axes(A_dist,2)))
+B = [collect(b) for b in 1:length(B_dist)]
+x_exact = rand(size(A,2))
+b = A*x_exact   
+y = similar(x_exact)
+y .= 0
+
+Pl = setup(solver,y,A,b)
+cg!(y,A,b;Pl,verbose=true)
+println("Linear Elasticity norm of error: $(norm(y-x_exact))")
+@test y ≈ x_exact
+
+
+
 # Now in parallel
 
 parts_per_dir = (2,2)
@@ -338,5 +369,32 @@ x .= 0
 Pl = setup(amg(),x,A,b)
 _, history = cg!(x,A,b;Pl,log=true)
 display(history)
-=#
+
+# Now for linear elasticity 
+
+level_params = amg_level_params_linear_elasticity()
+fine_params = amg_fine_params(;level_params)
+solver = amg(;fine_params)
+
+parts_per_dir = (2,2,2)
+block_size = length(parts_per_dir) 
+p = prod(parts_per_dir)
+ranks = DebugArray(LinearIndices((p,)))
+nodes_per_dir = map(i->block_size*i,parts_per_dir)
+args = PartitionedArrays.linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+A = psparse(args...) |> fetch
+
+x = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir, ranks)
+B = near_nullspace_linear_elasticity(x, partition(axes(A,2)))
+x_exact = pones(partition(axes(A,2)))
+b = A*x_exact   # TODO: bounds error 
+x = similar(b,axes(A,2))
+x .= 0
+
+Pl = setup(solver,x,A,b)
+cg!(x,A,b;Pl,verbose=true)
+diff = collect(x) - collect(x_exact)
+display(diff)
+@test x ≈ x_exact
+
 end

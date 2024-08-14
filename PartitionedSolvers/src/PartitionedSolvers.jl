@@ -29,6 +29,7 @@ export smoothed_aggregation
 export v_cycle
 export w_cycle
 export amg_level_params
+export amg_level_params_linear_elasticity
 export amg_fine_params
 export amg_coarse_params
 export amg_statistics
