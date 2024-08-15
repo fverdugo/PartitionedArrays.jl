@@ -1534,7 +1534,7 @@ function psparse_assemble_impl(
                                 rows;
                                 reuse=Val(false),
                                 assembly_neighbors_options_cols=(;)) where T<:AbstractSplitMatrix
-                                
+
     function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
         A_ghost_own   = A.blocks.ghost_own
         A_ghost_ghost = A.blocks.ghost_ghost
@@ -1845,10 +1845,10 @@ function psparse_consistent_impl(
         end
         length_to_ptrs!(ptrs)
         ndata = ptrs[end]-1
-        T = eltype(A)
+        Tv = eltype(A)
         I_snd = JaggedArray(zeros(Int,ndata),ptrs)
         J_snd = JaggedArray(zeros(Int,ndata),ptrs)
-        V_snd = JaggedArray(zeros(T,ndata),ptrs)
+        V_snd = JaggedArray(zeros(Tv,ndata),ptrs)
         k_snd = JaggedArray(zeros(Int32,ndata),ptrs)
         for (k,(i,j,v)) in enumerate(nziterator(A.blocks.own_own))
             li = own_to_local_row[i]
@@ -1932,7 +1932,7 @@ function psparse_consistent_impl(
 
     function _psparse_consistent_impl(
                                 A,
-                                ::Type{<:AbstractSplitMatrix},
+                                ::T,
                                 rows_co;
                                 reuse=Val(false))
         @assert matching_own_indices(axes(A,1),PRange(rows_co))
