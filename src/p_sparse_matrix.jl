@@ -1668,10 +1668,10 @@ function psparse_assemble_impl(
     
     function _psparse_assemble_impl(
                                 A,
-                                ::T,
+                                ::Type{T},
                                 rows;
                                 reuse=Val(false),
-                                assembly_neighbors_options_cols=(;))
+                                assembly_neighbors_options_cols=(;)) where T<:AbstractSplitMatrix
     
     
         rows_sa = partition(axes(A,1))
@@ -1799,6 +1799,7 @@ function psparse_consistent_impl(
         ::Type{T},
         rows_co;
         reuse=Val(false)) where T<:AbstractSplitMatrix
+
     function consistent_setup_snd(A,parts_snd,lids_snd,rows_co,cols_fa)
         own_to_local_row::UnitRange{Int32} = own_to_local(rows_co)
         own_to_global_row = own_to_global(rows_co)
