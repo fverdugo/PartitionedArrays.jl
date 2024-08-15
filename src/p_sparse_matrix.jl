@@ -1668,7 +1668,7 @@ function psparse_assemble_impl(
     
     function _psparse_assemble_impl(
                                 A,
-                                ::Type{<:AbstractSplitMatrix},
+                                ::T,
                                 rows;
                                 reuse=Val(false),
                                 assembly_neighbors_options_cols=(;))
