@@ -1933,9 +1933,9 @@ function psparse_consistent_impl(
 
     function _psparse_consistent_impl(
                                 A,
-                                ::T,
+                                ::Type{T},
                                 rows_co;
-                                reuse=Val(false))
+                                reuse=Val(false)) where T<:AbstractSplitMatrix
         @assert matching_own_indices(axes(A,1),PRange(rows_co))
         rows_fa = partition(axes(A,1))
         cols_fa = partition(axes(A,2))
