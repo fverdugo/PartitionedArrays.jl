@@ -527,6 +527,7 @@ struct SplitVectorAssemblyCache{A,B,C,D}
     buffer_snd::C # NB
     buffer_rcv::C
     exchange_setup::D
+    reversed::Bool
 end
 function Base.reverse(a::SplitVectorAssemblyCache)
     SplitVectorAssemblyCache(
@@ -537,6 +538,7 @@ function Base.reverse(a::SplitVectorAssemblyCache)
                     a.buffer_rcv,
                     a.buffer_snd,
                     a.exchange_setup,
+                    !(a.reversed),
                    )
 end
 function copy_cache(a::SplitVectorAssemblyCache)
@@ -549,23 +551,29 @@ function copy_cache(a::SplitVectorAssemblyCache)
                     a.own_indices_rcv,
                     buffer_snd,
                     buffer_rcv,
-                    a.exchange_setup
+                    a.exchange_setup,
+                    a.reversed,
                    )
 end
 
 function p_vector_cache_impl(::Type{<:SplitVector},vector_partition,index_partition)
     neighbors_snd,neighbors_rcv= assembly_neighbors(index_partition)
     indices_snd,indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
-    map(indices_snd,indices_rcv,index_partition) do ids_snd,ids_rcv,myids
+    ghost_indices_snd = map(indices_snd) do ids
+        JaggedArray(copy(ids.data),ids.ptrs)
+    end
+    own_indices_rcv = map(indices_rcv) do ids
+        JaggedArray(copy(ids.data),ids.ptrs)
+    end
+    foreach(ghost_indices_snd,own_indices_rcv,index_partition) do ids_snd,ids_rcv,myids
         map_local_to_ghost!(ids_snd.data,myids)
         map_local_to_own!(ids_rcv.data,myids)
     end
-    ghost_indices_snd = indices_snd
-    own_indices_rcv = indices_rcv
-    buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,indices_snd,indices_rcv) |> tuple_of_arrays
+    buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,ghost_indices_snd,own_indices_rcv) |> tuple_of_arrays
     graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
     exchange_setup = setup_exchange(buffers_rcv,buffers_snd,graph)
-    SplitVectorAssemblyCache(neighbors_snd,neighbors_rcv,ghost_indices_snd,own_indices_rcv,buffers_snd,buffers_rcv,exchange_setup)
+    reversed = false
+    SplitVectorAssemblyCache(neighbors_snd,neighbors_rcv,ghost_indices_snd,own_indices_rcv,buffers_snd,buffers_rcv,exchange_setup,reversed)
 end
 
 function p_vector_cache_impl(::Type{<:SplitVector{<:JaggedArray}},vector_partition,index_partition)
@@ -610,6 +618,7 @@ function assemble_impl!(f,vector_partition,cache::JaggedArrayAssemblyCache)
 end
 
 function assemble_impl!(f,vector_partition,cache::SplitVectorAssemblyCache)
+    reversed = cache.reversed
     ghost_indices_snd=cache.ghost_indices_snd
     own_indices_rcv=cache.own_indices_rcv
     neighbors_snd=cache.neighbors_snd
@@ -618,7 +627,11 @@ function assemble_impl!(f,vector_partition,cache::SplitVectorAssemblyCache)
     buffer_rcv=cache.buffer_rcv
     exchange_setup=cache.exchange_setup
     foreach(vector_partition,ghost_indices_snd,buffer_snd) do values,ghost_indices_snd,buffer_snd
-        ghost_vals = values.blocks.ghost
+        if reversed
+            ghost_vals = values.blocks.own
+        else
+            ghost_vals = values.blocks.ghost
+        end
         for (p,hid) in enumerate(ghost_indices_snd.data)
             buffer_snd.data[p] = ghost_vals[hid]
         end
@@ -629,7 +642,11 @@ function assemble_impl!(f,vector_partition,cache::SplitVectorAssemblyCache)
     @fake_async begin
         wait(t)
         foreach(vector_partition,own_indices_rcv,buffer_rcv) do values,own_indices_rcv,buffer_rcv
-            own_vals = values.blocks.own
+            if reversed
+                own_vals = values.blocks.ghost
+            else
+                own_vals = values.blocks.own
+            end
             for (p,oid) in enumerate(own_indices_rcv.data)
                 own_vals[oid] = f(own_vals[oid],buffer_rcv.data[p])
             end

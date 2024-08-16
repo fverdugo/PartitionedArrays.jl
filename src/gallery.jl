@@ -420,7 +420,7 @@ function node_coordinates_unit_cube(
         parts_per_dir,
         parts,
         ;
-        split_format = Val(true),
+        split_format = Val(false),
         value_type::Type{Tv} = Float64,) where Tv
 
     function setup!(own_x,mynodes)
@@ -443,7 +443,12 @@ function node_coordinates_unit_cube(
     x
 end
 
-function near_nullspace_linear_elasticity(x,
+function near_nullspace_linear_elasticity(a...;b...)
+    @warn "near_nullspace_linear_elasticity is deprecated, use nullspace_linear_elasticity instead"
+    nullspace_linear_elasticity(a...;b...)
+end
+
+function nullspace_linear_elasticity(x,
         row_partition = node_to_dof_partition(partition(axes(x,1)),length(eltype(x)))
     )
     T = eltype(x)
@@ -461,10 +466,10 @@ function near_nullspace_linear_elasticity(x,
     dof_partition = row_partition
     split_format = Val(eltype(partition(x)) <: SplitVector)
     B = [ pzeros(Tv,dof_partition;split_format) for _ in 1:nb ]
-    near_nullspace_linear_elasticity!(B,x)
+    nullspace_linear_elasticity!(B,x)
 end
 
-function near_nullspace_linear_elasticity!(B,x)
+function nullspace_linear_elasticity!(B,x)
     D = length(eltype(x))
     if D == 1
         foreach(own_values(B[1])) do own_b
