@@ -1684,7 +1684,7 @@ function psparse_assemble_impl(A::PSparseMatrix{V,B,C,D,Tv} where {V,B,C,D},
         t_I = exchange(I_snd,graph)
         t_J = exchange(J_snd,graph)
         t_V = exchange(V_snd,graph)
-        @sync begin
+        @fake_async begin
             I_rcv = fetch(t_I)
             J_rcv = fetch(t_J)
             V_rcv = fetch(t_V)
@@ -1943,7 +1943,7 @@ function psparse_consistent_impl(A::PSparseMatrix{V,B,C,D,Tv} where {V,B,C,D},
         t_I = exchange(I_snd,graph)
         t_J = exchange(J_snd,graph)
         t_V = exchange(V_snd,graph)
-        @sync begin
+        @fake_async begin
             I_rcv = fetch(t_I)
             J_rcv = fetch(t_J)
             V_rcv = fetch(t_V)
