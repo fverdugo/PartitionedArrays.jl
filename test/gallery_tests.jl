@@ -56,6 +56,21 @@ function gallery_tests(distribute,parts_per_dir)
     y = A*B[1]
     @test isa(y,PVector)
 
+    x = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir,ranks,split_format=true)
+    B = nullspace_linear_elasticity(x)
+    @test isa(B[1],PVector)
+    y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+    B = nullspace_linear_elasticity(x,partition(axes(A,2)))
+    @test isa(B[1],PVector)
+    y = A*pones(axes(A,2))
+    @test isa(Y,PVector)
+    y = A*B[1]
+    @test isa(y,PVector)
+    nullspace_linear_elasticity!(B,x)
+    y = A*B[1]
+    @test isa(y,PVector)
+
 end
 
 
