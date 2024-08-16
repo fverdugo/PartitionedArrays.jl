@@ -52,6 +52,9 @@ function gallery_tests(distribute,parts_per_dir)
     @test isa(Y,PVector)
     y = A*B[1]
     @test isa(y,PVector)
+    nullspace_linear_elasticity!(B,x)
+    y = A*B[1]
+    @test isa(y,PVector)
 
 end
 
