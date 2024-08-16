@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2024-08-16
+
+### Fixed
+- Typo: `node_coorinates_unit_cube` -> `node_coordinates_unit_cube`.
+- Bug in `nullspace_linear_elasticity`.
+- Bug in `PVector` when working in split format.
+
+### Deprecated
+
+- `near_nullspace_linear_elasticity` in favor of `nullspace_linear_elasticity`.
+
 ## [0.5.2] - 2024-08-13
 
 ### Added
