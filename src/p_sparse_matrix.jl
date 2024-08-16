@@ -1528,12 +1528,11 @@ end
 # New assemble
 ####################
 
-function psparse_assemble_impl(
-                                A,
-                                ::Type{T},
-                                rows;
-                                reuse=Val(false),
-                                assembly_neighbors_options_cols=(;)) where T<:AbstractSplitMatrix
+function psparse_assemble_impl(A::PSparseMatrix{V,B,C,D,Tv} where {V,B,C,D},
+                               ::Type{T},
+                               rows;
+                               reuse=Val(false),
+                               assembly_neighbors_options_cols=(;)) where {T<:AbstractSplitMatrix, Tv}
 
     function setup_cache_snd(A,parts_snd,rows_sa,cols_sa)
         A_ghost_own   = A.blocks.ghost_own
@@ -1554,7 +1553,6 @@ function psparse_assemble_impl(
             ptrs[owner_to_p[owner]+1] += 1
         end
         length_to_ptrs!(ptrs)
-        Tv = eltype(A_ghost_own)
         ndata = ptrs[end]-1
         I_snd_data = zeros(Int,ndata)
         J_snd_data = zeros(Int,ndata)
@@ -1642,7 +1640,6 @@ function psparse_assemble_impl(
         n_ghost_rows = ghost_length(rows_fa)
         n_ghost_cols = ghost_length(cols_fa)
         Ti = indextype(A.blocks.own_own)
-        Tv = eltype(A.blocks.own_own)
         own_own = compresscoo(TA,own_own_triplet...,n_own_rows,n_own_cols)
         own_ghost = compresscoo(TA,own_ghost_triplet...,n_own_rows,n_ghost_cols)
         ghost_own = compresscoo(TA,Ti[],Ti[],Tv[],n_ghost_rows,n_own_cols)
@@ -1652,12 +1649,12 @@ function psparse_assemble_impl(
         nnz_own_own = nnz(own_own)
         k_own_sa = precompute_nzindex(own_own,own_own_triplet[1:2]...)
         k_ghost_sa = precompute_nzindex(own_ghost,own_ghost_triplet[1:2]...)
-        for p in 1:length(I_rcv_own)
+        for p in eachindex(I_rcv_own)
             i = I_rcv_own[p]
             j = J_rcv_own[p]
             k_rcv_own[p] = nzindex(own_own,i,j)
         end
-        for p in 1:length(I_rcv_ghost)
+        for p in eachindex(I_rcv_ghost)
             i = I_rcv_ghost[p]
             j = J_rcv_ghost[p]
             k_rcv_ghost[p] = nzindex(own_ghost,i,j) + nnz_own_own
@@ -1687,7 +1684,7 @@ function psparse_assemble_impl(
         t_I = exchange(I_snd,graph)
         t_J = exchange(J_snd,graph)
         t_V = exchange(V_snd,graph)
-        @fake_async begin
+        @sync begin
             I_rcv = fetch(t_I)
             J_rcv = fetch(t_J)
             V_rcv = fetch(t_V)
@@ -1794,14 +1791,13 @@ end
 
 # New consistent
 ####################
-function psparse_consistent_impl(
-        A,
-        ::Type{T},
-        rows_co;
-        reuse=Val(false)) where T<:AbstractSplitMatrix
+function psparse_consistent_impl(A::PSparseMatrix{V,B,C,D,Tv} where {V,B,C,D},
+                                 ::Type{T},
+                                 rows_co;
+                                 reuse=Val(false)) where {T<:AbstractSplitMatrix, Tv}
 
     function consistent_setup_snd(A,parts_snd,lids_snd,rows_co,cols_fa)
-        own_to_local_row::UnitRange{Int32} = own_to_local(rows_co)
+        own_to_local_row = own_to_local(rows_co)
         own_to_global_row = own_to_global(rows_co)
         own_to_global_col = own_to_global(cols_fa)
         ghost_to_global_col = ghost_to_global(cols_fa)
@@ -1829,7 +1825,6 @@ function psparse_consistent_impl(
         li_to_ps = JaggedArray(li_to_ps_data,li_to_ps_ptrs)
         ptrs = zeros(Int32,length(parts_snd)+1)
         for (i,j,v) in nziterator(A.blocks.own_own)
-            # @show(typeof(own_to_local_row))
             li = own_to_local_row[i]
             for li_ptr in jagged_range(li_to_ps,li)
                 p = li_to_ps.data[li_ptr]
@@ -1846,7 +1841,6 @@ function psparse_consistent_impl(
         end
         length_to_ptrs!(ptrs)
         ndata = ptrs[end]-1
-        Tv = eltype(A)
         I_snd = JaggedArray(zeros(Int,ndata),ptrs)
         J_snd = JaggedArray(zeros(Int,ndata),ptrs)
         V_snd = JaggedArray(zeros(Tv,ndata),ptrs)
@@ -1892,7 +1886,7 @@ function psparse_consistent_impl(
         J_rcv_data = cache_rcv.J_rcv.data
         V_rcv_data = cache_rcv.V_rcv.data
         global_to_own_col = global_to_own(cols_co)
-        global_to_ghost_col = global_to_ghost(cols_co)
+        # global_to_ghost_col = global_to_ghost(cols_co)
         is_own_condition = k -> global_to_own_col[k]!=0
         is_own = is_own_condition.(J_rcv_data)
         I_rcv_own = I_rcv_data[is_own]
@@ -1937,7 +1931,6 @@ function psparse_consistent_impl(
                                 rows_co;
                                 reuse=Val(false)) where T<:AbstractSplitMatrix
         @assert matching_own_indices(axes(A,1),PRange(rows_co))
-        rows_fa = partition(axes(A,1))
         cols_fa = partition(axes(A,2))
         # snd and rcv are swapped on purpose
         parts_rcv,parts_snd = assembly_neighbors(rows_co)
@@ -1950,7 +1943,7 @@ function psparse_consistent_impl(
         t_I = exchange(I_snd,graph)
         t_J = exchange(J_snd,graph)
         t_V = exchange(V_snd,graph)
-        @fake_async begin
+        @sync begin
             I_rcv = fetch(t_I)
             J_rcv = fetch(t_J)
             V_rcv = fetch(t_V)
@@ -1967,11 +1960,8 @@ function psparse_consistent_impl(
             end
         end
     end
-
     _psparse_consistent_impl(A,T,rows_co;reuse)
 end
-
-
 # End new consistent
 ####################
 
