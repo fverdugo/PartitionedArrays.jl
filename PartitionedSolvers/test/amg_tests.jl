@@ -5,7 +5,6 @@ using PartitionedSolvers
 using LinearAlgebra
 using IterativeSolvers
 using IterativeSolvers: cg!
-using Statistics
 using Test
 using SparseArrays
 
