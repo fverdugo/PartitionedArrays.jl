@@ -1,8 +1,5 @@
 module AMGTests
 
-# just for debugging
-using Pkg
-Pkg.activate("PartitionedSolvers")
 using PartitionedArrays
 using PartitionedSolvers
 using LinearAlgebra
