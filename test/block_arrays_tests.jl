@@ -17,17 +17,43 @@ function block_arrays_tests(distribute,split_format)
     rank = distribute(LinearIndices((np,)))
     row_partition = uniform_partition(rank,(2,2),(6,6))
 
+    r1 = PRange(row_partition)
+    r2 = r1
+
+    display(r1)
+    @show r1
+
+    r = BRange([r1,r2])
+
+    display(r)
+    @show r
+
+    partition(r) |> display
+
+    r = BRange([r1,r2])
+
+    display(r)
+    @show r
+
+    partition(r) |> display
+
+
+
     a1 = pones(row_partition;split_format)
     a2 = pzeros(row_partition;split_format)
-    a = mortar([a1,a2])
+    a = BVector([a1,a2])
     display(a)
+
+    b = BVector([[1,2,3],[4,5,6,7]])
+    display(b)
+    @test size(b) == (7,)
+    @test blocksize(b) == (2,)
+    @test blocklength(b) == 2
+
     collect(a)
     rows = axes(a,1)
-    display(rows)
+    @test isa(rows,BRange)
     partition(rows)
-    local_block_ranges(rows)
-    own_block_ranges(rows)
-    ghost_block_ranges(rows)
 
     @test a[Block(1)] == a1
     @test a[Block(2)] == a2
@@ -44,7 +70,6 @@ function block_arrays_tests(distribute,split_format)
     b = similar(a)
     b = similar(a,Int)
     b = similar(a,Int,axes(a,1))
-    b = similar(typeof(a),axes(a,1))
     copy!(b,a)
     b = copy(a)
     @test typeof(b) == typeof(a)
@@ -65,7 +90,7 @@ function block_arrays_tests(distribute,split_format)
     b = a/2
     c = a .+ a
     c = a .+ b .+ a
-    @test isa(c,BlockPVector)
+    @test isa(c,BVector)
     c = a - b
     c = a + b
 
@@ -80,13 +105,13 @@ function block_arrays_tests(distribute,split_format)
     u = a
     v = b
     w =  1 .+ v
-    @test isa(w,BlockPVector)
+    @test isa(w,BVector)
     w =  v .+ 1
-    @test isa(w,BlockPVector)
+    @test isa(w,BVector)
     w =  v .+ w .- u
-    @test isa(w,BlockPVector)
+    @test isa(w,BVector)
     w =  v .+ 1 .- u
-    @test isa(w,BlockPVector)
+    @test isa(w,BVector)
     w .= u
 
     nodes_per_dir = (4,4)
@@ -97,10 +122,16 @@ function block_arrays_tests(distribute,split_format)
     assemble!(x1) |> wait
     consistent!(x1) |> wait
 
-    A = mortar(fill(A11,(2,2)))
+    @test size(A11) == (16,16)
+    A = BMatrix(fill(A11,(2,2)))
     display(A)
     @show A
-    #display(centralize(A))
+
+    display(axes(A,1))
+
+    @test blocksize(A) == (2,2)
+    @test size(A) == (32,32)
+
     own_own_values(A)
     own_ghost_values(A)
     ghost_own_values(A)

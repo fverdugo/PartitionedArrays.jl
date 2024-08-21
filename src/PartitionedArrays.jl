@@ -174,11 +174,10 @@ export spmtm!
 export centralize
 include("p_sparse_matrix.jl")
 
-export BlockedPRange
-export local_block_ranges
-export own_block_ranges
-export ghost_block_ranges
-export BlockPVector
+export BRange
+export BArray
+export BVector
+export BMatrix
 include("block_arrays.jl")
 
 export PTimer

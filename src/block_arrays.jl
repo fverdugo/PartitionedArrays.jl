@@ -1,13 +1,8 @@
 
-function BlockArrays.mortar(blocks::Vector{<:PRange})
-    BlockedPRange(blocks)
-end
-
-struct BlockedPRange{A} <: AbstractUnitRange{Int}
+struct BRange{A} <: AbstractUnitRange{Int}
   blocks::A
   blocklasts::Vector{Int}
-  function BlockedPRange(blocks)
-      @assert all(block->isa(block,PRange),blocks)
+  function BRange(blocks)
       nblocks = length(blocks)
       blocklasts = zeros(Int,nblocks)
       prev = 0
@@ -19,113 +14,150 @@ struct BlockedPRange{A} <: AbstractUnitRange{Int}
       new{A}(blocks,blocklasts)
   end
 end
-BlockArrays.blocks(a::BlockedPRange) = a.blocks
-BlockArrays.blocklasts(a::BlockedPRange) = a.blocklasts
-BlockArrays.blockaxes(a::BlockedPRange) = (Block.(Base.OneTo(length(blocks(a)))),)
-Base.getindex(a::BlockedPRange,k::Block{1}) = blocks(a)[first(k.n)]
-function BlockArrays.findblock(b::BlockedPRange, k::Integer)
+BlockArrays.blocks(a::BRange) = a.blocks
+BlockArrays.blocklasts(a::BRange) = a.blocklasts
+BlockArrays.blockaxes(a::BRange) = (Block.(Base.OneTo(length(blocks(a)))),)
+Base.getindex(a::BRange,k::Block{1}) = blocks(a)[first(k.n)]
+function BlockArrays.findblock(b::BRange, k::Integer)
     @boundscheck k in b || throw(BoundsError(b,k))
     Block(searchsortedfirst(blocklasts(b), k))
 end
-Base.first(a::BlockedPRange) = 1
-Base.last(a::BlockedPRange) = sum(length,blocks(a))
+Base.first(a::BRange) = 1
+Base.last(a::BRange) = sum(length,blocks(a))
 
-function PartitionedArrays.partition(a::BlockedPRange)
-    local_block_ranges(a)
-end
-
-function local_block_ranges(a::BlockedPRange)
-    ids = map(partition,blocks(a)) |> array_of_tuples
-    map(ids) do myids
-        map(local_length,myids) |> collect |> blockedrange
+function Base.show(io::IO,k::MIME"text/plain",data::BRange)
+    function tostr(a)
+        "$a"
     end
-end
-
-function own_block_ranges(a::BlockedPRange)
-    ids = map(partition,blocks(a)) |> array_of_tuples
-    map(ids) do myids
-        map(own_length,myids) |> collect |> blockedrange
+    function tostr(a::PRange)
+        np = length(partition(a))
+        "PRange 1:$(length(a)) partitioned into $(np) parts"
     end
-end
-
-function ghost_block_ranges(a::BlockedPRange)
-    ids = map(partition,blocks(a)) |> array_of_tuples
-    map(ids) do myids
-        map(ghost_length,myids) |> collect |> blockedrange
-    end
-end
-
-# BlockPVector
-
-function BlockArrays.mortar(blocks::Vector{<:PVector})
-    BlockPVector(blocks)
-end
-
-struct BlockPVector{A,T} <: BlockArrays.AbstractBlockVector{T}
-    blocks::A
-    function BlockPVector(blocks)
-      T = eltype(first(blocks))
-      @assert all(block->isa(block,PVector),blocks)
-      @assert all(block->eltype(block)==T,blocks)
-      A = typeof(blocks)
-      new{A,T}(blocks)
-    end
-end
-BlockArrays.blocks(a::BlockPVector) = a.blocks
-BlockArrays.viewblock(a::BlockPVector, i::Block) = blocks(a)[i.n...]
-Base.axes(a::BlockPVector) = (BlockedPRange(map(block->axes(block,1),blocks(a))),)
-Base.size(a::BlockPVector) = (length(a),)
-Base.length(a::BlockPVector) = sum(length,blocks(a))
-Base.IndexStyle(::Type{<:BlockPVector}) = IndexLinear()
-function Base.getindex(a::BlockPVector,gid::Int)
-    scalar_indexing_action(a)
-end
-function Base.setindex(a::BlockPVector,v,gid::Int)
-    scalar_indexing_action(a)
-end
-function Base.show(io::IO,k::MIME"text/plain",data::BlockPVector)
-    T = eltype(data)
-    n = length(data)
-    ps = partition(axes(data,1))
-    np = length(ps)
     nb = blocklength(data)
-    map_main(ps) do _
-        println(io,"$nb-blocked $n-element BlockPVector with eltype $T partitioned into $np parts.")
-    end
-end
-function Base.show(io::IO,data::BlockPVector)
-    print(io,"BlockPVector(…)")
-end
-
-function partition(a::BlockPVector)
-    local_values(a)
-end
-
-function local_values(a::BlockPVector)
-    r = local_block_ranges(axes(a,1))
-    v = map(local_values,blocks(a)) |> array_of_tuples
-    map(v,r) do myv, myr
-        mortar(collect(myv),(myr,))
+    println(io,"BRange $(first(data)):$(last(data)) with $nb blocks:")
+    for ib in 1:nb
+        t = ib != nb ? "├──" : "└──"
+        println(io,"$(t) Block($ib) = $(tostr(blocks(data)[ib]))")
     end
 end
 
-function own_values(a::BlockPVector)
-    r = own_block_ranges(axes(a,1))
-    v = map(own_values,blocks(a)) |> array_of_tuples
-    map(v,r) do myv, myr
-        mortar(collect(myv),(myr,))
-    end
+function Base.show(io::IO,data::BRange)
+    print(io,"BRange(…)")
 end
 
-function ghost_values(a::BlockPVector)
-    r = ghost_block_ranges(axes(a,1))
-    v = map(ghost_values,blocks(a)) |> array_of_tuples
-    map(v,r) do myv, myr
-        mortar(collect(myv),(myr,))
-    end
+function partition(a::BRange)
+    ps = map(partition,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BVector,ps2)
 end
 
-function consistent!(a::BlockPVector)
+struct BArray{A,T,N} <: BlockArrays.AbstractBlockArray{T,N}
+    blocks::A
+    function BArray(blocks)
+      T = eltype(first(blocks))
+      N = ndims(first(blocks))
+      @assert all(block->eltype(block)==T,blocks)
+      @assert all(block->ndims(block)==N,blocks)
+      A = typeof(blocks)
+      new{A,T,N}(blocks)
+    end
+end
+const BVector{A,T} = BArray{A,T,1}
+const BMatrix{A,T} = BArray{A,T,2}
+function BVector(blocks)
+    N = ndims(first(blocks))
+    @assert N==1
+    BArray(blocks)
+end
+function BMatrix(blocks)
+    N = ndims(first(blocks))
+    @assert N==2
+    BArray(blocks)
+end
+BlockArrays.blocks(a::BArray) = a.blocks
+BlockArrays.viewblock(a::BArray, i::Block) = blocks(a)[i.n...]
+BlockArrays.blockaxes(a::BArray,d::Int) = Block.(Base.OneTo(size(blocks(a),d)))
+BlockArrays.blockaxes(a::BArray) = map(i->blockaxes(a,i),ntuple(j->Int(j),ndims(a)))
+function Base.axes(a::BArray,d::Int)
+    N = ndims(a)
+    I = ntuple(i-> (i == d) ? (:) : 1, Val(N))
+    BRange(map(block->axes(block,d),blocks(a)[I...]))
+end
+Base.axes(a::BArray) = map(i->axes(a,i),ntuple(j->Int(j),ndims(a)))
+Base.size(a::BArray) = map(length,axes(a))
+Base.length(a::BArray) = sum(length,blocks(a))
+Base.IndexStyle(::Type{<:BArray}) = IndexCartesian()
+function Base.getindex(a::BArray{A,T,N} where {A,T},gid::Vararg{Int,N}) where N
+    # This could be implemented as it makes sense when the blocks
+    # are sequential arrays
+    scalar_indexing_action(a)
+end
+function Base.setindex(a::BArray{A,T,N} where {A,T},v,gid::Vararg{Int,N}) where N
+    # This could be implemented as it makes sense when the blocks
+    # are sequential arrays
+    scalar_indexing_action(a)
+end
+function Base.show(io::IO,k::MIME"text/plain",data::BArray)
+    N = ndims(data)
+    if N == 1
+        at = "BVector"
+    elseif N==2
+        at = "BMatrix"
+    else
+        at = "BArray"
+    end
+    bs = blocksize(data) 
+    bst = map(i->"$(i)×",collect(bs))
+    bst[end] = string(bs[end])
+    s = size(data)
+    st = map(i->"$(i)×",collect(s))
+    st[end] = string(s[end])
+    println(io,"$(join(st))-element $at with $(join(bst)) blocks:")
+    for cb in CartesianIndices(bs)
+        ib = LinearIndices(bs)[cb]
+        nb = prod(bs)
+        t = ib != nb ? "├──" : "└──"
+        tcb =Tuple(cb)
+        b = map(i->"$i, ",collect(tcb))
+        b[end] = string(tcb[end])
+        println(io,"$(t) Block($(join(b))) = $(blocks(data)[cb])")
+    end
+end
+function Base.show(io::IO,data::BArray)
+    print(io,"BArray(…)")
+end
+function Base.show(io::IO,data::BVector)
+    print(io,"BVector(…)")
+end
+function Base.show(io::IO,data::BMatrix)
+    print(io,"BMatrix(…)")
+end
+
+function partition(a::BArray)
+    ps = map(partition,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BArray,ps2)
+end
+
+function local_values(a::BVector)
+    ps = map(local_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BVector,ps2)
+end
+
+function own_values(a::BVector)
+    ps = map(own_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BVector,ps2)
+end
+
+function ghost_values(a::BVector)
+    ps = map(ghost_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BVector,ps2)
+end
+
+function consistent!(a::BVector)
     ts = map(consistent!,blocks(a))
     @fake_async begin
         foreach(wait,ts)
@@ -133,7 +165,7 @@ function consistent!(a::BlockPVector)
     end
 end
 
-function assemble!(a::BlockPVector)
+function assemble!(a::BVector)
     ts = map(assemble!,blocks(a))
     @fake_async begin
         foreach(wait,ts)
@@ -141,117 +173,105 @@ function assemble!(a::BlockPVector)
     end
 end
 
-function Base.similar(a::BlockPVector,::Type{T},inds::Tuple{<:BlockedPRange}) where T
+function Base.similar(a::BVector,::Type{T},inds::Tuple{<:BRange}) where T
     r = first(inds)
     bs = map((ai,ri)->similar(ai,T,ri),blocks(a),blocks(r))
-    BlockPVector(bs)
+    BVector(bs)
 end
 
-function Base.similar(::Type{<:BlockPVector{A}},inds::Tuple{<:BlockedPRange}) where A
-    V = eltype(A)
-    r = first(inds)
-    bs = map(ri->similar(V,ri),blocks(r))
-    BlockPVector(bs)
+function Base.copy(a::BArray)
+    map(copy,blocks(a)) |> BArray
 end
 
-function BlockPVector(::UndefInitializer,r::BlockedPRange)
-    bs = map(ri->PVector(undef,ri),blocks(r))
-    BlockPVector(bs)
-end
-
-function BlockPVector{A}(::UndefInitializer,r::BlockedPRange) where A
-    similar(BlockPVector{A},(r,))
-end
-
-function Base.copy!(a::BlockPVector,b::BlockPVector)
+function Base.copy!(a::BArray,b::BArray)
     foreach(copy!,blocks(a),blocks(b))
     a
 end
 
-function Base.copyto!(a::BlockPVector,b::BlockPVector)
+function Base.copyto!(a::BArray,b::BArray)
     foreach(copyto!,blocks(a),blocks(b))
     a
 end
 
-function Base.fill!(a::BlockPVector,v)
+function Base.fill!(a::BArray,v)
     foreach(ai->fill!(ai,v),blocks(a))
     a
 end
 
-
-function Base.:(==)(a::BlockPVector,b::BlockPVector)
+function Base.:(==)(a::BArray,b::BArray)
     all(map(==,blocks(a),blocks(b)))
 end
 
-function Base.any(f::Function,x::BlockPVector)
+function Base.any(f::Function,x::BArray)
     any(xi->any(f,xi),blocks(x))
 end
 
-function Base.all(f::Function,x::BlockPVector)
+function Base.all(f::Function,x::BArray)
     all(xi->all(f,xi),blocks(x))
 end
 
-Base.maximum(x::BlockPVector) = maximum(identity,x)
-function Base.maximum(f::Function,x::BlockPVector)
+Base.maximum(x::BArray) = maximum(identity,x)
+function Base.maximum(f::Function,x::BArray)
     maximum(xi->maximum(f,xi),blocks(x))
 end
 
-Base.minimum(x::BlockPVector) = minimum(identity,x)
-function Base.minimum(f::Function,x::BlockPVector)
+Base.minimum(x::BArray) = minimum(identity,x)
+function Base.minimum(f::Function,x::BArray)
     minimum(xi->minimum(f,xi),blocks(x))
 end
 
-function Base.collect(v::BlockPVector)
+function Base.collect(v::BVector)
     reduce(vcat,map(collect,blocks(v)))
 end
 
-function Base.:*(a::Number,b::BlockPVector)
+function Base.:*(a::Number,b::BArray)
     bs = map(bi->a*bi,blocks(b))
-    BlockPVector(bs)
+    BArray(bs)
 end
 
-function Base.:*(b::BlockPVector,a::Number)
+function Base.:*(b::BArray,a::Number)
     a*b
 end
 
-function Base.:/(b::BlockPVector,a::Number)
+function Base.:/(b::BArray,a::Number)
     (1/a)*b
 end
 
 for op in (:+,:-)
     @eval begin
-        function Base.$op(a::BlockPVector)
-            bs = map(ai->$op(ai),blocks(a))
-            BlockPVector(bs)
+        function Base.$op(a::BArray)
+            bs = map($op,blocks(a))
+            BArray(bs)
         end
-        function Base.$op(a::BlockPVector,b::BlockPVector)
-            $op.(a,b)
+        function Base.$op(a::BArray,b::BArray)
+            bs = map($op,blocks(a),blocks(b))
+            BArray(bs)
         end
     end
 end
 
-function Base.reduce(op,a::BlockPVector;neutral=neutral_element(op,eltype(a)),kwargs...)
+function Base.reduce(op,a::BArray;neutral=neutral_element(op,eltype(a)),kwargs...)
     rs = map(ai->reduce(op,ai;neutral,kwargs...),blocks(a))
     reduce(op,rs;kwargs...)
 end
 
-function Base.sum(a::BlockPVector)
+function Base.sum(a::BArray)
   reduce(+,a,init=zero(eltype(a)))
 end
 
-function LinearAlgebra.dot(a::BlockPVector,b::BlockPVector)
+function LinearAlgebra.dot(a::BVector,b::BVector)
     c = map(dot,blocks(a),blocks(b))
     sum(c)
 end
 
-function LinearAlgebra.rmul!(a::BlockPVector,v::Number)
+function LinearAlgebra.rmul!(a::BArray,v::Number)
     map(blocks(a)) do l
         rmul!(l,v)
     end
     a
 end
 
-function LinearAlgebra.norm(a::BlockPVector,p::Real=2)
+function LinearAlgebra.norm(a::BVector,p::Real=2)
     contibs = map(blocks(a)) do oid_to_value
         norm(oid_to_value,p)^p
     end
@@ -260,14 +280,14 @@ end
 
 for M in Distances.metrics
     @eval begin
-        function (d::$M)(a::BlockPVector,b::BlockPVector)
+        function (d::$M)(a::BVector,b::BVector)
             s = distance_eval_body(d,a,b)
             Distances.eval_end(d,s)
         end
     end
 end
 
-function distance_eval_body(d,a::BlockPVector,b::BlockPVector)
+function distance_eval_body(d,a::BVector,b::BVector)
     partials = map(blocks(a),blocks(b)) do ai,bi
         distance_eval_body(d,ai,bi)
     end
@@ -277,25 +297,25 @@ function distance_eval_body(d,a::BlockPVector,b::BlockPVector)
     s
 end
 
-struct BroadcastedBlockPVector{A}
+struct BroadcastedBArray{A}
     blocks::A
 end
-BlockArrays.blocks(a::BroadcastedBlockPVector) = a.blocks
+BlockArrays.blocks(a::BroadcastedBArray) = a.blocks
 
-function Base.broadcasted(f, args::Union{BlockPVector,BroadcastedBlockPVector}...)
-    map( (bs...) -> Base.broadcasted(f,bs...) , map(blocks,args)...) |> BroadcastedBlockPVector
+function Base.broadcasted(f, args::Union{BArray,BroadcastedBArray}...)
+    map( (bs...) -> Base.broadcasted(f,bs...) , map(blocks,args)...) |> BroadcastedBArray
 end
 
-function Base.broadcasted( f, a::Number, b::Union{BlockPVector,BroadcastedBlockPVector})
-    map( bi -> Base.broadcasted(f,a,bi), blocks(b)) |> BroadcastedBlockPVector
+function Base.broadcasted( f, a::Number, b::Union{BArray,BroadcastedBArray})
+    map( bi -> Base.broadcasted(f,a,bi), blocks(b)) |> BroadcastedBArray
 end
 
-function Base.broadcasted( f, a::Union{BlockPVector,BroadcastedBlockPVector}, b::Number)
-    map( ai -> Base.broadcasted(f,ai,b), blocks(a)) |> BroadcastedBlockPVector
+function Base.broadcasted( f, a::Union{BArray,BroadcastedBArray}, b::Number)
+    map( ai -> Base.broadcasted(f,ai,b), blocks(a)) |> BroadcastedBArray
 end
 
 function Base.broadcasted(f,
-                          a::Union{BlockPVector,BroadcastedBlockPVector},
+                          a::Union{BArray,BroadcastedBArray},
                           b::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}})
     Base.broadcasted(f,a,Base.materialize(b))
 end
@@ -303,164 +323,65 @@ end
 function Base.broadcasted(
     f,
     a::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}},
-    b::Union{BlockPVector,BroadcastedBlockPVector})
+    b::Union{BArray,BroadcastedBArray})
     Base.broadcasted(f,Base.materialize(a),b)
  end
 
-function Base.materialize(b::BroadcastedBlockPVector)
-    map(Base.materialize,blocks(b)) |> BlockPVector
+function Base.materialize(b::BroadcastedBArray)
+    map(Base.materialize,blocks(b)) |> BArray
 end
 
-function Base.materialize!(a::BlockPVector,b::BroadcastedBlockPVector)
+function Base.materialize!(a::BArray,b::BroadcastedBArray)
     foreach(Base.materialize!,blocks(a),blocks(b))
     a
 end
 
-# BlockPSparseMatrix
-
-function BlockArrays.mortar(blocks::Matrix{<:PSparseMatrix})
-    BlockPSparseMatrix(blocks)
+function own_own_values(a::BMatrix)
+    ps = map(own_own_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BMatrix,ps2)
+end
+function own_ghost_values(a::BMatrix)
+    ps = map(own_ghost_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BMatrix,ps2)
+end
+function ghost_own_values(a::BMatrix)
+    ps = map(ghost_own_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BMatrix,ps2)
+end
+function ghost_ghost_values(a::BMatrix)
+    ps = map(ghost_ghost_values,blocks(a))
+    ps2 = permute_nesting(ps)
+    map(BMatrix,ps2)
 end
 
-struct BlockPSparseMatrix{A,T} <: BlockArrays.AbstractBlockMatrix{T}
-    blocks::A
-    function BlockPSparseMatrix(blocks)
-      T = eltype(first(blocks))
-      @assert all(block->isa(block,PSparseMatrix),blocks)
-      @assert all(block->eltype(block)==T,blocks)
-      A = typeof(blocks)
-      new{A,T}(blocks)
-    end
-end
-BlockArrays.blocks(a::BlockPSparseMatrix) = a.blocks
-BlockArrays.viewblock(a::BlockPSparseMatrix, i::Block) = blocks(a)[i.n...]
-function Base.axes(a::BlockPSparseMatrix)
-    rows = BlockedPRange(map(block->axes(block,1),blocks(a)[:,1]))
-    cols = BlockedPRange(map(block->axes(block,2),blocks(a)[1,:]))
-    (rows,cols)
-end
-Base.size(a::BlockPSparseMatrix) = map(length,axes(a))
-function Base.getindex(a::BlockPSparseMatrix,gi::Int,gj::Int)
-    scalar_indexing_action(a)
-end
-function Base.setindex!(a::BlockPSparseMatrix,v,gi::Int,gj::Int)
-    scalar_indexing_action(a)
-end
-function Base.show(io::IO,k::MIME"text/plain",data::BlockPSparseMatrix)
-    T = eltype(data)
-    m,n = size(data)
-    ps = partition(axes(data,1))
-    np = length(ps)
-    mb,nb = blocksize(data)
-    map_main(ps) do _
-        println(io,"($(mb)×$(nb))-blocked ($(m)×$(n))-element BlockPSparseMatrix with eltype $T partitioned into $np parts.")
-    end
-end
-function Base.show(io::IO,data::BlockPSparseMatrix)
-    print(io,"BlockPSparseMatrix(…)")
-end
-function partition(a::BlockPSparseMatrix)
-    local_values(a)
-end
-function local_values(a::BlockPSparseMatrix)
-    rows = local_block_ranges(axes(a,1))
-    cols = local_block_ranges(axes(a,2))
-    v = map(local_values,blocks(a)) |> permute_nesting
-    map(v,rows,cols) do myv, myrows,mycols
-        mortar(myv,(myrows,mycols))
-    end
-end
-function own_own_values(a::BlockPSparseMatrix)
-    rows = own_block_ranges(axes(a,1))
-    cols = own_block_ranges(axes(a,2))
-    v = map(own_own_values,blocks(a)) |> permute_nesting
-    map(v,rows,cols) do myv, myrows,mycols
-        mortar(myv,(myrows,mycols))
-    end
-end
-function own_ghost_values(a::BlockPSparseMatrix)
-    rows = own_block_ranges(axes(a,1))
-    cols = ghost_block_ranges(axes(a,2))
-    v = map(own_ghost_values,blocks(a)) |> permute_nesting
-    map(v,rows,cols) do myv, myrows,mycols
-        mortar(myv,(myrows,mycols))
-    end
-end
-function ghost_own_values(a::BlockPSparseMatrix)
-    rows = ghost_block_ranges(axes(a,1))
-    cols = own_block_ranges(axes(a,2))
-    v = map(ghost_own_values,blocks(a)) |> permute_nesting
-    map(v,rows,cols) do myv, myrows,mycols
-        mortar(myv,(myrows,mycols))
-    end
-end
-function ghost_ghost_values(a::BlockPSparseMatrix)
-    rows = ghost_block_ranges(axes(a,1))
-    cols = ghost_block_ranges(axes(a,2))
-    v = map(ghost_ghost_values,blocks(a)) |> permute_nesting
-    map(v,rows,cols) do myv, myrows,mycols
-        mortar(myv,(myrows,mycols))
-    end
-end
-
-function Base.fill!(a::BlockPSparseMatrix,v)
-    foreach(ai->fill!(ai,v),blocks(a))
-    a
-end
-
-function LinearAlgebra.fillstored!(a::BlockPSparseMatrix,v)
+function LinearAlgebra.fillstored!(a::BMatrix,v)
     foreach(ai->LinearAlgebra.fillstored!(ai,v),blocks(a))
     a
 end
 
-Base.maximum(x::BlockPSparseMatrix) = maximum(identity,x)
-function Base.maximum(f::Function,x::BlockPSparseMatrix)
-    maximum(xi->maximum(f,xi),blocks(x))
-end
+#function centralize(v::BMatrix)
+#    # TODO not correct
+#    reduce((ai...)->cat(ai...,dims=(1,2)),map(centralize,blocks(v)))
+#end
 
-Base.minimum(x::BlockPSparseMatrix) = minimum(identity,x)
-function Base.minimum(f::Function,x::BlockPSparseMatrix)
-    minimum(xi->minimum(f,xi),blocks(x))
-end
-
-function Base.collect(v::BlockPSparseMatrix)
-    reduce(vcat,map(collect,blocks(v)))
-end
-
-function centralize(v::BlockPSparseMatrix)
-    reduce((ai...)->cat(ai...,dims=(1,2)),map(centralize,blocks(v)))
-end
-
-function Base.copy(a::BlockPSparseMatrix)
-    bs = map(copy,blocks(a))
-    BlockPSparseMatrix(bs)
-end
-
-function Base.copy!(a::BlockPSparseMatrix,b::BlockPSparseMatrix)
-    foreach(copy!,blocks(a),blocks(b))
-    a
-end
-
-function Base.copyto!(a::BlockPSparseMatrix,b::BlockPSparseMatrix)
-    foreach(copyto!,blocks(a),blocks(b))
-    a
-end
-
-function SparseArrays.nnz(a::BlockPSparseMatrix)
+function SparseArrays.nnz(a::BMatrix)
     ns = map(nnz,blocks(a))
     sum(ns)
 end
 
 # This function could be removed if IterativeSolvers was implemented in terms
 # of axes(A,d) instead of size(A,d)
-function IterativeSolvers.zerox(A::BlockPSparseMatrix,b::BlockPVector)
+function IterativeSolvers.zerox(A::BMatrix,b::BVector)
     T = IterativeSolvers.Adivtype(A, b)
     x = similar(b, T, axes(A, 2))
     fill!(x, zero(T))
     return x
 end
 
-function Base.:*(a::BlockPSparseMatrix,b::BlockPVector)
+function Base.:*(a::BMatrix,b::BVector)
     Ta = eltype(a)
     Tb = eltype(b)
     T = typeof(zero(Ta)*zero(Tb)+zero(Ta)*zero(Tb))
@@ -469,33 +390,11 @@ function Base.:*(a::BlockPSparseMatrix,b::BlockPVector)
     c
 end
 
-function Base.:*(a::Number,b::BlockPSparseMatrix)
-    bs = map(bi->a*bi,blocks(b))
-    BlockPSparseMatrix(bs)
-end
-
-function Base.:*(b::BlockPSparseMatrix,a::Number)
-    a*b
-end
-
-for op in (:+,:-)
-    @eval begin
-        function Base.$op(a::BlockPSparseMatrix)
-            bs = map($op,blocks(a))
-            BlockPSparseMatrix(bs)
-        end
-        function Base.$op(a::BlockPSparseMatrix,b::BlockPSparseMatrix)
-            bs = map($op,blocks(a),blocks(b))
-            BlockPSparseMatrix(bs)
-        end
-    end
-end
-
-function LinearAlgebra.mul!(b::BlockPVector,A::BlockPSparseMatrix,x::BlockPVector)
+function LinearAlgebra.mul!(b::BVector,A::BMatrix,x::BVector)
     mul!(b,A,x,1,0)
 end
 
-function LinearAlgebra.mul!(b::BlockPVector,A::BlockPSparseMatrix,x::BlockPVector,α::Number,β::Number)
+function LinearAlgebra.mul!(b::BVector,A::BMatrix,x::BVector,α::Number,β::Number)
     if β != 1
         β != 0 ? rmul!(b, β) : fill!(b,zero(eltype(b)))
     end
@@ -510,5 +409,4 @@ function LinearAlgebra.mul!(b::BlockPVector,A::BlockPSparseMatrix,x::BlockPVecto
     end
     b
 end
-
 

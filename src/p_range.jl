@@ -1808,8 +1808,12 @@ Base.last(a::PRange) = getany(map(global_length,partition(a)))
 function Base.show(io::IO,k::MIME"text/plain",data::PRange)
     np = length(partition(data))
     map_main(partition(data)) do indices
-        println(io,"1:$(global_length(indices)) partitioned into $(np) parts")
+        println(io,"PRange 1:$(global_length(indices)) partitioned into $(np) parts")
     end
+end
+
+function Base.show(io::IO,data::PRange)
+    print(io,"PRange(…)")
 end
 
 function matching_local_indices(a::PRange,b::PRange)
