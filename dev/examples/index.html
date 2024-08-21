@@ -20,18 +20,18 @@ a_snd = map(ranks) do rank
         [ Int[] ]
     end
 end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Vector{Int64}}}:
- [[11, 6, 24], [24, 15, 2], [12, 22, 6], [19, 25, 8]]
+ [[23, 14, 22], [18, 27, 24], [5, 14, 15], [28, 8, 22]]
  [[]]
  [[]]
  [[]]</code></pre><p>Note that only the first entry contains meaningful data in previous output.</p><pre><code class="language-julia hljs">a_rcv = scatter(a_snd,source=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Vector{Int64}}:
- [11, 6, 24]
- [24, 15, 2]
- [12, 22, 6]
- [19, 25, 8]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
+ [23, 14, 22]
+ [18, 27, 24]
+ [5, 14, 15]
+ [28, 8, 22]</code></pre><p>After the scatter, all the parts have received their chunk. Now, we can count in parallel.</p><pre><code class="language-julia hljs">b_snd = map(ai-&gt;count(isodd,ai),a_rcv)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
  1
  1
- 0
- 2</code></pre><p>Finally we reduce the partial sums.</p><pre><code class="language-julia hljs">b_rcv = reduction(+,b_snd,init=0,destination=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
+ 2
+ 0</code></pre><p>Finally we reduce the partial sums.</p><pre><code class="language-julia hljs">b_rcv = reduction(+,b_snd,init=0,destination=1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Int64}:
  4
  0
  0
@@ -167,4 +167,4 @@ history</code></pre><pre class="documenter-example-output"><code class="nohighli
 x .= 0
 Pl = setup(amg(),x,A,b)
 _, history = IterativeSolvers.cg!(x,A,b;Pl,log=true)
-history</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Converged after 10 iterations.</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../jacobi_tutorial/">Jacobi method »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.5.0 on <span class="colophon-date" title="Friday 16 August 2024 10:31">Friday 16 August 2024</span>. Using Julia version 1.10.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+history</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Converged after 10 iterations.</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../jacobi_tutorial/">Jacobi method »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.6.0 on <span class="colophon-date" title="Wednesday 21 August 2024 15:34">Wednesday 21 August 2024</span>. Using Julia version 1.10.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
