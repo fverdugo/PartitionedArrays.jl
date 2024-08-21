@@ -257,6 +257,7 @@ end
 function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, block_size)
     own_values_B = map(own_values, B)
     n_B = length(B)
+    global_aggregate_to_owner = global_to_owner(aggregate_to_nodes.index_partition)
     P0_partition, Bc_partition, coarse_dof_to_Bc... = map(aggregate_to_nodes.index_partition, B[1].index_partition, local_values(aggregate_to_nodes), own_values_B...) do local_aggregate_local_indices, local_dof_local_indices, local_aggregate_to_local_nodes, own_dof_to_b...
         P0_own_own, local_coarse_dof_to_Bc = tentative_prolongator_with_block_size(local_aggregate_to_local_nodes, own_dof_to_b, block_size)
         # Create P0 partition
@@ -285,7 +286,16 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, bl
             inds = (i - 1) * n_B + 1 : i * n_B 
             perm_cols[inds] = cols 
         end
-        perm_rows = PartitionedArrays.local_permutation(local_dof_local_indices) 
+        perm_rows_with_ghost = PartitionedArrays.local_permutation(local_dof_local_indices) 
+        # Filter only own rows 
+        perm_rows = zeros(Int, own_length(local_dof_local_indices))
+        ptr = 1
+        for ind in perm_rows_with_ghost
+            if ind in own_to_local(local_dof_local_indices)
+                perm_rows[ptr] = ind
+                ptr += 1
+            end
+        end
         P0_partition = PartitionedArrays.split_matrix(blocks, perm_rows, perm_cols)
         # Partition of Bc
         own_to_global_coarse_dofs = zeros(Int, n_own_coarse_dofs)
@@ -294,9 +304,14 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::PVector,B, bl
             global_coarse_dofs = (agg-1) * n_B + 1 : agg * n_B 
             own_to_global_coarse_dofs[inds] = global_coarse_dofs
         end
-        own_coarse_dofs = OwnIndices(n_global_coarse_dofs, part_id(local_dof_local_indices), own_to_global_coarse_dofs)
+        global_coarse_dofs_to_owner = zeros(Int, n_global_coarse_dofs)
+        for global_agg in 1:n_global_aggregates
+            inds = (global_agg-1) * n_B + 1 : global_agg * n_B
+            global_coarse_dofs_to_owner[inds] .= global_aggregate_to_owner[global_agg] 
+        end
+        own_coarse_dofs = OwnIndices(n_global_coarse_dofs, part_id(local_aggregate_local_indices), own_to_global_coarse_dofs) #todo 
         ghost_coarse_dofs = GhostIndices(n_global_coarse_dofs, Int[], Int32[])
-        Bc_partition = OwnAndGhostIndices(own_coarse_dofs, ghost_coarse_dofs)
+        Bc_partition = OwnAndGhostIndices(own_coarse_dofs, ghost_coarse_dofs, global_coarse_dofs_to_owner)
         P0_partition, Bc_partition, local_coarse_dof_to_Bc...
     end |> tuple_of_arrays
     P0 = PSparseMatrix(P0_partition, B[1].index_partition, Bc_partition, true) 
@@ -306,8 +321,6 @@ end
 
 
 function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B, block_size)
-    # A draft for the scalar case is commented below
-    ## TODO assumes CSC
     # Algorithm 7 in https://mediatum.ub.tum.de/download/1229321/1229321.pdf 
 
     if length(B) < 1
@@ -316,7 +329,7 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B
 
     n_aggregates = length(aggregate_to_nodes.ptrs)-1
     n_B = length(B)
-    n_dofs = length(B[1])
+    n_dofs = length(aggregate_to_nodes.data)*block_size
     n_dofs_c = n_aggregates * n_B
     Bc = [Vector{Float64}(undef,n_dofs_c) for _ in 1:n_B]
 
@@ -364,7 +377,7 @@ function tentative_prolongator_with_block_size(aggregate_to_nodes::JaggedArray,B
             pini = P0.colptr[col]
             pend = P0.colptr[col+1]-1
             rowids = P0.rowval[pini:pend]
-            P0.nzval[pini:pend] = B[b][rowids]
+            P0.nzval[pini:pend] = B[b][rowids] # fails
         end
     end
 
@@ -452,7 +465,7 @@ function smoothed_prolongator(A,P0,diagA=dense_diag(A);approximate_omega)
     invDiagA = 1 ./ diagA
     Dinv = PartitionedArrays.sparse_diag_matrix(invDiagA,(axes(A,1),axes(A,1)))
     omega = approximate_omega(invDiagA,A,Dinv*A)
-    P = (I-omega*Dinv*A)*P0
+    P = (I-omega*Dinv*A) * P0 #TODO: this gives an error
     P
 end
 
@@ -463,11 +476,20 @@ function omega_for_1d_laplace(invD,A, DinvA)
     2/3
 end
 
-function lambda_generic(invD,A,DinvA)
+function lambda_generic(invD,A,DinvA::AbstractMatrix)
     ω = 4/3
     # Perform a few iterations of Power method to estimate lambda 
     # (Remark 3.5.2. in https://mediatum.ub.tum.de/download/1229321/1229321.pdf)
     x0 = rand(size(DinvA,2))
+    ρ, x = spectral_radius(DinvA, x0, 20)
+    ω/ρ 
+end
+
+function lambda_generic(invD,A,DinvA::PSparseMatrix)
+    ω = 4/3
+    # Perform a few iterations of Power method to estimate lambda 
+    # (Remark 3.5.2. in https://mediatum.ub.tum.de/download/1229321/1229321.pdf)
+    x0 = prand(partition(axes(DinvA,2)))
     ρ, x = spectral_radius(DinvA, x0, 20)
     ω/ρ 
 end
@@ -542,13 +564,13 @@ function smoothed_aggregation_with_block_size(;
     )
     function coarsen(A,B)
         # build strength graph
-        G = strength_graph(A, block_size, epsilon=epsilon) # TODO parallel
+        G = strength_graph(A, block_size, epsilon=epsilon) 
         diagG = dense_diag(G)
         node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
         aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates) 
         Pc,Bc = tentative_prolongator(aggregate_to_nodes,B, block_size) 
         diagA = dense_diag(A)
-        P = smoothed_prolongator(A,Pc,diagA;approximate_omega) # the given approximate omega should work in parallel 
+        P = smoothed_prolongator(A, Pc, diagA; approximate_omega)
         R = transpose(P)
         Ac,cache = rap(R,A,P;reuse=true)
         Ac,Bc,R,P,cache,repartition_threshold = enhance_coarse_partition(A,Ac,Bc,R,P,cache,repartition_threshold)#maybe changes here
@@ -713,10 +735,10 @@ function dofs_to_node(dofs, block_size)
     div(dofs[end], block_size)
 end
 
-function amg_level_params_linear_elasticity(;
+function amg_level_params_linear_elasticity(block_size;
     pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
     coarsening = smoothed_aggregation_with_block_size(approximate_omega = lambda_generic,
-    tentative_prolongator = tentative_prolongator_with_block_size),
+    tentative_prolongator = tentative_prolongator_with_block_size, block_size = block_size),
     cycle = v_cycle,
     pos_smoother = pre_smoother,
     )
