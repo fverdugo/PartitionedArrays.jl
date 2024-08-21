@@ -1,7 +1,7 @@
 name = "PartitionedArrays"
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
-version = "0.5.2"
+version = "0.5.3"
 
 [deps]
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
