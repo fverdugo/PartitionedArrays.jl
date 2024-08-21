@@ -9,6 +9,7 @@ using StaticArrays
 import MPI
 import IterativeSolvers
 import Distances
+using BlockArrays
 
 export length_to_ptrs!
 export rewind_ptrs!
@@ -28,6 +29,7 @@ include("sparse_utils.jl")
 export linear_indices
 export cartesian_indices
 export tuple_of_arrays
+export array_of_tuples
 export i_am_main
 export MAIN
 export map_main
@@ -95,6 +97,7 @@ export own_to_local
 export ghost_to_local
 export local_to_own
 export local_to_ghost
+export local_permutation
 export global_to_owner
 export replace_ghost
 export remove_ghost
@@ -170,6 +173,12 @@ export spmtm
 export spmtm!
 export centralize
 include("p_sparse_matrix.jl")
+
+export BRange
+export BArray
+export BVector
+export BMatrix
+include("block_arrays.jl")
 
 export PTimer
 export tic!
