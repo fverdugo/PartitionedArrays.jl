@@ -5,6 +5,7 @@ using Random
 using Distances
 using BlockArrays
 using SparseArrays
+using IterativeSolvers
 
 function block_arrays_tests(distribute)
     block_arrays_tests(distribute,false)
@@ -143,19 +144,26 @@ function block_arrays_tests(distribute,split_format)
     ax = axes(A,2)
     axb = blocks(ax)
     x = similar(a,axes(A,2))
+    @test isa(x,BVector)
     fill!(x,1)
     assemble!(x) |> wait
     consistent!(x) |> wait
     b = similar(x,axes(A,1))
     mul!(b,A,x)
     b = A*x
-    mul!(b,A,x)
+    @test isa(b,BVector)
     B = 2*A
     B = A*2
     B = +A
     B = -A
     C = B+A
     D = B-A
+
+    y = copy(x)
+    fill!(y,0)
+    IterativeSolvers.cg!(y,A,b,verbose=i_am_main(rank))
+    y = IterativeSolvers.cg(A,b,verbose=i_am_main(rank))
+    @test isa(y,BVector)
 
 end
 
