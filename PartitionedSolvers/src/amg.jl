@@ -465,7 +465,7 @@ function smoothed_prolongator(A,P0,diagA=dense_diag(A);approximate_omega)
     invDiagA = 1 ./ diagA
     Dinv = PartitionedArrays.sparse_diag_matrix(invDiagA,(axes(A,1),axes(A,1)))
     omega = approximate_omega(invDiagA,A,Dinv*A)
-    P = (I-omega*Dinv*A) * P0 #TODO: this gives an error
+    P = (I-omega*Dinv*A) * P0 
     P
 end
 
@@ -556,7 +556,7 @@ function smoothed_aggregation(;
 end
 
 function smoothed_aggregation_with_block_size(;
-    epsilon = 0,
+    epsilon = 0.01,
     approximate_omega = lambda_generic,
     tentative_prolongator = tentative_prolongator_with_block_size,
     repartition_threshold = 2000,
@@ -564,7 +564,7 @@ function smoothed_aggregation_with_block_size(;
     )
     function coarsen(A,B)
         # build strength graph
-        G = strength_graph(A, block_size, epsilon=epsilon) 
+        G = strength_graph(A, block_size; epsilon) 
         diagG = dense_diag(G)
         node_to_aggregate, node_aggregates = aggregate(G,diagG;epsilon)
         aggregate_to_nodes = collect_nodes_in_aggregate(node_to_aggregate, node_aggregates) 
@@ -591,7 +591,7 @@ function getblock!(B,A,ids_i,ids_j)
     end
 end
 
-function strength_graph(A::PSparseMatrix, block_size::Integer; epsilon = 0)
+function strength_graph(A::PSparseMatrix, block_size::Integer; epsilon)
     dof_partition = partition(axes(A,1))
     node_partition = map(dof_partition) do my_dofs
         n_local_dofs = length(my_dofs)
@@ -633,7 +633,7 @@ function strength_graph(A::PSparseMatrix, block_size::Integer; epsilon = 0)
     G
 end
 
-function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon = 0)
+function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon)
 
     if block_size < 1 
         error("Block size must be equal to or larger than 1.")
@@ -651,8 +651,8 @@ function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon = 
         return A
     end
 
-    if epsilon < 0
-        error("Expected a positive epsilon.")
+    if epsilon <= 0
+        error("Expected epsilon > 0.")
     end
 
     n_dofs = A.m 
@@ -737,7 +737,7 @@ end
 
 function amg_level_params_linear_elasticity(block_size;
     pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
-    coarsening = smoothed_aggregation_with_block_size(approximate_omega = lambda_generic,
+    coarsening = smoothed_aggregation_with_block_size(;approximate_omega = lambda_generic,
     tentative_prolongator = tentative_prolongator_with_block_size, block_size = block_size),
     cycle = v_cycle,
     pos_smoother = pre_smoother,
