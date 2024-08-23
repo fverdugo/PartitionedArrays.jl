@@ -556,7 +556,7 @@ function smoothed_aggregation(;
 end
 
 function smoothed_aggregation_with_block_size(;
-    epsilon = 0.01,
+    epsilon = 0,
     approximate_omega = lambda_generic,
     tentative_prolongator = tentative_prolongator_with_block_size,
     repartition_threshold = 2000,
@@ -651,8 +651,8 @@ function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon)
         return A
     end
 
-    if epsilon <= 0
-        error("Expected epsilon > 0.")
+    if epsilon < 0
+        error("Expected epsilon >= 0.")
     end
 
     n_dofs = A.m 
@@ -681,8 +681,12 @@ function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon)
                 i_dofs = node_to_dofs(i_node, block_size) 
                 j_dofs = node_to_dofs(j_node, block_size) 
                 getblock!(B,A,i_dofs,j_dofs)
+                norm_B = norm(B)
+                if norm_B == 0 
+                    continue
+                end
                 # Calculate strength according to https://github.com/pyamg/pyamg/blob/e1fe54c93be1029c02ddcf84c2338a607b088703/pyamg/strength.py#L275 
-                if norm(B) >= epsilon * sqrt(diag_norms[i_node] * diag_norms[j_node])
+                if norm_B >= epsilon * sqrt(diag_norms[i_node] * diag_norms[j_node])
                     nnz += 1
                 end
             end 
@@ -710,8 +714,12 @@ function strength_graph(A::AbstractSparseMatrix, block_size::Integer; epsilon)
                 i_dofs = node_to_dofs(i_node, block_size)
                 j_dofs = node_to_dofs(j_node, block_size) 
                 getblock!(B,A,i_dofs,j_dofs)
+                norm_B = norm(B)
+                if norm_B == 0 
+                    continue
+                end
                 # Calculate strength according to https://github.com/pyamg/pyamg/blob/e1fe54c93be1029c02ddcf84c2338a607b088703/pyamg/strength.py#L275 
-                if norm(B) >= epsilon * sqrt(diag_norms[i_node] * diag_norms[j_node])
+                if norm_B >= epsilon * sqrt(diag_norms[i_node] * diag_norms[j_node])
                     I[i_nz] = i_node 
                     J[i_nz] = j_node
                     V[i_nz] = 1.0
