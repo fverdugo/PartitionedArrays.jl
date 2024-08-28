@@ -118,7 +118,6 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 	A = psparse(T, I, J, V, row_partition, col_partition) |> fetch
 	row_partition = partition(axes(A, 2))
 	b = pvector(I_b, b, row_partition) |> fetch
-
 	return A, b
 end
 

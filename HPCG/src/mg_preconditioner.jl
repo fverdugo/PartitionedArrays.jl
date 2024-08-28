@@ -17,7 +17,7 @@ include("sparse_matrix.jl")
 	- `l`: number of levels in the preconditioner
 
 """
-mutable struct Mg_preconditioner{A, B, C, D, E, F, G}
+struct Mg_preconditioner{A, B, C, D, E, F, G}
 	f2c::Vector{A}
 	A_vec::Vector{B}
 	gs_states::Vector{C}
@@ -103,6 +103,18 @@ function restrict_operator(nx, ny, nz)
 	return f2c
 end
 
+function generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
+	gnx = npx * nx
+	gny = npy * ny
+	gnz = npz * nz
+	A, r = build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
+	x = similar(r)
+	Axf = similar(r)
+	Axf .= 0
+	x .= 0
+	gs_state = setup(solver, x, A, r)
+	return A, r, x, Axf, gs_state
+end
 
 """
 	pc_setup(np, ranks, l, nx, ny, nz) -> Mg_preconditioner, Geometry
@@ -125,8 +137,8 @@ end
 	- `Geometry`: struct containing geometry data
 """
 function pc_setup(np, ranks, l, nx, ny, nz)
-	A_vec = Vector{PSparseMatrix}(undef, l)
-	f2c = Vector{Vector{Int32}}(undef, l - 1)
+
+	f2c_vec = Vector{Vector{Int32}}(undef, l - 1)
 	r = Vector{PVector}(undef, l)
 	x = Vector{PVector}(undef, l)
 	Axf = Vector{PVector}(undef, l)
@@ -135,12 +147,28 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
 	solver = additive_schwarz_correction(gauss_seidel(; iters = 1))
+
+	A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
+	A_vec = Vector{typeof(A)}(undef, l)
+	r_vec = Vector{typeof(r)}(undef, l)
+	x_vec = Vector{typeof(r)}(undef, l)
+	Axf_vec = Vector{typeof(r)}(undef, l)
+	gs_states = Vector{typeof(gs_state)}(undef, l)
+
+	A_vec[l] = A
+	r_vec[l] = r
+	x_vec[l] = x
+	Axf_vec[l] = Axf
+	gs_states[l] = gs_state
+	nrows_vec[l] = size(A, 1)
+	nnz_vec[l] = PartitionedArrays.nnz(A)
+
 	tnx = nx
 	tny = ny
 	tnz = nz
 
-	for i ∈ reverse(1:l)
-		gnx = npx * nx
+	for i ∈ reverse(1:l-1)
+		f2c_vec[i] = restrict_operator(nx, ny, nz)
 		gny = npy * ny
 		gnz = npz * nz
 		A_vec[i], r[i] = build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
@@ -159,8 +187,17 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 		nx = div(nx, 2)
 		ny = div(ny, 2)
 		nz = div(nz, 2)
+		A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
+		A_vec[i] = A
+		r_vec[i] = r
+		x_vec[i] = x
+		Axf_vec[i] = Axf
+		gs_states[i] = gs_state
+		nrows_vec[i] = size(A, 1)
+		nnz_vec[i] = PartitionedArrays.nnz(A)
+
 	end
-	Mg_preconditioner(f2c, A_vec, gs_states, r, x, Axf, l), Geometry(tnx, tny, tnz, npx, npy, npz, nnz_vec, nrows_vec)
+	Mg_preconditioner(f2c_vec, A_vec, gs_states, r_vec, x_vec, Axf_vec, l), Geometry(tnx, tny, tnz, npx, npy, npz, nnz_vec, nrows_vec)
 end
 
 """
@@ -290,7 +327,7 @@ end
 
 	- `x`: approximated solution.
 """
-function pc_solve!(x, s, b, l)
+function pc_solve!(x, s::Mg_preconditioner, b, l)
 	x .= 0
 	if l == 1
 		solve!(x, s.gs_states[l], b, zero_guess = true) # bottom solve

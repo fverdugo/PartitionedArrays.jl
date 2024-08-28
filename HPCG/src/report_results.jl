@@ -16,7 +16,7 @@
 	- file output.
 
 """
-function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom; output_type = "txt")
+function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom; output_type = "txt", output_folder)
 	fniters = nr_cg_sets * opt_max_iters
 	fnrow = geom.nrows[levels]
 	fnnz = geom.nnz[levels]
@@ -98,9 +98,9 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 	end
 
 	# Write results to file. 
-	isdir("results") || mkdir("results")
+	isdir(output_folder) || mkdir(output_folder)
 	if output_type == "json"
-		filename_json = "results/hpcg-benchmark_results" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * ".json"
+		filename_json = output_folder * "/hpcg-benchmark_results" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * ".json"
 		json_dict = OrderedDict()
 		json_dict["procs"] = np
 		json_dict["main_times"] = time_dict(main_times)
