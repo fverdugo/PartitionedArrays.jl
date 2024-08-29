@@ -442,6 +442,15 @@ function precompute_nzindex(A,I,J)
     K
 end
 
+function precompute_nzindex!(K::AbstractVector{Int32}, A, I, J)
+    for (p, (i, j)) in enumerate(zip(I, J))
+        if i < 1 || j < 1
+            continue
+        end
+        K[p] = nzindex(A, i, j)
+    end
+end
+
 function sparse_matrix!(A,V,K;reset=true)
     if reset
         LinearAlgebra.fillstored!(A,0)
