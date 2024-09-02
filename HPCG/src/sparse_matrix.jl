@@ -112,10 +112,10 @@ function build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
 	end
 	I, J, V, b, I_b = tuple_of_arrays(IJVb)
 
-	col_partition = row_partition
 	T = SparseMatrixCSC{Float64, Int32}
-
-	A = psparse(T, I, J, V, row_partition, col_partition) |> fetch
+	J_owner = find_owner(row_partition, J)
+	col_partition = map(union_ghost, row_partition, J, J_owner)
+	A = psparse(T, I, J, V, row_partition, col_partition, assembled = true) |> fetch
 	row_partition = partition(axes(A, 2))
 	b = pvector(I_b, b, row_partition) |> fetch
 	return A, b

@@ -32,12 +32,24 @@ function richardson(solver; iters, omega = 1)
 	function solve!(x, state, b, options)
 		(r, dx, P, A_ref) = state
 		A = A_ref[]
-		for iter in 1:iters
-			dx .= x
-			mul!(r, A, dx)
-			r .-= b
-			ldiv!(dx, P, r)
-			x .-= omega .* dx
+
+		if options.zero_guess
+			for iter in 1:iters
+				dx .= x
+				#mul!(r, A, dx) # skip if zero
+				r .= 0
+				r .-= b
+				ldiv!(dx, P, r)
+				x .-= omega .* dx # if zero no minus
+			end
+		else
+			for iter in 1:iters
+				dx .= x
+				mul!(r, A, dx) # skip if zero
+				r .-= b
+				ldiv!(dx, P, r)
+				x .-= omega .* dx # if zero no minus
+			end
 		end
 		(; iters)
 	end

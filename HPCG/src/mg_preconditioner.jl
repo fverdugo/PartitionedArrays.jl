@@ -137,7 +137,6 @@ end
 	- `Geometry`: struct containing geometry data
 """
 function pc_setup(np, ranks, l, nx, ny, nz)
-
 	f2c_vec = Vector{Vector{Int32}}(undef, l - 1)
 	r = Vector{PVector}(undef, l)
 	x = Vector{PVector}(undef, l)
@@ -146,8 +145,9 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
-	solver = additive_schwarz_correction(gauss_seidel(; iters = 1))
+	solver = additive_schwarz(gauss_seidel(; iters = 1))
 
+	# create top problem 
 	A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
 	A_vec = Vector{typeof(A)}(undef, l)
 	r_vec = Vector{typeof(r)}(undef, l)
@@ -167,23 +167,9 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	tny = ny
 	tnz = nz
 
+	# create lower levels
 	for i ∈ reverse(1:l-1)
 		f2c_vec[i] = restrict_operator(nx, ny, nz)
-		gny = npy * ny
-		gnz = npz * nz
-		A_vec[i], r[i] = build_p_matrix(ranks, nx, ny, nz, gnx, gny, gnz, npx, npy, npz)
-
-		x[i] = similar(r[i])
-		Axf[i] = similar(r[i])
-		Axf[i] .= 0
-		x[i] .= 0
-		gs_states[i] = setup(solver, x[i], A_vec[i], r[i])
-
-		if i != 1
-			f2c[i-1] = restrict_operator(nx, ny, nz)
-		end
-		nrows_vec[i] = size(A_vec[i], 1)
-		nnz_vec[i] = PartitionedArrays.nnz(A_vec[i])
 		nx = div(nx, 2)
 		ny = div(ny, 2)
 		nz = div(nz, 2)
@@ -332,7 +318,7 @@ function pc_solve!(x, s::Mg_preconditioner, b, l)
 	if l == 1
 		solve!(x, s.gs_states[l], b, zero_guess = true) # bottom solve
 	else
-		solve!(x, s.gs_states[l], b, zero_guess = true) # presmoother - TODO first halo exchange can be skipped / first gsweep can be kept to below the diagonal
+		solve!(x, s.gs_states[l], b, zero_guess = true) # presmoother 
 		mul!(s.Axf[l], s.A_vec[l], x)
 		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
 		pc_solve!(s.x[l-1], s, s.r[l-1], l - 1)

@@ -16,7 +16,7 @@
 	- file output.
 
 """
-function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom; output_type = "txt", output_folder)
+function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_sets, norm_data, geom; output_type = "txt", output_folder = "results")
 	fniters = nr_cg_sets * opt_max_iters
 	fnrow = geom.nrows[levels]
 	fnnz = geom.nnz[levels]
@@ -150,7 +150,7 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 			JSON.print(file, json_dict)
 		end
 	elseif output_type == "txt"
-		filename = "results/hpcg-benchmark_results" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * ".txt"
+		filename = output_folder * "/hpcg-benchmark_results" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * ".txt"
 		open(filename, "w") do file
 			println(file, "########## Problem Summary  ##########")
 			println(file, "Number of Procs: ", np)
