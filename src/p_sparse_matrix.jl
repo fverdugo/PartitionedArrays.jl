@@ -1331,7 +1331,7 @@ function psparse_from_split_blocks(oo,oh,rowp,colp;assembled=true)
     psparse_from_split_blocks(oo,oh,ho,hh,rowp,colp;assembled)
 end
 
-function matrix_assembly!(f, I, J, V, rows, cols)
+function psparse_yung_sheng!(f, I, J, V, rows, cols)
     function dutch_national_flag_partition!(part, key, values::Vararg{Any,N}) where {N}
         global_to_own_part = global_to_own(part)
         left_ptr = firstindex(key)
@@ -1516,7 +1516,7 @@ function matrix_assembly!(f, I, J, V, rows, cols)
     end
 end
 
-function matrix_assembly!(A, V, cache)
+function psparse_yung_sheng!(A, V, cache)
     function perm_partition!(V, perm::Vector{Tuple{T,T}}) where {T}
         for (i, j) in perm
             V[i], V[j] = V[j], V[i]

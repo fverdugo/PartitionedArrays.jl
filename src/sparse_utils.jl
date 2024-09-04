@@ -442,7 +442,7 @@ function precompute_nzindex(A,I,J)
     K
 end
 
-function precompute_nzindex!(K::AbstractVector{Int32}, A, I, J)
+function precompute_nzindex!(K, A, I, J)
     for (p, (i, j)) in enumerate(zip(I, J))
         if i < 1 || j < 1
             continue
