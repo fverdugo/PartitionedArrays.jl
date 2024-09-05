@@ -1,9 +1,10 @@
 name = "PartitionedArrays"
 uuid = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
-version = "0.5.0"
+version = "0.5.4"
 
 [deps]
+BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
 CircularArrays = "7a955b69-7140-5f4e-a0ed-f168c5e2e749"
 Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
 FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
@@ -14,14 +15,17 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
+BlockArrays = "0.16, 1"
 CircularArrays = "1"
 Distances = "0.10"
 FillArrays = "0.10, 0.11, 0.12, 0.13, 1"
 IterativeSolvers = "0.9"
 MPI = "0.16, 0.17, 0.18, 0.19, 0.20"
 SparseMatricesCSR = "0.6"
+StaticArrays = "1"
 julia = "1.1"
 
 [extras]

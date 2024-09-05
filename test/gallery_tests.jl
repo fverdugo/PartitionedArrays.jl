@@ -32,8 +32,45 @@ function gallery_tests(distribute,parts_per_dir)
     @test isa(y,PVector)
     A = psparse(SparseMatrixCSR{1,Float64,Int32},args...) |> fetch
     A |> centralize |> display
-    Y = A*pones(axes(A,2))
+    y = A*pones(axes(A,2))
     @test isa(y,PVector)
+
+    args = linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks)
+    A = psparse(args...) |> fetch
+    A |> centralize |> display
+    y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+
+    x = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir,ranks)
+    B = nullspace_linear_elasticity(x)
+    @test isa(B[1],PVector)
+    y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+    B = nullspace_linear_elasticity(x,partition(axes(A,2)))
+    @test isa(B[1],PVector)
+    y = A*pones(axes(A,2))
+    @test isa(Y,PVector)
+    y = A*B[1]
+    @test isa(y,PVector)
+    nullspace_linear_elasticity!(B,x)
+    y = A*B[1]
+    @test isa(y,PVector)
+
+    x = node_coordinates_unit_cube(nodes_per_dir,parts_per_dir,ranks,split_format=true)
+    B = nullspace_linear_elasticity(x)
+    @test isa(B[1],PVector)
+    y = A*pones(axes(A,2))
+    @test isa(y,PVector)
+    B = nullspace_linear_elasticity(x,partition(axes(A,2)))
+    @test isa(B[1],PVector)
+    y = A*pones(axes(A,2))
+    @test isa(Y,PVector)
+    y = A*B[1]
+    @test isa(y,PVector)
+    nullspace_linear_elasticity!(B,x)
+    y = A*B[1]
+    @test isa(y,PVector)
+
 end
 
 

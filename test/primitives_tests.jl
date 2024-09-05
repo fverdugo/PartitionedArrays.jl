@@ -15,6 +15,10 @@ function primitives_tests(distribute)
    end
 
    a, b = tuple_of_arrays(a_and_b)
+   a_and_b_2 = array_of_tuples((a,b))
+   map(a_and_b,a_and_b) do v1,v2
+       @test v1 == v2
+   end
 
    map(a,b,rank) do a,b,rank
        @test a == 2*rank

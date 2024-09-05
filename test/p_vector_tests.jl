@@ -13,8 +13,12 @@ function p_vector_tests(distribute)
     a1 = PVector(undef,row_partition)
     @test isa(axes(a1,1),PRange)
     a2 = pvector(inds->zeros(Int,length(inds)),row_partition)
-    a3 = PVector{OwnAndGhostVectors{Vector{Int}}}(undef,row_partition)
-    for a in [a1,a2,a3]
+    a3 = PVector{OwnAndGhostVectors{Vector{Int}}}(undef,row_partition) # TODO deprecated
+    a4 = split_format(a2)
+    a5 = similar(a4)
+    display(a5)
+    split_format!(a5,a2)
+    for a in [a1,a2,a3,a4,a5]
         b = similar(a)
         b = similar(a,Int)
         b = similar(a,Int,axes(a,1))
@@ -25,17 +29,36 @@ function p_vector_tests(distribute)
         rows = axes(a,1)
         @test length(a) == length(rows)
         @test partition(axes(b,1)) === partition(rows)
+        assemble!(a) |> wait
+        consistent!(a) |> wait
     end
 
     a = pfill(4,row_partition)
+    a = pfill(4,row_partition;split_format=true)
     a = pzeros(row_partition)
+    a = pzeros(row_partition;split_format=true)
     a = pones(row_partition)
+    a = pones(row_partition;split_format=true)
     a = prand(row_partition)
+    a = prand(row_partition;split_format=true)
     a = prandn(row_partition)
     assemble!(a) |> wait
     consistent!(a) |> wait
+    a = prandn(row_partition;split_format=true)
+    assemble!(a) |> wait
+    consistent!(a) |> wait
+
+    aa = prand(1:10,row_partition)
+    ab = split_format(aa)
+    @test aa == ab
+    ab = similar(ab)
+    split_format!(ab,aa)
+    @test aa == ab
 
     @test a == copy(a)
+
+    ac = pvector_from_split_blocks(own_values(aa),ghost_values(aa),row_partition)
+    @test aa == ac
 
     n = 10
     I,V = map(rank) do rank

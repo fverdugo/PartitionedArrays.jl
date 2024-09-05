@@ -25,14 +25,13 @@ function ghost_values(values,indices)
     view(values,ghost_to_local(indices))
 end
 
+# OwnAndGhostVectors is deprecated in favor of SplitVector (for consistency with SplitMatrix)
+
 """
     struct OwnAndGhostVectors{A,C,T}
 
 Vector type that stores the local values of a [`PVector`](@ref) instance
 using a vector of own values, a vector of ghost values, and a permutation.
-This is not the default data layout of [`PVector`](@ref) (which is a plain vector),
-but corresponds to the layout of distributed vectors in other packages, such as PETSc.
-Use this type to avoid duplicating memory when passing data to these other packages.
 
 # Properties
 
@@ -116,6 +115,184 @@ function allocate_local_values(::Type{<:OwnAndGhostVectors{A}},indices) where {A
     ghost_values = similar(A,n_ghost)
     perm = local_permutation(indices)
     OwnAndGhostVectors{A}(own_values,ghost_values,perm)
+end
+
+struct SplitVectorBlocks{A}
+    own::A
+    ghost::A
+end
+function split_vector_blocks(own,ghost)
+    T = typeof(own)
+    SplitVectorBlocks(own,convert(T,ghost))
+end
+function split_vector_blocks(own::A,ghost::A) where A
+    SplitVectorBlocks(own,ghost)
+end
+
+struct SplitVector{A,B,T} <: AbstractVector{T}
+    blocks::SplitVectorBlocks{A}
+    permutation::B
+    function SplitVector(
+        blocks::SplitVectorBlocks{A},permutation) where A
+        T = eltype(blocks.own)
+        B = typeof(permutation)
+        new{A,B,T}(blocks,permutation)
+    end
+end
+
+function split_vector(blocks::SplitVectorBlocks,permutation)
+    SplitVector(blocks,permutation)
+end
+
+function split_vector(
+    own::AbstractVector,
+    ghost::AbstractVector,
+    permutation)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,permutation)
+end
+
+Base.IndexStyle(::Type{<:SplitVector}) = IndexLinear()
+Base.size(a::SplitVector) = (length(a.blocks.own)+length(a.blocks.ghost),)
+function Base.getindex(a::SplitVector,local_id::Int)
+    T = eltype(a)
+    n_own = length(a.blocks.own)
+    j = a.permutation[local_id]
+    v = if j > n_own
+        a.blocks.ghost[j-n_own]
+    else
+        a.blocks.own[j]
+    end
+    convert(T,v)
+end
+function Base.setindex!(a::SplitVector,v,local_id::Int)
+    n_own = length(a.blocks.own)
+    j = a.permutation[local_id]
+    if j > n_own
+        a.blocks.ghost[j-n_own] = v
+    else
+        a.blocks.own[j] = v
+    end
+    v
+end
+
+function own_values(values::SplitVector,indices)
+    values.blocks.own
+end
+
+function ghost_values(values::SplitVector,indices)
+    values.blocks.ghost
+end
+
+function allocate_local_values(values::SplitVector,::Type{T},indices) where T
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
+    own_values = similar(values.blocks.own,T,n_own)
+    ghost_values = similar(values.blocks.ghost,T,n_ghost)
+    perm = local_permutation(indices)
+    blocks = split_vector_blocks(own_values,ghost_values)
+    split_vector(blocks,perm)
+end
+
+function allocate_local_values(::Type{<:SplitVector{A}},indices) where {A}
+    n_own = own_length(indices)
+    n_ghost = ghost_length(indices)
+    own_values = similar(A,n_own)
+    ghost_values = similar(A,n_ghost)
+    blocks = split_vector_blocks(own_values,ghost_values)
+    perm = local_permutation(indices)
+    split_vector(blocks,perm)
+end
+
+Base.similar(a::SplitVector) = similar(a,eltype(a))
+function Base.similar(a::SplitVector,::Type{T}) where T
+    own = similar(a.blocks.own,T)
+    ghost = similar(a.blocks.ghost,T)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,a.permutation)
+end
+
+function Base.copy(a::SplitVector)
+    own = copy(a.blocks.own)
+    ghost = copy(a.blocks.ghost)
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,a.permutation)
+end
+
+function Base.copy!(a::SplitVector,b::SplitVector)
+    copy!(a.blocks.own,b.blocks.own)
+    copy!(a.blocks.ghost,b.blocks.ghost)
+    a
+end
+function Base.copyto!(a::SplitVector,b::SplitVector)
+    copyto!(a.blocks.own,b.blocks.own)
+    copyto!(a.blocks.ghost,b.blocks.ghost)
+    a
+end
+
+function Base.fill!(a::SplitVector,v)
+    LinearAlgebra.fill!(a.blocks.own,v)
+    LinearAlgebra.fill!(a.blocks.ghost,v)
+    a
+end
+
+function Base.:*(a::Number,b::SplitVector)
+    own = a*b.blocks.own
+    ghost = a*b.blocks.ghost
+    blocks = split_vector_blocks(own,ghost)
+    split_vector(blocks,b.permutation)
+end
+
+function Base.:*(b::SplitVector,a::Number)
+    a*b
+end
+
+for op in (:+,:-)
+    @eval begin
+        function Base.$op(a::SplitVector)
+            own = $op(a.blocks.own)
+            ghost = $op(a.blocks.ghost)
+            blocks = split_vector_blocks(own,ghost)
+            split_vector(blocks,a.permutation)
+        end
+        function Base.$op(a::SplitVector,b::SplitVector)
+            @boundscheck @assert a.permutation == b.permutation
+            own = $op(a.blocks.own,b.blocks.own)
+            ghost = $op(a.blocks.ghost,b.blocks.ghost)
+            blocks = split_vector_blocks(own,ghost)
+            split_vector(blocks,b.permutation)
+        end
+    end
+end
+
+function split_format_locally(a::SplitVector,rows)
+    a
+end
+
+function split_format_locally(a::AbstractVector,rows)
+    n_own = own_length(rows)
+    n_ghost = ghost_length(rows)
+    perm = local_permutation(rows)
+    own = similar(a,n_own)
+    ghost = similar(a,n_ghost)
+    blocks = split_vector_blocks(own,ghost)
+    b = split_vector(blocks,perm)
+    split_format_locally!(b,a,rows)
+    b
+end
+
+function split_format_locally!(b::SplitVector,a::AbstractVector,rows)
+    b.blocks.own .= view(a,own_to_local(rows))
+    b.blocks.ghost .= view(a,ghost_to_local(rows))
+    b
+end
+
+function split_format_locally!(b::SplitVector,a::SplitVector,rows)
+    if b !== a
+        b.blocks.own .= a.blocks.own
+        b.blocks.ghost .= a.blocks.ghost
+    end
+    b
 end
 
 """
@@ -340,6 +517,69 @@ function p_vector_cache_impl(::Type{<:JaggedArray},vector_partition,index_partit
     JaggedArrayAssemblyCache(cache)
 end
 
+# NB these fields could be removed if the ghost
+# are sorted according to their owner
+struct SplitVectorAssemblyCache{A,B,C,D}
+    neighbors_snd::A
+    neighbors_rcv::A
+    ghost_indices_snd::B # NB
+    own_indices_rcv::B
+    buffer_snd::C # NB
+    buffer_rcv::C
+    exchange_setup::D
+    reversed::Bool
+end
+function Base.reverse(a::SplitVectorAssemblyCache)
+    SplitVectorAssemblyCache(
+                    a.neighbors_rcv,
+                    a.neighbors_snd,
+                    a.own_indices_rcv,
+                    a.ghost_indices_snd,
+                    a.buffer_rcv,
+                    a.buffer_snd,
+                    a.exchange_setup,
+                    !(a.reversed),
+                   )
+end
+function copy_cache(a::SplitVectorAssemblyCache)
+    buffer_snd = deepcopy(a.buffer_snd) # TODO ugly
+    buffer_rcv = deepcopy(a.buffer_rcv) # TODO ugly
+    VectorAssemblyCache(
+                    a.neighbors_snd,
+                    a.neighbors_rcv,
+                    a.ghost_indices_snd,
+                    a.own_indices_rcv,
+                    buffer_snd,
+                    buffer_rcv,
+                    a.exchange_setup,
+                    a.reversed,
+                   )
+end
+
+function p_vector_cache_impl(::Type{<:SplitVector},vector_partition,index_partition)
+    neighbors_snd,neighbors_rcv= assembly_neighbors(index_partition)
+    indices_snd,indices_rcv = assembly_local_indices(index_partition,neighbors_snd,neighbors_rcv)
+    ghost_indices_snd = map(indices_snd) do ids
+        JaggedArray(copy(ids.data),ids.ptrs)
+    end
+    own_indices_rcv = map(indices_rcv) do ids
+        JaggedArray(copy(ids.data),ids.ptrs)
+    end
+    foreach(ghost_indices_snd,own_indices_rcv,index_partition) do ids_snd,ids_rcv,myids
+        map_local_to_ghost!(ids_snd.data,myids)
+        map_local_to_own!(ids_rcv.data,myids)
+    end
+    buffers_snd,buffers_rcv = map(assembly_buffers,vector_partition,ghost_indices_snd,own_indices_rcv) |> tuple_of_arrays
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    exchange_setup = setup_exchange(buffers_rcv,buffers_snd,graph)
+    reversed = false
+    SplitVectorAssemblyCache(neighbors_snd,neighbors_rcv,ghost_indices_snd,own_indices_rcv,buffers_snd,buffers_rcv,exchange_setup,reversed)
+end
+
+function p_vector_cache_impl(::Type{<:SplitVector{<:JaggedArray}},vector_partition,index_partition)
+    error("Case not implemented yet")
+end
+
 function assemble!(f,vector_partition,cache)
     assemble_impl!(f,vector_partition,cache)
 end
@@ -375,6 +615,44 @@ function assemble_impl!(f,vector_partition,cache::JaggedArrayAssemblyCache)
     vcache = cache.cache
     data = map(getdata,vector_partition)
     assemble!(f,data,vcache)
+end
+
+function assemble_impl!(f,vector_partition,cache::SplitVectorAssemblyCache)
+    reversed = cache.reversed
+    ghost_indices_snd=cache.ghost_indices_snd
+    own_indices_rcv=cache.own_indices_rcv
+    neighbors_snd=cache.neighbors_snd
+    neighbors_rcv=cache.neighbors_rcv
+    buffer_snd=cache.buffer_snd
+    buffer_rcv=cache.buffer_rcv
+    exchange_setup=cache.exchange_setup
+    foreach(vector_partition,ghost_indices_snd,buffer_snd) do values,ghost_indices_snd,buffer_snd
+        if reversed
+            ghost_vals = values.blocks.own
+        else
+            ghost_vals = values.blocks.ghost
+        end
+        for (p,hid) in enumerate(ghost_indices_snd.data)
+            buffer_snd.data[p] = ghost_vals[hid]
+        end
+    end
+    graph = ExchangeGraph(neighbors_snd,neighbors_rcv)
+    t = exchange!(buffer_rcv,buffer_snd,graph,exchange_setup)
+    # Fill values from rcv buffer fake_asynchronously
+    @fake_async begin
+        wait(t)
+        foreach(vector_partition,own_indices_rcv,buffer_rcv) do values,own_indices_rcv,buffer_rcv
+            if reversed
+                own_vals = values.blocks.ghost
+            else
+                own_vals = values.blocks.own
+            end
+            for (p,oid) in enumerate(own_indices_rcv.data)
+                own_vals[oid] = f(own_vals[oid],buffer_rcv.data[p])
+            end
+        end
+        nothing
+    end
 end
 
 """
@@ -497,6 +775,10 @@ function PVector(::UndefInitializer,index_partition)
     PVector{Vector{Float64}}(undef,index_partition)
 end
 
+function PVector(::UndefInitializer,r::PRange)
+    PVector(undef,partition(r))
+end
+
 """
     PVector{V}(undef,index_partition)
     PVector(undef,index_partition)
@@ -509,6 +791,10 @@ function PVector{V}(::UndefInitializer,index_partition) where V
         allocate_local_values(V,indices)
     end
     PVector(vector_partition,index_partition)
+end
+
+function PVector{V}(::UndefInitializer,r::PRange) where V
+    PVector{V}(undef,partition(r))
 end
 
 function Base.copy!(a::PVector,b::PVector)
@@ -543,11 +829,15 @@ Equivalent to
     PVector(vector_partition,index_partition)
 
 """
-@inline function pvector(f,index_partition)
+@inline function pvector(f,index_partition;split_format=Val(false))
     vector_partition = map(f,index_partition)
-    PVector(vector_partition,index_partition)
+    b = PVector(vector_partition,index_partition)
+    if !(val_parameter(split_format))
+        return b
+    end
+    PartitionedArrays.split_format(b)
 end
-pvector(f,r::PRange) = pvector(f,partition(r))
+pvector(f,r::PRange;kwargs...) = pvector(f,partition(r);kwargs...)
 
 function old_pvector!(f,I,V,index_partition;discover_rows=true)
     if discover_rows
@@ -598,6 +888,7 @@ function pvector(f,I,V,rows;
         subassembled=false,
         assembled=false,
         assemble=true,
+        split_format = Val(false),
         restore_ids = true,
         indices = :global,
         reuse=Val(false),
@@ -672,13 +963,23 @@ function pvector(f,I,V,rows;
     if val_parameter(reuse) == false
         return @fake_async begin
             B, cacheB = fetch(t)
-            B
+            C = if val_parameter(split_format)
+                PartitionedArrays.split_format(B)
+            else
+                B
+            end
+            C
         end
     else
         return @fake_async begin
             B, cacheB = fetch(t)
-            cache = (A,cacheB,assemble,assembled,K) 
-            (B, cache)
+            C = if val_parameter(split_format)
+                PartitionedArrays.split_format(B)
+            else
+                B
+            end
+            cache = (A,B,cacheB,assemble,assembled,K,split_format) 
+            (C, cache)
         end
     end
 end
@@ -686,16 +987,30 @@ end
 """
     pvector!(B::PVector,V,cache)
 """
-function pvector!(B,V,cache)
-    (A,cacheB,assemble,assembled,K) = cache
+function pvector!(C,V,cache)
+    (A,B,cacheB,assemble,assembled,K,split_format) = cache
     rows_sa = partition(axes(A,1))
     values_sa = partition(A)
     map(dense_vector!,values_sa,K,V)
-    if !assembled && assemble
-        t = PartitionedArrays.assemble!(B,A,cacheB)
+    t = if !assembled && assemble
+        PartitionedArrays.assemble!(B,A,cacheB)
     else
-        t = @fake_async B
+        @fake_async B
     end
+    if !val_parameter(split_format)
+        return t
+    end
+    @fake_async begin
+        wait(t)
+        split_format!(C,B)
+        C
+    end
+end
+
+function pvector_from_split_blocks(own,ghost,row_partition)
+    perms = map(local_permutation,row_partition)
+    values = map(split_vector,own,ghost,perms)
+    PVector(values,row_partition)
 end
 
 function old_pvector!(I,V,index_partition;kwargs...)
@@ -716,10 +1031,23 @@ function default_local_values(I,V,indices)
     values
 end
 
+function split_format(A::PVector)
+    rows = partition(axes(A,1))
+    values = map(split_format_locally,partition(A),rows)
+    b = PVector(values,rows)
+    b
+end
+
+function split_format!(B,A::PVector)
+    rows = partition(axes(A,1))
+    map(split_format_locally!,partition(B),partition(A),rows)
+    B
+end
+
 """
     pfill(v,index_partition)
 """
-pfill(v,index_partition) = pvector(indices->fill(v,local_length(indices)),index_partition)
+pfill(v,index_partition;kwargs...) = pvector(indices->fill(v,local_length(indices)),index_partition;kwargs...)
 
 """
     pzeros([T,]index_partition)
@@ -728,8 +1056,8 @@ Equivalent to
 
     pfill(zero(T),index_partition)
 """
-pzeros(index_partition) = pzeros(Float64,index_partition)
-pzeros(::Type{T},index_partition) where T = pvector(indices->zeros(T,local_length(indices)),index_partition)
+pzeros(index_partition;kwargs...) = pzeros(Float64,index_partition;kwargs...)
+pzeros(::Type{T},index_partition;kwargs...) where T = pvector(indices->zeros(T,local_length(indices)),index_partition;kwargs...)
 
 """
     pones([T,]index_partition)
@@ -738,8 +1066,8 @@ Equivalent to
 
     pfill(one(T),index_partition)
 """
-pones(index_partition) = pones(Float64,index_partition)
-pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(indices)),index_partition)
+pones(index_partition;kwargs...) = pones(Float64,index_partition;kwargs...)
+pones(::Type{T},index_partition;kwargs...) where T = pvector(indices->ones(T,local_length(indices)),index_partition;kwargs...)
 
 """
     prand([rng,][s,]index_partition)
@@ -747,9 +1075,9 @@ pones(::Type{T},index_partition) where T = pvector(indices->ones(T,local_length(
 Create a [`PVector`](@ref) object with uniform random values and the data partition in `index_partition`.
 The optional arguments have the same meaning and default values as in `rand`.
 """
-prand(index_partition) = pvector(indices->rand(local_length(indices)),index_partition)
-prand(s,index_partition) = pvector(indices->rand(s,local_length(indices)),index_partition)
-prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)),index_partition)
+prand(index_partition;kwargs...) = pvector(indices->rand(local_length(indices)),index_partition;kwargs...)
+prand(s,index_partition;kwargs...) = pvector(indices->rand(s,local_length(indices)),index_partition;kwargs...)
+prand(rng,s,index_partition;kwargs...) = pvector(indices->rand(rng,s,local_length(indices)),index_partition;kwargs...)
 
 """
     prandn([rng,][s,]index_partition)
@@ -757,9 +1085,9 @@ prand(rng,s,index_partition) = pvector(indices->rand(rng,s,local_length(indices)
 Create a [`PVector`](@ref) object with normally distributed random values and the data partition in `index_partition`.
 The optional arguments have the same meaning and default values as in `randn`.
 """
-prandn(index_partition) = pvector(indices->randn(local_length(indices)),index_partition)
-prandn(s,index_partition) = pvector(indices->randn(s,local_length(indices)),index_partition)
-prandn(rng,s,index_partition) = pvector(indices->randn(rng,s,local_length(indices)),index_partition)
+prandn(index_partition;kwargs...) = pvector(indices->randn(local_length(indices)),index_partition;kwargs...)
+prandn(s,index_partition;kwargs...) = pvector(indices->randn(s,local_length(indices)),index_partition;kwargs...)
+prandn(rng,s,index_partition;kwargs...) = pvector(indices->randn(rng,s,local_length(indices)),index_partition;kwargs...)
 
 function Base.:(==)(a::PVector,b::PVector)
     @boundscheck @assert matching_own_indices(axes(a,1),axes(b,1))
@@ -877,15 +1205,15 @@ function LinearAlgebra.norm(a::PVector,p::Real=2)
     reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
 end
 
-struct PBroadcasted{A,B,C}
+struct BroadcastedPVector{A,B,C}
     own_values::A
     ghost_values::B
     index_partition::C
 end
-own_values(a::PBroadcasted) = a.own_values
-ghost_values(a::PBroadcasted) = a.ghost_values
+own_values(a::BroadcastedPVector) = a.own_values
+ghost_values(a::BroadcastedPVector) = a.ghost_values
 
-function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
+function Base.broadcasted(f, args::Union{PVector,BroadcastedPVector}...)
     a1 = first(args)
     @boundscheck @assert all(ai->matching_own_indices(PRange(ai.index_partition),PRange(a1.index_partition)),args)
     own_values_in = map(own_values,args)
@@ -896,31 +1224,31 @@ function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
     else
         ghost_values_out = nothing
     end
-    PBroadcasted(own_values_out,ghost_values_out,a1.index_partition)
+    BroadcastedPVector(own_values_out,ghost_values_out,a1.index_partition)
 end
 
-function Base.broadcasted( f, a::Number, b::Union{PVector,PBroadcasted})
+function Base.broadcasted( f, a::Number, b::Union{PVector,BroadcastedPVector})
     own_values_out = map(b->Base.broadcasted(f,a,b),own_values(b))
     if ghost_values(b) !== nothing
         ghost_values_out = map(b->Base.broadcasted(f,a,b),ghost_values(b))
     else
         ghost_values_out = nothing
     end
-    PBroadcasted(own_values_out,ghost_values_out,b.index_partition)
+    BroadcastedPVector(own_values_out,ghost_values_out,b.index_partition)
 end
 
-function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
+function Base.broadcasted( f, a::Union{PVector,BroadcastedPVector}, b::Number)
     own_values_out = map(a->Base.broadcasted(f,a,b),own_values(a))
     if ghost_values(a) !== nothing
         ghost_values_out = map(a->Base.broadcasted(f,a,b),ghost_values(a))
     else
         ghost_values_out = nothing
     end
-    PBroadcasted(own_values_out,ghost_values_out,a.index_partition)
+    BroadcastedPVector(own_values_out,ghost_values_out,a.index_partition)
 end
 
 function Base.broadcasted(f,
-                          a::Union{PVector,PBroadcasted},
+                          a::Union{PVector,BroadcastedPVector},
                           b::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}})
     Base.broadcasted(f,a,Base.materialize(b))
 end
@@ -928,11 +1256,11 @@ end
 function Base.broadcasted(
     f,
     a::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}},
-    b::Union{PVector,PBroadcasted})
+    b::Union{PVector,BroadcastedPVector})
     Base.broadcasted(f,Base.materialize(a),b)
  end
 
-function Base.materialize(b::PBroadcasted)
+function Base.materialize(b::BroadcastedPVector)
     own_values_out = map(Base.materialize,b.own_values)
     T = eltype(eltype(own_values_out))
     a = PVector{Vector{T}}(undef,b.index_partition)
@@ -940,7 +1268,7 @@ function Base.materialize(b::PBroadcasted)
     a
 end
 
-function Base.materialize!(a::PVector,b::PBroadcasted)
+function Base.materialize!(a::PVector,b::BroadcastedPVector)
     map(Base.materialize!,own_values(a),own_values(b))
     if b.ghost_values !== nothing && a.index_partition === b.index_partition
         map(Base.materialize!,ghost_values(a),ghost_values(b))
@@ -951,38 +1279,43 @@ end
 for M in Distances.metrics
     @eval begin
         function (d::$M)(a::PVector,b::PVector)
-            if Distances.parameters(d) !== nothing
-                error("Only distances without parameters are implemented at this moment")
-            end
-            partials = map(own_values(a),own_values(b)) do a,b
-                @boundscheck if length(a) != length(b)
-                    throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
-                end
-                if length(a) == 0
-                    return zero(Distances.result_type(d, a, b))
-                end
-                @inbounds begin
-                    s = Distances.eval_start(d, a, b)
-                    if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
-                        @simd for I in eachindex(a, b)
-                            ai = a[I]
-                            bi = b[I]
-                            s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
-                        end
-                    else
-                        for (ai, bi) in zip(a, b)
-                            s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
-                        end
-                    end
-                    return s
-                end
-            end
-            s = reduce((i,j)->Distances.eval_reduce(d,i,j),
-                       partials,
-                       init=Distances.eval_start(d, a, b))
+            s = distance_eval_body(d,a,b)
             Distances.eval_end(d,s)
         end
     end
+end
+
+function distance_eval_body(d,a::PVector,b::PVector)
+    if Distances.parameters(d) !== nothing
+        error("Only distances without parameters are implemented at this moment")
+    end
+    partials = map(own_values(a),own_values(b)) do a,b
+        @boundscheck if length(a) != length(b)
+            throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
+        end
+        if length(a) == 0
+            return zero(Distances.result_type(d, a, b))
+        end
+        @inbounds begin
+            s = Distances.eval_start(d, a, b)
+            if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
+                for I in eachindex(a, b)
+                    ai = a[I]
+                    bi = b[I]
+                    s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+                end
+            else
+                for (ai, bi) in zip(a, b)
+                    s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+                end
+            end
+            return s
+        end
+    end
+    s = reduce((i,j)->Distances.eval_reduce(d,i,j),
+               partials,
+               init=Distances.eval_start(d, a, b))
+    s
 end
 
 # New stuff
@@ -1179,13 +1512,14 @@ function renumber(a::PVector;kwargs...)
     renumber(a,row_partition_2;kwargs...)
 end
 
-function renumber(a::PVector,row_partition_2;renumber_local_indices=true)
-    # TODO storing the vector in split format would help to return a view
-    # of the input
-    if renumber_local_indices
-        values = map(vcat,own_values(a),ghost_values(a))
+function renumber(a::PVector,row_partition_2;renumber_local_indices=Val(true))
+    if val_parameter(renumber_local_indices)
+        perms = map(row_partition_2) do myrows
+            Int32(1):Int32(local_length(myrows))
+        end
+        values = map(split_vector,own_values(a),ghost_values(a),perms)
     else
-        values = map(copy,local_values(a))
+        values = local_values(a)
     end
     PVector(values,row_partition_2)
 end

@@ -347,6 +347,10 @@ function find_owner(indices,global_ids)
     find_owner(indices,global_ids,eltype(indices))
 end
 
+function global_to_owner(indices)
+    global_to_owner(indices,eltype(indices))
+end
+
 struct AssemblyCache
     neighbors_snd::Base.RefValue{Vector{Int32}}
     neighbors_rcv::Base.RefValue{Vector{Int32}}
@@ -1268,7 +1272,15 @@ function find_owner(indices,global_ids,::Type{<:OwnAndGhostIndices{T}}) where T
     end
 end
 
-function map_global_to_owner(I,global_to_owner)
+function global_to_owner(a::OwnAndGhostIndices)
+    a.global_to_owner
+end
+
+function global_to_owner(indices,::Type{<:OwnAndGhostIndices{T}}) where T
+    map(global_to_owner,indices) |> getany
+end
+
+function map_global_to_owner(I,global_to_owner::AbstractArray)
     Ti = eltype(global_to_owner)
     owners = Vector{Ti}(undef,length(I))
     for k in 1:length(I)
@@ -1278,6 +1290,20 @@ function map_global_to_owner(I,global_to_owner)
             continue
         end
         owners[k] = global_to_owner[i]
+    end
+    owners
+end
+
+function map_global_to_owner(I,global_to_owner::Function)
+    Ti = Int32
+    owners = Vector{Ti}(undef,length(I))
+    for k in 1:length(I)
+        i = I[k]
+        if i<1
+            owners[k] = zero(Ti)
+            continue
+        end
+        owners[k] = global_to_owner(i)
     end
     owners
 end
@@ -1449,6 +1475,11 @@ function find_owner(indices,global_ids,::Type{<:PermutedLocalIndices})
     find_owner(inner_parts,global_ids)
 end
 
+function global_to_owner(indices,::Type{<:PermutedLocalIndices})
+    inner_parts = map(i->i.indices,indices)
+    global_to_owner(inner_parts)
+end
+
 struct BlockPartitionOwnToGlobal{N} <: AbstractVector{Int}
     n::NTuple{N,Int}
     ranges::NTuple{N,UnitRange{Int}}
@@ -1599,6 +1630,17 @@ function find_owner(indices,global_ids,::Type{<:LocalIndicesWithConstantBlockSiz
     end
 end
 
+function global_to_owner(indices,::Type{<:LocalIndicesWithConstantBlockSize})
+    map(indices) do indices
+        start2 = map(indices.np,indices.n) do np,n
+            start = [ first(local_range(p,np,n)) for p in 1:np ]
+            push!(start,n+1)
+            start
+        end
+        global_to_owner = BlockPartitionGlobalToOwner(start2)
+    end |> getany
+end
+
 struct LocalIndicesWithVariableBlockSize{N} <: AbstractLocalIndices
     p::CartesianIndex{N}
     np::NTuple{N,Int}
@@ -1630,6 +1672,16 @@ function find_owner(indices,global_ids,::Type{<:LocalIndicesWithVariableBlockSiz
         global_to_owner = BlockPartitionGlobalToOwner(start)
         map_global_to_owner(global_ids,global_to_owner)
     end
+end
+
+function global_to_owner(indices,::Type{<:LocalIndicesWithVariableBlockSize})
+    initial = map(indices->map(first,indices.ranges),indices) |> collect |> tuple_of_arrays
+    map(indices) do indices
+        start = map(indices.n,initial) do n,initial
+            start = vcat(initial,[n+1])
+        end
+        global_to_owner = BlockPartitionGlobalToOwner(start)
+    end |> getany
 end
 
 const LocalIndicesInBlockPartition = Union{LocalIndicesWithConstantBlockSize,LocalIndicesWithVariableBlockSize}
@@ -1756,8 +1808,12 @@ Base.last(a::PRange) = getany(map(global_length,partition(a)))
 function Base.show(io::IO,k::MIME"text/plain",data::PRange)
     np = length(partition(data))
     map_main(partition(data)) do indices
-        println(io,"1:$(global_length(indices)) partitioned into $(np) parts")
+        println(io,"PRange 1:$(global_length(indices)) partitioned into $(np) parts")
     end
+end
+
+function Base.show(io::IO,data::PRange)
+    print(io,"PRange(…)")
 end
 
 function matching_local_indices(a::PRange,b::PRange)
