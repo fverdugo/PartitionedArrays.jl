@@ -948,9 +948,9 @@ parallel implementations.
 
 # Properties
 
-- `matrix_partition::A`
-- `row_partition::B`
-- `col_partition::C`
+- `matrix_partition::B`
+- `row_partition::C`
+- `col_partition::D`
 - `assembled::Bool`
 
 `matrix_partition[i]` contains a (sparse) matrix with the local rows and the
@@ -964,7 +964,7 @@ is fully contained in the own rows.
 
 # Supertype hierarchy
 
-    PSparseMatrix{V,A,B,C,T} <: AbstractMatrix{T}
+    PSparseMatrix{V,B,C,D,T} <: AbstractMatrix{T}
 
 with `T=eltype(V)`.
 """
@@ -2212,6 +2212,39 @@ function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     end
 end
 
+function repartition(sparse,A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
+    @assert A.assembled "repartition on a sub-assembled matrix not implemented yet"
+    function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
+        I1,J1,V1 = findnz(A_own_own)
+        I2,J2,V2 = findnz(A_own_ghost)
+        map_own_to_global!(I1,A_rows)
+        map_own_to_global!(I2,A_rows)
+        map_own_to_global!(J1,A_cols)
+        map_ghost_to_global!(J2,A_cols)
+        I = vcat(I1,I2)
+        J = vcat(J1,J2)
+        V = vcat(V1,V2)
+        (I,J,V)
+    end
+    A_own_own = own_own_values(A)
+    A_own_ghost = own_ghost_values(A)
+    A_rows = partition(axes(A,1))
+    A_cols = partition(axes(A,2))
+    I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
+    # TODO this one does not preserve the local storage layout of A
+    t = psparse(sparse,I,J,V,new_rows,new_cols;reuse=true)
+    @fake_async begin
+        B,cacheB = fetch(t)
+        if val_parameter(reuse) == false
+            B
+        else
+            cache = (V,cacheB)
+            B, cache
+        end
+    end
+end
+
+
 """
     repartition!(B::PSparseMatrix,A::PSparseMatrix,cache)
 """
@@ -2278,6 +2311,15 @@ function centralize(A::PSparseMatrix)
     rows_trivial = trivial_partition(ranks,m)
     cols_trivial = trivial_partition(ranks,n)
     a_in_main = repartition(A,rows_trivial,cols_trivial) |> fetch
+    own_own_values(a_in_main) |> multicast |> getany
+end
+
+function centralize(sparse,A::PSparseMatrix)
+    m,n = size(A)
+    ranks = linear_indices(partition(A))
+    rows_trivial = trivial_partition(ranks,m)
+    cols_trivial = trivial_partition(ranks,n)
+    a_in_main = repartition(sparse,A,rows_trivial,cols_trivial) |> fetch
     own_own_values(a_in_main) |> multicast |> getany
 end
 
