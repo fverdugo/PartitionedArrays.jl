@@ -10,6 +10,7 @@ using Primes
 using DataStructures
 using JSON
 using SparseArrays
+using SparseMatricesCSR
 import Base: iterate
 
 export hpcg_benchmark_mpi

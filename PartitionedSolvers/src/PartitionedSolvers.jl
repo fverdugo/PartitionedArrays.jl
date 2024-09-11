@@ -4,6 +4,7 @@ using PartitionedArrays
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers
+using SparseMatricesCSR
 
 export setup
 export solve!

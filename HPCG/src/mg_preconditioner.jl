@@ -145,7 +145,7 @@ function pc_setup(np, ranks, l, nx, ny, nz)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
-	solver = additive_schwarz(gauss_seidel(; iters = 1))
+	solver = PartitionedSolvers.additive_schwarz_correction_2(gauss_seidel(; iters = 1))
 
 	# create top problem 
 	A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
@@ -203,7 +203,7 @@ end
 """
 function LinearAlgebra.ldiv!(x, P::Mg_preconditioner, b)
 	fill!(x, zero(eltype(x)))
-	pc_solve!(x, P, b, P.l)
+	pc_solve!(x, P, b, P.l, zero_guess = true)
 	x
 end
 
@@ -313,16 +313,18 @@ end
 
 	- `x`: approximated solution.
 """
-function pc_solve!(x, s::Mg_preconditioner, b, l)
-	x .= 0
+function pc_solve!(x, s::Mg_preconditioner, b, l; zero_guess = false)
+	#x .= 0
 	if l == 1
-		solve!(x, s.gs_states[l], b, zero_guess = true) # bottom solve
+		solve!(x, s.gs_states[l], b; zero_guess) # bottom solve
 	else
-		solve!(x, s.gs_states[l], b, zero_guess = true) # presmoother 
+		solve!(x, s.gs_states[l], b; zero_guess) # presmoother 
 		mul!(s.Axf[l], s.A_vec[l], x)
 		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
-		pc_solve!(s.x[l-1], s, s.r[l-1], l - 1)
+		s.x[l-1] .= 0.0
+		pc_solve!(s.x[l-1], s, s.r[l-1], l - 1; zero_guess = true)
 		p_prolongate!(x, s.x[l-1], s.f2c[l-1])
+		consistent!(x) |> wait
 		solve!(x, s.gs_states[l], b) # post smooth
 	end
 	x

@@ -9,9 +9,9 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
 
 [compat]
-
 IterativeSolvers = "0.9"
 PartitionedArrays = "0.4.4, 0.5"
 SparseArrays = "1"
