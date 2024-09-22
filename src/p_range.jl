@@ -552,7 +552,7 @@ interface.
 -  `periodic::NTuple{N}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
 
 For convenience, one can also provide scalar inputs instead tuples
-to create 1D block partitions. In this case, the argument `np` can be omitted
+to create 1D block partitions. In this case, the argument `np` is omitted
 and it will be computed as `np=length(ranks)`.
 
 # Examples
@@ -597,17 +597,11 @@ function uniform_partition(rank,np,n,args...)
 end
 
 function uniform_partition(rank,n::Integer)
-    uniform_partition(rank,length(rank),n)
+    uniform_partition(rank, (length(rank),), (n,))
 end
 
-function uniform_partition(rank,n::Integer,ghost::Bool,periodic::Bool=false)
-    uniform_partition(rank,length(rank),n,ghost,periodic)
-end
-
-function uniform_partition(rank,np::Integer,n::Integer) uniform_partition(rank,(np,),(n,)) end
-
-function uniform_partition(rank,np::Integer,n::Integer,ghost::Bool,periodic::Bool=false)
-    uniform_partition(rank,(np,),(n,),(ghost,),(periodic,))
+function uniform_partition(rank,n::Integer,ghost::Integer=false,periodic::Bool=false)
+    uniform_partition(rank,(length(rank),),(n,),(ghost,),(periodic,))
 end
 
 function block_with_constant_size(rank,np,n)
@@ -622,42 +616,36 @@ function block_with_constant_size(rank,np,n,ghost,periodic=map(i->false,ghost))
     p = CartesianIndices(np)[rank]
     own_ranges = map(local_range,Tuple(p),np,n)
     local_ranges = map(local_range,Tuple(p),np,n,ghost,periodic)
-    owners = map(Tuple(p),own_ranges,local_ranges) do p,or,lr
+    owners = map(Tuple(p), np, n, local_ranges) do p, np, n, lr
         myowners = zeros(Int32,length(lr))
-        for i in 1:length(lr)
-            if lr[i] in or
+        i = 1
+        for p in Iterators.cycle(1:np)
+            lri = mod(lr[i]-1, n)+1
+            if lri in local_range(p, np, n)
                 myowners[i] = p
+                (i += 1) > length(myowners) && break
             end
-        end
-        if myowners[1] == 0
-            myowners[1] = p-1
-        end
-        if myowners[end] == 0
-            myowners[end] = p+1
         end
         myowners
     end
-    n_ghost = 0
-    cis = CartesianIndices(map(length,local_ranges))
-    predicate(p,i,owners) = owners[i] == p
-    for ci in cis
-        flags = map(predicate,Tuple(p),Tuple(ci),owners)
-        if !all(flags)
-            n_ghost += 1
-        end
-    end
+    n_local = prod(map(length, local_ranges))
+    n_own = prod(map(length, own_ranges))
+    n_ghost = n_local - n_own
+
     ghost_to_global = zeros(Int,n_ghost)
     ghost_to_owner = zeros(Int32,n_ghost)
-    n_local = prod(map(length,local_ranges))
     perm = zeros(Int32,n_local)
     i_ghost = 0
     i_own = 0
-    n_own = prod(map(length,own_ranges))
+
+    cis = CartesianIndices(map(length,local_ranges))
     lis = CircularArray(LinearIndices(n))
     local_cis = CartesianIndices(local_ranges)
-    owner_lis = CircularArray(LinearIndices(np))
+    owner_lis = LinearIndices(np)
     for (i,ci) in enumerate(cis)
-        flags = map(predicate,Tuple(p),Tuple(ci),owners)
+        flags = map(Tuple(ci), own_ranges, local_ranges) do i, or, lr
+            i in (or .- first(lr) .+ 1)
+        end
         if !all(flags)
             i_ghost += 1
             ghost_to_global[i_ghost] = lis[local_cis[i]]
@@ -809,36 +797,28 @@ function renumber_partition(partition_in;renumber_local_indices=true)
 end
 
 function local_range(p,np,n,ghost=false,periodic=false)
-    l = n ÷ np
+    l, rem = divrem(n, np)
     offset = l * (p-1)
-    rem = n % np
     if rem >= (np-p+1)
-        l = l + 1
-        offset = offset + p - (np-rem) - 1
+        l += 1
+        offset += p - (np-rem) - 1
     end
-    start = 1+offset
-    stop = l+offset
-    if ghost && np != 1
-        if periodic || p!=1
-            start -= 1
-        end
-        if periodic || p!=np
-            stop += 1
-        end
-    end
-    start:stop
+    start = 1+offset-ghost
+    stop = l+offset+ghost
+
+    periodic && return start:stop
+    return max(1, start):min(n,stop)
 end
 
 function boundary_owner(p,np,n,ghost=false,periodic=false)
     start = p
     stop = p
-    if ghost && np != 1
-        if periodic || p!=1
-            start -= 1
-        end
-        if periodic || p!=np
-            stop += 1
-        end
+
+    if periodic || p!=1
+        start -= ghost
+    end
+    if periodic || p!=np
+        stop += ghost
     end
     (start,p,stop)
 end
