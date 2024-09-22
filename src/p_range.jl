@@ -813,18 +813,19 @@ function local_range(p,np,n,ghost=false,periodic=false)
     return max(1, start):min(n,stop)
 end
 
-function boundary_owner(p,np,n,ghost=false,periodic=false)
-    start = p
-    stop = p
+## unused
+# function boundary_owner(p,np,n,ghost=false,periodic=false)
+#     start = p
+#     stop = p
 
-    if periodic || p!=1
-        start -= ghost
-    end
-    if periodic || p!=np
-        stop += ghost
-    end
-    (start,p,stop)
-end
+#     if periodic || p!=1
+#         start -= ghost
+#     end
+#     if periodic || p!=np
+#         stop += ghost
+#     end
+#     (start,p,stop)
+# end
 
 struct VectorFromDict{Tk,Tv} <: AbstractVector{Tv}
     dict::Dict{Tk,Tv}
