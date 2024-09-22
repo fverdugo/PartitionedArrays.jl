@@ -624,13 +624,12 @@ function block_with_constant_size(rank,np,n,ghost,periodic=map(i->false,ghost))
         myowners = zeros(Int32,length(lr))
         i = 1
         for p in Iterators.cycle(1:np)
-            lri = mod(lr[i]-1, n)+1
-            if lri in local_range(p, np, n)
+            plr = local_range(p, np, n)
+            while mod(lr[i]-1, n)+1 in plr
                 myowners[i] = p
-                (i += 1) > length(myowners) && break
+                (i += 1) > length(myowners) && return myowners
             end
         end
-        myowners
     end
     n_local = prod(map(length, local_ranges))
     n_own = prod(map(length, own_ranges))
