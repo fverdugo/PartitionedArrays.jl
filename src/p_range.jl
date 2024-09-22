@@ -597,11 +597,15 @@ function uniform_partition(rank,np,n,args...)
 end
 
 function uniform_partition(rank,n::Integer)
-    uniform_partition(rank, (length(rank),), (n,))
+    uniform_partition(rank,(length(rank),),(n,))
 end
 
-function uniform_partition(rank,n::Integer,ghost::Integer=false,periodic::Bool=false)
-    uniform_partition(rank,(length(rank),),(n,),(ghost,),(periodic,))
+function uniform_partition(rank,n::Integer,ghost::Integer,periodic::Bool=false)
+    uniform_partition(rank,length(rank),n,ghost,periodic)
+end
+
+function uniform_partition(rank,np::Integer,n::Integer,ghost::Integer,periodic::Bool=false)
+    uniform_partition(rank,(np,),(n,),(ghost,),(periodic,))
 end
 
 function block_with_constant_size(rank,np,n)
