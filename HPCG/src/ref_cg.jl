@@ -127,7 +127,6 @@ function ref_cg!(x, A, b, timing_data;
 	statevars::CGStateVariables = CGStateVariables(zero(x), similar(x), similar(x)),
 	Pl = Identity())
 
-	# Actually perform CG
 	iterable = cg_iterator!(x, A, b, timing_data, Pl; tolerance = tolerance, maxiter = maxiter,
 		statevars = statevars)
 	iters = 0

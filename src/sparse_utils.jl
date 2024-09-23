@@ -609,22 +609,16 @@ end
 	mul!(b, transpose(A), x)
 end
 
-# function spmv!(b, A::SubSparseMatrix{T, <:SparseMatrixCSR} where T, x)
-# 	@boundscheck begin
-# 		@assert length(b) == size(A, 1)
-# 		@assert length(x) == size(A, 2)
-# 	end
-# 	Ap = A.parent
-
-# 	spmv_csr!(b, x, Ap.rowptr, Ap.colval, Ap.nzval)
-# end
-
 function spmv!(b, A::SparseMatrixCSR{1}, x)
 	@boundscheck begin
 		@assert length(b) == size(A, 1)
 		@assert length(x) == size(A, 2)
 	end
-	spmv_csr!(b, x, A.rowptr, A.colval, A.nzval)
+	if Threads.nthreads() > 1
+		t_spmv_csr!(b, x, A.rowptr, A.colval, A.nzval)
+	else
+		spmv_csr!(b, x, A.rowptr, A.colval, A.nzval)
+	end
 end
 
 function spmtv!(b, A::SparseMatrixCSR{1}, x)
@@ -669,6 +663,30 @@ function spmv_csr!(b, x, rowptr_A, colval_A, nzval_A)
 			p += u
 		end
 		b[row] = bi
+	end
+	b
+end
+
+function t_spmv_csr!(b, x, rowptr_A, colval_A, nzval_A)
+	ncols = length(x)
+	nrows = length(b)
+	u = one(eltype(rowptr_A))
+	z = zero(eltype(b))
+	@batch minbatch = (nrows ÷ 2) for row in 1:nrows
+		@inbounds begin
+			pini = rowptr_A[row]
+			pend = rowptr_A[row+1]
+			bi = z
+			p = pini
+			while p < pend
+				aij = nzval_A[p]
+				col = colval_A[p]
+				xj = x[col]
+				bi += aij * xj
+				p += u
+			end
+			b[row] = bi
+		end
 	end
 	b
 end

@@ -121,11 +121,28 @@ function gauss_seidel(; iters = 1, sweep = :symmetric)
 				col = A.colval[p]
 				if col < row
 					a = A.nzval[p]
-					s -= a * x.parent[col]
+					s -= a * x[col]
 				end
 			end
 			d = diagA[row]
 			#s += d * x[col]
+			s = s / d
+			x[row] = s
+		end
+		x
+	end
+
+	function gauss_seidel_backwards_sweep!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
+		#assumes symmetric matrix
+		for row in rows
+			s = b[row]
+			for p in reverse(nzrange(A, row))
+				col = A.colval[p]
+				a = A.nzval[p]
+				s -= a * x[col]
+			end
+			d = diagA[row]
+			s += d * x[row]
 			s = s / d
 			x[row] = s
 		end
@@ -139,8 +156,9 @@ function gauss_seidel(; iters = 1, sweep = :symmetric)
 		for iter in 1:iters
 			if sweep === :symmetric || sweep === :forward
 				if options.zero_guess
-					#gauss_seidel_sweep_zero!(x, A, diagA, b, 1:n)
-					gauss_seidel_sweep!(x, A, diagA, b, 1:n)
+
+					gauss_seidel_sweep_zero!(x, A, diagA, b, 1:n)
+					#gauss_seidel_sweep!(x, A, diagA, b, 1:n)
 				else
 					gauss_seidel_sweep!(x, A, diagA, b, 1:n)
 				end

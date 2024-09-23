@@ -1,7 +1,8 @@
 include("ref_cg.jl")
 include("opt_cg.jl")
 include("report_results.jl")
-include("mg_preconditioner.jl")
+include("opt_mg_preconditioner.jl")
+include("ref_mg_preconditioner.jl")
 
 """
 	hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60) -> output to file
@@ -55,13 +56,6 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 
 	ref_tol = normr / normr0
 
-	# map_main(ranks) do _
-	# 	println(normr0)
-	# 	println(normr)
-	# 	println(ref_tol)
-	# end
-	# return
-
 	### Optimized CG Setup Phase ### (only relevant after optimising the algorithm with potential convergence loss)
 	opt_max_iters = 10 * ref_max_iters
 	opt_worst_time = 0.0
@@ -97,8 +91,8 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 		norm_data[i] = normr / normr0
 	end
 
+	# collect all timing data from procs.
 	timing_data_buf = gather(map(rank -> timing_data, ranks); destination = MAIN)
-
 	all_timing_data = zeros(Float64, (4, 10))
 	map_main(timing_data_buf) do t
 		all_timing_data = t
