@@ -47,6 +47,7 @@ function mock_nonlinear_operator()
     function r_setup(x)
         r = zeros(2)
         state = nothing
+        r_call!(r,state,x)
         r, state
     end
     function r_call!(r,state,x)
@@ -57,6 +58,7 @@ function mock_nonlinear_operator()
     function j_setup(x)
         j = zeros(2,2)
         state = nothing
+        j_call!(j,state,x)
         j, state
     end
     function j_call!(j,state,x)
@@ -80,7 +82,7 @@ j,j! = setup(jacobian(f),x)
 j = j!(j,x)
 
 solver = mock_newton_raphson()
-#P = setup(solver,f,x)
+P = setup(solver,f,x)
 #x = solve!(x,P)
 
 
