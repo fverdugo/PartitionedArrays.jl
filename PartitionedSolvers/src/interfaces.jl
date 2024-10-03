@@ -1,4 +1,9 @@
 
+abstract type AbstractType end
+function Base.show(io::IO,data::AbstractType)
+    print(io,"PartitionedSolvers.$(nameof(typeof(data)))(…)")
+end
+
 function default_nullspace(A)
     T = eltype(A)
     [ones(T,size(A,2))]
@@ -10,7 +15,7 @@ function default_nullspace(A::PSparseMatrix)
     [ pones(T,col_partition) ]
 end
 
-abstract type AbstractLinearSolver end
+abstract type AbstractLinearSolver <: AbstractType end
 
 function linear_solver(;
         setup,
@@ -36,7 +41,7 @@ function linear_solver(s::LinearSolver)
     s
 end
 
-struct Preconditioner{A,B}
+struct Preconditioner{A,B} <: AbstractType
     solver::A
     solver_setup::B
 end

@@ -124,7 +124,7 @@ function local_solver_options(A,options)
     end
 end
 
-struct AdditiveSchwarzSetup{A}
+struct AdditiveSchwarzSetup{A} <: AbstractType
     local_setups::A
 end
 
