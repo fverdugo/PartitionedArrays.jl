@@ -3,7 +3,8 @@ function lu_solver()
     setup(x,op,b,options) = lu(op)
     update!(state,op,options) = lu!(state,op)
     solve!(x,P,b,options) = ldiv!(x,P,b)
-    linear_solver(;setup,solve!,update!)
+    uses_initial_guess = false
+    linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
 function jacobi_correction()
@@ -12,7 +13,8 @@ function jacobi_correction()
     function solve!(x,state,b,options)
         x .= state .\ b
     end
-    linear_solver(;setup,update!,solve!)
+    uses_initial_guess = false
+    linear_solver(;setup,update!,solve!,uses_initial_guess)
 end
 
 function richardson(solver;iters,omega=1)

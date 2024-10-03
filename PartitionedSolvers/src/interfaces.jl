@@ -17,8 +17,10 @@ function linear_solver(;
         solve!,
         update!,
         finalize! = ls_setup->nothing,
+        uses_nullspace = false,
+        uses_initial_guess = true,
     )
-    LinearSolver(setup,solve!,update!,finalize!)
+    LinearSolver(setup,solve!,update!,finalize!,uses_nullspace,uses_initial_guess)
 end
 
 struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
@@ -26,6 +28,8 @@ struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
     solve!::B
     update!::C
     finalize!::D
+    uses_nullspace::Bool
+    uses_initial_guess::Bool
 end
 
 function linear_solver(s::LinearSolver)
@@ -43,6 +47,22 @@ end
 
 function nullspace(options)
     options.nullspace
+end
+
+function uses_nullspace(a)
+    false
+end
+
+function uses_nullspace(a::LinearSolver)
+    a.uses_nullspace
+end
+
+function uses_initial_guess(a)
+    true
+end
+
+function uses_initial_guess(a::LinearSolver)
+    a.uses_initial_guess
 end
 
 function setup(solver::LinearSolver,x,A,b;kwargs...)
@@ -68,7 +88,9 @@ function solve!(x,P::Preconditioner,b;kwargs...)
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
-    fill!(x,zero(eltype(x)))
+    if uses_initial_guess(P.solver)
+        fill!(x,zero(eltype(x)))
+    end
     solve!(x,P,b;zero_guess=true)
     x
 end
