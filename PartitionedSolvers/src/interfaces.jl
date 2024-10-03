@@ -23,8 +23,9 @@ function linear_solver(;
         update!,
         finalize! = ls_setup->nothing,
         step! = nothing,
-        uses_nullspace = false,
-        uses_initial_guess = true,
+        uses_nullspace = Val(false),
+        uses_initial_guess = Val(true),
+        returns_history = Val(false),
     )
     if step! === nothing
         step! = (x,ls_setup,b,options,step=0) -> begin
@@ -35,17 +36,23 @@ function linear_solver(;
             x,step+1
         end
     end
-    LinearSolver(setup,solve!,update!,finalize!,step!,uses_nullspace,uses_initial_guess)
+    traits = LinearSolverTraits(uses_nullspace,uses_initial_guess,returns_history)
+    LinearSolver(setup,solve!,update!,finalize!,step!,traits)
 end
 
-struct LinearSolver{A,B,C,D,E} <: AbstractLinearSolver
+struct LinearSolverTraits{A,B,C} <: AbstractType
+    uses_nullspace::A
+    uses_initial_guess::B
+    returns_history::C
+end
+
+struct LinearSolver{A,B,C,D,E,F} <: AbstractLinearSolver
     setup::A
     solve!::B
     update!::C
     finalize!::D
     step!::E
-    uses_nullspace::Bool
-    uses_initial_guess::Bool
+    traits::F
 end
 
 function linear_solver(s::LinearSolver)
@@ -65,20 +72,16 @@ function nullspace(options)
     options.nullspace
 end
 
-function uses_nullspace(a)
-    false
-end
-
 function uses_nullspace(a::LinearSolver)
-    a.uses_nullspace
-end
-
-function uses_initial_guess(a)
-    true
+    val_parameter(a.traits.uses_nullspace)
 end
 
 function uses_initial_guess(a::LinearSolver)
-    a.uses_initial_guess
+    val_parameter(a.traits.uses_initial_guess)
+end
+
+function returns_history(a::LinearSolver)
+    val_parameter(a.traits.returns_history)
 end
 
 function setup(solver::LinearSolver,x,A,b;kwargs...)
@@ -93,14 +96,24 @@ function update!(P::Preconditioner,A;kwargs...)
     P
 end
 
-function solve_options(;zero_guess=false)
-    options = (;zero_guess)
+function solve_options(;zero_guess=false,history=Val(false))
+    options = (;zero_guess,history)
 end
 
 function solve!(x,P::Preconditioner,b;kwargs...)
     options = solve_options(;kwargs...)
-    P.solver.solve!(x,P.solver_setup,b,options)
-    x
+    next = P.solver.solve!(x,P.solver_setup,b,options)
+    if returns_history(P.solver)
+        x,log = next
+    else
+        x = next
+        log = nothing
+    end
+    if val_parameter(options.history) == true
+        return x, log
+    else
+        return x
+    end
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)

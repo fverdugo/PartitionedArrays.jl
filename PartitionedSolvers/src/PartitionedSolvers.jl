@@ -1,6 +1,7 @@
 module PartitionedSolvers
 
 using PartitionedArrays
+using PartitionedArrays: val_parameter
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers

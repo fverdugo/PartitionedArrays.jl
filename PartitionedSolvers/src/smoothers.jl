@@ -3,7 +3,7 @@ function lu_solver()
     setup(x,op,b,options) = lu(op)
     update!(state,op,options) = lu!(state,op)
     solve!(x,P,b,options) = ldiv!(x,P,b)
-    uses_initial_guess = false
+    uses_initial_guess = Val(false)
     linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
@@ -14,7 +14,7 @@ function jacobi_correction()
         x .= state .\ b
         x
     end
-    uses_initial_guess = false
+    uses_initial_guess = Val(false)
     linear_solver(;setup,update!,solve!,uses_initial_guess)
 end
 
@@ -42,7 +42,7 @@ function richardson(solver;iters,omega=1)
             ldiv!(dx,P,r)
             x .-= omega .* dx
         end
-        (;iters)
+        x, (;iters)
     end
     function step!(x,state,b,options,step=0)
         if step == iters
@@ -61,7 +61,8 @@ function richardson(solver;iters,omega=1)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,update!,solve!,finalize!,step!)
+    returns_history = Val(true)
+    linear_solver(;setup,update!,solve!,finalize!,step!,returns_history)
 end
 
 function jacobi(;kwargs...)

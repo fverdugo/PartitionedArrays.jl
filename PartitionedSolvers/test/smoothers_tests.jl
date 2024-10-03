@@ -32,6 +32,10 @@ for y in iterations!(y,S,b)
 end
 @test istep[] == 1
 
+y2,hist = solve!(y,S,b;history=true)
+@test y2 === y
+@test hist === nothing
+
 finalize!(S)
 
 solver = linear_solver(LinearAlgebra.lu)
@@ -67,6 +71,9 @@ tol = 1.e-8
 update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
+
+y,hist = solve!(y,S,b;history=true)
+@test hist.iters == 1000
 
 istep = Ref(0)
 y .= 0
