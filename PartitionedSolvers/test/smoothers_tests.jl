@@ -24,6 +24,14 @@ tol = 1.e-8
 update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
+
+istep = Ref(0)
+for y in iterations!(y,S,b)
+    isa(y,AbstractVector)
+    istep[] += 1
+end
+@test istep[] == 1
+
 finalize!(S)
 
 solver = linear_solver(LinearAlgebra.lu)
@@ -59,6 +67,15 @@ tol = 1.e-8
 update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
+
+istep = Ref(0)
+y .= 0
+for y in iterations!(y,S,b)
+    isa(y,AbstractVector)
+    istep[] += 1
+end
+@test norm(y-x/2)/norm(x/2) < tol
+@test istep[] == 1000
 finalize!(S)
 
 solver = additive_schwarz(lu_solver())

@@ -22,17 +22,28 @@ function linear_solver(;
         solve!,
         update!,
         finalize! = ls_setup->nothing,
+        step! = nothing,
         uses_nullspace = false,
         uses_initial_guess = true,
     )
-    LinearSolver(setup,solve!,update!,finalize!,uses_nullspace,uses_initial_guess)
+    if step! === nothing
+        step! = (x,ls_setup,b,options,step=0) -> begin
+            if step !=0
+                return nothing
+            end
+            x = solve!(x,ls_setup,b,options)
+            x,step+1
+        end
+    end
+    LinearSolver(setup,solve!,update!,finalize!,step!,uses_nullspace,uses_initial_guess)
 end
 
-struct LinearSolver{A,B,C,D} <: AbstractLinearSolver
+struct LinearSolver{A,B,C,D,E} <: AbstractLinearSolver
     setup::A
     solve!::B
     update!::C
     finalize!::D
+    step!::E
     uses_nullspace::Bool
     uses_initial_guess::Bool
 end
@@ -102,5 +113,33 @@ end
 
 function finalize!(P::Preconditioner)
     P.solver.finalize!(P.solver_setup)
+end
+
+function iterations!(x,P::Preconditioner,b;kwargs...)
+    options = solve_options(;kwargs...)
+    params = (;options,x,P,b)
+    LinearSolverIterator(params)
+end
+
+struct LinearSolverIterator{A} <: AbstractType
+    params::A
+end
+
+function Base.iterate(a::LinearSolverIterator)
+    P = a.params.P
+    options = a.params.options
+    b = a.params.b
+    x = a.params.x
+    next = P.solver.step!(x,P.solver_setup,b,options)
+    next
+end
+
+function Base.iterate(a::LinearSolverIterator,state)
+    P = a.params.P
+    options = a.params.options
+    b = a.params.b
+    x = a.params.x
+    next = P.solver.step!(x,P.solver_setup,b,options,state)
+    next
 end
 

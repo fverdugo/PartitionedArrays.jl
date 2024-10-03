@@ -12,6 +12,7 @@ function jacobi_correction()
     update!(state,op,options) = dense_diag!(state,op)
     function solve!(x,state,b,options)
         x .= state .\ b
+        x
     end
     uses_initial_guess = false
     linear_solver(;setup,update!,solve!,uses_initial_guess)
@@ -43,11 +44,24 @@ function richardson(solver;iters,omega=1)
         end
         (;iters)
     end
+    function step!(x,state,b,options,step=0)
+        if step == iters
+            return nothing
+        end
+        (r,dx,P,A_ref) = state
+        A = A_ref[]
+        dx .= x
+        mul!(r,A,dx)
+        r .-= b
+        ldiv!(dx,P,r)
+        x .-= omega .* dx
+        x,step+1
+    end
     function finalize!(state)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,update!,solve!,finalize!)
+    linear_solver(;setup,update!,solve!,finalize!,step!)
 end
 
 function jacobi(;kwargs...)
