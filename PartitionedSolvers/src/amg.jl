@@ -789,7 +789,8 @@ function amg(;
     update! = amg_update!
     solve! = amg_solve!
     finalize! = amg_finalize!
-    linear_solver(;setup,update!,solve!,finalize!)
+    uses_nullspace = Val(true)
+    linear_solver(;setup,update!,solve!,finalize!,uses_nullspace)
 end
 
 function amg_setup(x,A,b,::Nothing,amg_params)

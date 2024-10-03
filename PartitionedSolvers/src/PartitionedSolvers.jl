@@ -1,6 +1,7 @@
 module PartitionedSolvers
 
 using PartitionedArrays
+using PartitionedArrays: val_parameter
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers
@@ -13,6 +14,9 @@ export AbstractLinearSolver
 export linear_solver
 export default_nullspace
 export nullspace
+export uses_nullspace
+export uses_initial_guess
+export iterations!
 include("interfaces.jl")
 
 export lu_solver
