@@ -39,4 +39,13 @@ export amg_coarse_params
 export amg_statistics
 include("amg.jl")
 
+export LinearProblem
+export matrix
+export rhs
+export jacobian
+export tangent
+export nonlinear_solver
+export nonlinear_operator
+include("nonlinear_solvers.jl")
+
 end # module
