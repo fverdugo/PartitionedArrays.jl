@@ -552,7 +552,7 @@ interface.
 -  `periodic::NTuple{N}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
 
 For convenience, one can also provide scalar inputs instead tuples
-to create 1D block partitions. In this case, the argument `np` is omitted
+to create 1D block partitions. In this case, the argument `np` can be omitted
 and it will be computed as `np=length(ranks)`.
 
 # Examples
@@ -597,14 +597,16 @@ function uniform_partition(rank,np,n,args...)
 end
 
 function uniform_partition(rank,n::Integer)
-    uniform_partition(rank,(length(rank),),(n,))
+    uniform_partition(rank,length(rank),n)
 end
 
-function uniform_partition(rank,n::Integer,ghost::Integer,periodic::Bool=false)
+function uniform_partition(rank,n::Integer,ghost::Bool,periodic::Bool=false)
     uniform_partition(rank,length(rank),n,ghost,periodic)
 end
 
-function uniform_partition(rank,np::Integer,n::Integer,ghost::Integer,periodic::Bool=false)
+function uniform_partition(rank,np::Integer,n::Integer) uniform_partition(rank,(np,),(n,)) end
+
+function uniform_partition(rank,np::Integer,n::Integer,ghost::Bool,periodic::Bool=false)
     uniform_partition(rank,(np,),(n,),(ghost,),(periodic,))
 end
 
