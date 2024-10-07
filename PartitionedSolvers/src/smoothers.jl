@@ -196,6 +196,72 @@ function additive_schwarz_correction(local_solver)
     linear_solver(;setup,update!,solve!,finalize!)
 end
 
+function identity_preconditioner()
+    setup(x,op,b,options) = nothing
+    update!(state,op,options) = state
+    function solve!(x,P,b,options)
+        copy!(x,b)
+        x
+    end
+    uses_initial_guess = Val(false)
+    linear_solver(;setup,solve!,update!,uses_initial_guess)
+end
+
+function conjugate_gradients(;
+        preconditioner=identity_preconditioner(),
+        maxiters = 2000
+    )
+    function setup(x,A,b,options)
+        c = similar(x)
+        u = similar(x)
+        r = similar(x)
+        M = setup(preconditioner,x,A,b)
+        arrays = (;c,u,r,A,M)
+        sc = stop_criterior(x)
+        flag,sc! = setup(sc,arrays)
+        (;flag,sc!,arrays)
+    end
+    function update!(state,A,options)
+        (;c,u,r,M) = state
+        M = update!(M,A)
+        (;c,u,r,A,M)
+    end
+    function step!(x,state,b,options,step=0)
+        (;arrays,flag,sc!) = state
+        (;c,u,r,A,M) = arrays
+        if step == 0
+            if options.zero_guess
+                r .= b
+            else
+                mul!(c,A,x)
+                r .= b .- c
+            end
+            sc = stop_criterior(x)
+            sc! = update!(sc!,sc)
+            norm_r0 = sqrt(dot(r,r))
+        end
+        if step == maxiters
+            return nothing
+        end
+        ldiv!(c,M,r)
+        ρ_prev = ρ
+        ρ = dot(c,r)
+        β = ρ / ρ_prev
+        u .= c .+ β .* u
+        mul!(c, A, u)
+        α = ρ / dot(u,c)
+        x .= x .+ α .* u
+        r .= r .- α .* c
+        flag = sc!(flag,arrays)
+        if flag[]
+            return nothing
+        end
+        x,step+1
+    end
+end
+
+
+
 # Wrappers
 
 function linear_solver(::typeof(LinearAlgebra.lu))

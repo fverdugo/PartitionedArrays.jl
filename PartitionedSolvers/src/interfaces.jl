@@ -19,7 +19,7 @@ abstract type AbstractLinearSolver <: AbstractType end
 
 function linear_solver(;
         setup,
-        solve!,
+        solve! = nothing,
         update!,
         finalize! = ls_setup->nothing,
         step! = nothing,
@@ -27,13 +27,30 @@ function linear_solver(;
         uses_initial_guess = Val(true),
         returns_history = Val(false),
     )
-    if step! === nothing
+    @assert step! !== nothing || solve! !== nothing
+    if step! === nothing && solve! !== nothing
         step! = (x,ls_setup,b,options,step=0) -> begin
             if step !=0
                 return nothing
             end
             x = solve!(x,ls_setup,b,options)
             x,step+1
+        end
+    end
+    if step! !== nothing && solve! === nothing
+        solve! = (x,ls_setup,b,options) -> begin
+            next = step!(x,ls_setup,b,options)
+            if next === nothing
+                return x
+            end
+            x,step = next
+            while true
+                next = step!(x,ls_setup,b,options,step)
+                if next === nothing
+                    return x
+                end
+                x,step = next
+            end
         end
     end
     traits = LinearSolverTraits(uses_nullspace,uses_initial_guess,returns_history)
