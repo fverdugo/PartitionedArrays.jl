@@ -548,12 +548,14 @@ interface.
 - `ranks`: Array containing the distribution of ranks.
 -  `np::NTuple{N}`: Number of parts per direction.
 -  `n::NTuple{N}`: Number of global indices per direction.
--  `ghost::NTuple{N}=ntuple(i->false,N)`: Use or not ghost indices per direction.
+-  `ghost::NTuple{N}=ntuple(i->false,N)`: Number of ghost indices per direction.
 -  `periodic::NTuple{N}=ntuple(i->false,N)`: Use or not periodic boundaries per direction.
 
 For convenience, one can also provide scalar inputs instead tuples
 to create 1D block partitions. In this case, the argument `np` can be omitted
-and it will be computed as `np=length(ranks)`.
+and it will be computed as `np=length(ranks)`. At the moment, it's only possible
+to use this syntax for zero (with `ghost=false`) or one (with `ghost=true`) layer(s)
+of ghost indices. If you wish to have more ghost indices, use tuples instead.
 
 # Examples
 
