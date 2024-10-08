@@ -2,7 +2,10 @@
 function lu_solver()
     setup(x,op,b,options) = lu(op)
     update!(state,op,options) = lu!(state,op)
-    solve!(x,P,b,options) = ldiv!(x,P,b)
+    function solve!(x,P,b,options)
+        ldiv!(x,P,b)
+        x,P
+    end
     uses_initial_guess = Val(false)
     linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
@@ -12,7 +15,7 @@ function jacobi_correction()
     update!(state,op,options) = dense_diag!(state,op)
     function solve!(x,state,b,options)
         x .= state .\ b
-        x
+        x,state
     end
     uses_initial_guess = Val(false)
     linear_solver(;setup,update!,solve!,uses_initial_guess)
@@ -42,7 +45,7 @@ function richardson(solver;iters,omega=1)
             ldiv!(dx,P,r)
             x .-= omega .* dx
         end
-        x, (;iters)
+        x, state
     end
     function step!(x,state,b,options,step=0)
         if step == iters
@@ -55,13 +58,12 @@ function richardson(solver;iters,omega=1)
         r .-= b
         ldiv!(dx,P,r)
         x .-= omega .* dx
-        x,step+1
+        (x,state),step+1
     end
     function finalize!(state)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    returns_history = Val(true)
     linear_solver(;setup,update!,solve!,finalize!,step!,returns_history)
 end
 
@@ -111,7 +113,7 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
                 gauss_seidel_sweep!(x,A,diagA,b,n:-1:1)
             end
         end
-        x
+        x,state
     end
     linear_solver(;setup,update!,solve!)
 end
@@ -170,7 +172,7 @@ function additive_schwarz_correction(local_solver)
             own_values(b),
             local_solver_options(b,options)
            )
-        x
+        x,state
     end
     function finalize!(state::AdditiveSchwarzSetup)
         map(
@@ -187,7 +189,7 @@ function additive_schwarz_correction(local_solver)
     end
     function solve!(x,state,b,options)
         local_solver.solve!(x,state,b,options)
-        x
+        x,state
     end
     function finalize!(state)
         local_solver.finalize!(state)
@@ -201,34 +203,56 @@ function identity_preconditioner()
     update!(state,op,options) = state
     function solve!(x,P,b,options)
         copy!(x,b)
-        x
+        x,P
     end
     uses_initial_guess = Val(false)
     linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
+function residual_norm_stop_criterion(abstol=nothing,reltol=nothing)
+    function prototype(x,workspace,b)
+        zero(real(eltype(b)))
+    end
+    function current(x,workspace,b)
+        r = workspace.r
+        sqrt(dot(r,r))
+    end
+    function target(x,workspace,b)
+        T = real(eltype(b))
+        if abstol === nothing
+            abstol = zero(T)
+        end
+        if reltol === nothing
+            reltol = sqrt(eps(T))
+        end
+        norm_r0 = current(x,workspace,b)
+        max(reltol*norm_r0,abstol)
+    end
+    (;current,target)
+end
+
 function conjugate_gradients(;
-        preconditioner=identity_preconditioner(),
-        maxiters = 2000
+        preconditioner = identity_preconditioner(),
+        stop_criterion = residual_norm_stop_criterion()
     )
     function setup(x,A,b,options)
         c = similar(x)
         u = similar(x)
         r = similar(x)
         M = setup(preconditioner,x,A,b)
-        arrays = (;c,u,r,A,M)
-        sc = stop_criterior(x)
-        flag,sc! = setup(sc,arrays)
-        (;flag,sc!,arrays)
+        workspace = (;c,u,r,A,M)
+        current = stop_criterion.prototype(x,workspace,b)
+        target = stop_criterion.prototype(x,workspace,b)
+        iteration=0
+        (;workspace,current,target,iteration)
     end
-    function update!(state,A,options)
-        (;c,u,r,M) = state
+    function update!(workspace,A,options)
+        (;c,u,r,M,current,target) = workspace
         M = update!(M,A)
-        (;c,u,r,A,M)
+        workspace = (;c,u,r,A,M,current,target)
     end
-    function step!(x,state,b,options,step=0)
-        (;arrays,flag,sc!) = state
-        (;c,u,r,A,M) = arrays
+    function step!(x,workspace,b,options,step=0)
+        (;c,u,r,A,M,current,target,iteration) = workspace
         if step == 0
             if options.zero_guess
                 r .= b
@@ -236,11 +260,9 @@ function conjugate_gradients(;
                 mul!(c,A,x)
                 r .= b .- c
             end
-            sc = stop_criterior(x)
-            sc! = update!(sc!,sc)
-            norm_r0 = sqrt(dot(r,r))
+            target = stop_criterion.target(x,workspace,b)
         end
-        if step == maxiters
+        if maxiters == step
             return nothing
         end
         ldiv!(c,M,r)
@@ -252,13 +274,28 @@ function conjugate_gradients(;
         α = ρ / dot(u,c)
         x .= x .+ α .* u
         r .= r .- α .* c
-        flag = sc!(flag,arrays)
-        if flag[]
-            return nothing
+        step += 1
+        current = stop_criterion.current(x,workspace,b)
+        iteration = step
+        if current <= target
+            step = maxiters
         end
-        x,step+1
+        workspace = (;c,u,r,A,M,current,target,iteration)
+        x,workspace,step
     end
 end
+
+#for (x,P,state) in iterations!(x,P,b)
+# state.current
+# state.step
+# state.target
+# P.solver_setup.r
+#end
+
+#P = setup(solver,x,A,b)
+#x,P,state = solve!(x,P,b)
+#x,P,state = step!(x,P,b)
+#x,P,state = step!(x,P,b,state)
 
 
 
@@ -279,12 +316,13 @@ function linear_solver(::typeof(IterativeSolvers.cg);Pl,kwargs...)
         (;P,A_ref) = state
         A_ref[] = A
         P = PartitionedSolvers.update!(P,A;options...)
-        state
+        (;P,A_ref)
     end
     function solve!(x,state,b,options)
         (;P,A_ref) = state
         A = A_ref[]
         IterativeSolvers.cg!(x,A,b;Pl=P,kwargs...)
+        x,state
     end
     function finalize!(state,A,options)
         (;P) = state
