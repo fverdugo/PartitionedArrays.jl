@@ -8,6 +8,7 @@ using IterativeSolvers
 using Printf
 
 export setup
+export solve
 export solve!
 export update!
 export finalize!

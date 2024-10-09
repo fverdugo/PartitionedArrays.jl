@@ -172,4 +172,15 @@ function Base.iterate(a::LinearSolverIterator,state)
     (x,P),state
 end
 
+function solve(solver::AbstractLinearSolver,A,b;kwargs...)
+    x = similar(b,axes(A,2))
+    fill!(x,zero(eltype(x)))
+    solve!(solver,x,A,b;kwargs...)
+end
+
+function solve!(solver::AbstractLinearSolver,x,A,b;kwargs...)
+    P = setup(solver,x,A,b)
+    solve!(x,P,b;kwargs...)
+end
+
 

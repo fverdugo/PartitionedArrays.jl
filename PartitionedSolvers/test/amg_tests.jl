@@ -344,6 +344,9 @@ solve!(y,S,b)
 S = update!(S,2*A)
 solve!(y,S,b)
 
+y,P = solve(solver,A,b)
+y,P = solve!(solver,y,A,b)
+
 # Now with a nullspace
 
 B = default_nullspace(A)
