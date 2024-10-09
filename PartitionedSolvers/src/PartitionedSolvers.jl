@@ -42,13 +42,16 @@ export amg_coarse_params
 export amg_statistics
 include("amg.jl")
 
-export LinearProblem
+export AffineOperator
 export matrix
 export rhs
-export jacobian
+export derivative
 export tangent
+export inplace
+export InplaceFunction
+export FunctionWithDerivative
 export nonlinear_solver
-export nonlinear_operator
+export newton_raphson
 include("nonlinear_solvers.jl")
 
 end # module

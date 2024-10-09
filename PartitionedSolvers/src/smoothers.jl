@@ -254,6 +254,10 @@ function conjugate_gradients(;
         workspace = (;c,u,r,A,M,current,target,iteration,ρ)
     end
     function step!(x,workspace,b,options,state=:start)
+        if state === :stop
+            print_convergence_end(workspace,verbose)
+            return nothing
+        end
         (;c,u,r,A,M,current,target,iteration,ρ) = workspace
         if state === :start
             fill!(u,zero(eltype(u)))
@@ -275,10 +279,6 @@ function conjugate_gradients(;
             target = max(reltol*current,abstol)
             iteration = 0
             state = :advance
-        end
-        if state == :stop
-            print_convergence_end(workspace,verbose)
-            return nothing
         end
         print_convergence_step(workspace,verbose,verbose_frequency)
         ldiv!(c,M,r)
@@ -303,8 +303,12 @@ function conjugate_gradients(;
         workspace = (;c,u,r,A,M,current,target,iteration,ρ)
         x,workspace,state
     end
+    function finalize!(state)
+        (;M) = workspace
+        finalize!(M)
+    end
     is_iterative = Val(true)
-    linear_solver(;setup,step!,update!,is_iterative)
+    linear_solver(;setup,step!,update!,finalize!,is_iterative)
 end
 
 #for (x,P,state) in iterations!(x,P,b)
