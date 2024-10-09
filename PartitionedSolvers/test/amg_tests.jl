@@ -269,14 +269,21 @@ fine_params = amg_fine_params(;level_params)
 Pl = setup(amg(;fine_params),y,A,b;nullspace=B)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
+#cg!(y,A,b;verbose=true)
+
+#solver = conjugate_gradients(;verbose=true,preconditioner=amg(;fine_params))
+solver = conjugate_gradients(;verbose=true,verbose_frequency=20,preconditioner=amg(;fine_params))
+S = setup(solver,y,A,b)
+y .= 0
+solve!(y,S,b)
+S = update!(S,2*A)
+solve!(y,S,b)
 
 solver = linear_solver(IterativeSolvers.cg;Pl=amg(;fine_params),verbose=true)
 S = setup(solver,y,A,b)
 solve!(y,S,b)
-update!(S,2*A)
+S = update!(S,2*A)
 solve!(y,S,b)
-
-
 
 # Now for linear elasticity (sequential)
 
@@ -329,6 +336,13 @@ solve!(y,S,b)
 update!(S,2*A)
 solve!(y,S,b)
 finalize!(S)
+
+solver = conjugate_gradients(;verbose=true,preconditioner=amg(),maxiters=8)
+S = setup(solver,y,A,b)
+y .= 0
+solve!(y,S,b)
+S = update!(S,2*A)
+solve!(y,S,b)
 
 # Now with a nullspace
 

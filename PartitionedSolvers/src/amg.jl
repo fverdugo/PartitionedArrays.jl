@@ -838,7 +838,7 @@ end
 function amg_solve!(x,setup,b,options)
     level=1
     amg_cycle!(x,setup,b,level)
-    x
+    x,setup
 end
 
 function amg_cycle!(x,setup,b,level)
@@ -870,7 +870,7 @@ function amg_statistics(P::Preconditioner)
     # Grid complexity is the total number of grid points on all grids divided by the number
     # of grid points on the fine grid. Operator complexity is the total number of nonzeroes in the linear operators
     # on all grids divided by the number of nonzeroes in the fine grid operator
-    setup = P.solver_setup
+    setup = P.workspace
     nlevels = setup.nlevels
     level_rows = zeros(Int,nlevels)
     level_nnz = zeros(Int,nlevels)

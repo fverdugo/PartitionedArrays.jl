@@ -25,6 +25,7 @@ function linear_solver(;
         step! = nothing,
         uses_nullspace = Val(false),
         uses_initial_guess = Val(true),
+        is_iterative = Val(false),
     )
     @assert step! !== nothing || solve! !== nothing
     if step! === nothing && solve! !== nothing
@@ -32,7 +33,7 @@ function linear_solver(;
             if step !=0
                 return nothing
             end
-            x,workspace, state = solve!(x,workspace,b,options)
+            x, workspace = solve!(x,workspace,b,options)
             step += 1
             x,workspace,step
         end
@@ -47,13 +48,18 @@ function linear_solver(;
             (x,workspace)
         end
     end
-    traits = LinearSolverTraits(uses_nullspace,uses_initial_guess)
+    traits = LinearSolverTraits(
+        uses_nullspace,
+        uses_initial_guess,
+        is_iterative
+       )
     LinearSolver(setup,solve!,update!,finalize!,step!,traits)
 end
 
-struct LinearSolverTraits{A,B} <: AbstractType
+struct LinearSolverTraits{A,B,C} <: AbstractType
     uses_nullspace::A
     uses_initial_guess::B
+    is_iterative::C
 end
 
 struct LinearSolver{A,B,C,D,E,F} <: AbstractLinearSolver
@@ -90,6 +96,10 @@ function uses_initial_guess(a::LinearSolver)
     val_parameter(a.traits.uses_initial_guess)
 end
 
+function is_iterative(a::LinearSolver)
+    val_parameter(a.traits.is_iterative)
+end
+
 function setup(solver::LinearSolver,x,A,b;kwargs...)
     options = setup_options(;kwargs...)
     workspace = solver.setup(x,A,b,options)
@@ -98,8 +108,8 @@ end
 
 function update!(P::Preconditioner,A;kwargs...)
     options = setup_options(;kwargs...)
-    P.solver.update!(P.workspace,A,options)
-    P
+    workspace = P.solver.update!(P.workspace,A,options)
+    Preconditioner(P.solver,workspace)
 end
 
 function solve_options(;zero_guess=false)
@@ -108,7 +118,8 @@ end
 
 function solve!(x,P::Preconditioner,b;kwargs...)
     options = solve_options(;kwargs...)
-    P.solver.solve!(x,P.workspace,b,options)
+    x, workspace = P.solver.solve!(x,P.workspace,b,options)
+    x, Preconditioner(P.solver,workspace)
 end
 
 function LinearAlgebra.ldiv!(x,P::Preconditioner,b)
@@ -142,24 +153,23 @@ function Base.iterate(a::LinearSolverIterator)
     if next === nothing
         return nothing
     end
-    x,workspace,step = next
+    x,workspace,state = next
     P = Preconditioner(P.solver,workspace)
-    (x,P), step
+    (x,P), state
 end
 
-function Base.iterate(a::LinearSolverIterator,step)
+function Base.iterate(a::LinearSolverIterator,state)
     P = a.params.P
     options = a.params.options
     b = a.params.b
     x = a.params.x
-    next = P.solver.step!(x,P.workspace,b,options,step)
+    next = P.solver.step!(x,P.workspace,b,options,state)
     if next === nothing
         return nothing
     end
-    x,workspace,step = next
+    x,workspace,state = next
     P = Preconditioner(P.solver,workspace)
-    (x,P),step
+    (x,P),state
 end
-
 
 

@@ -5,6 +5,7 @@ using PartitionedArrays: val_parameter
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers
+using Printf
 
 export setup
 export solve!
@@ -26,6 +27,7 @@ export jacobi
 export gauss_seidel
 export additive_schwarz_correction
 export additive_schwarz
+export conjugate_gradients
 include("smoothers.jl")
 
 export amg

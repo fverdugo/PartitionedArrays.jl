@@ -26,15 +26,14 @@ solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 
 istep = Ref(0)
-for y in iterations!(y,S,b)
+for (y,S) in iterations!(y,S,b)
     isa(y,AbstractVector)
     istep[] += 1
 end
 @test istep[] == 1
 
-y2,hist = solve!(y,S,b;history=true)
+y2,S2 = solve!(y,S,b)
 @test y2 === y
-@test hist === nothing
 
 finalize!(S)
 
@@ -72,12 +71,11 @@ update!(S,2*A)
 solve!(y,S,b)
 @test norm(y-x/2)/norm(x/2) < tol
 
-y,hist = solve!(y,S,b;history=true)
-@test hist.iters == 1000
+y,S = solve!(y,S,b)
 
 istep = Ref(0)
 y .= 0
-for y in iterations!(y,S,b)
+for (y,S) in iterations!(y,S,b)
     isa(y,AbstractVector)
     istep[] += 1
 end

@@ -58,13 +58,13 @@ function richardson(solver;iters,omega=1)
         r .-= b
         ldiv!(dx,P,r)
         x .-= omega .* dx
-        (x,state),step+1
+        x,state,step+1
     end
     function finalize!(state)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,update!,solve!,finalize!,step!,returns_history)
+    linear_solver(;setup,update!,solve!,finalize!,step!)
 end
 
 function jacobi(;kwargs...)
@@ -209,60 +209,61 @@ function identity_preconditioner()
     linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
-function residual_norm_stop_criterion(abstol=nothing,reltol=nothing)
-    function prototype(x,workspace,b)
-        zero(real(eltype(b)))
-    end
-    function current(x,workspace,b)
-        r = workspace.r
-        sqrt(dot(r,r))
-    end
-    function target(x,workspace,b)
-        T = real(eltype(b))
-        if abstol === nothing
-            abstol = zero(T)
-        end
-        if reltol === nothing
-            reltol = sqrt(eps(T))
-        end
-        norm_r0 = current(x,workspace,b)
-        max(reltol*norm_r0,abstol)
-    end
-    (;current,target)
-end
-
 function conjugate_gradients(;
         preconditioner = identity_preconditioner(),
-        stop_criterion = residual_norm_stop_criterion()
+        abstol = nothing,
+        reltol = nothing,
+        maxiters = nothing,
+        verbose = false,
+        verbose_frequency = 1,
     )
     function setup(x,A,b,options)
         c = similar(x)
         u = similar(x)
         r = similar(x)
-        M = setup(preconditioner,x,A,b)
-        workspace = (;c,u,r,A,M)
-        current = stop_criterion.prototype(x,workspace,b)
-        target = stop_criterion.prototype(x,workspace,b)
+        M = PartitionedSolvers.setup(preconditioner,x,A,b)
+        current = zero(real(eltype(b)))
+        target = current
         iteration=0
-        (;workspace,current,target,iteration)
+        ρ = one(eltype(x))
+        workspace = (;c,u,r,A,M,current,target,iteration,maxiters,ρ)
     end
     function update!(workspace,A,options)
-        (;c,u,r,M,current,target) = workspace
-        M = update!(M,A)
-        workspace = (;c,u,r,A,M,current,target)
+        (;c,u,r,M,current,target,iteration,ρ) = workspace
+        M = PartitionedSolvers.update!(M,A)
+        workspace = (;c,u,r,A,M,current,target,iteration,ρ)
     end
-    function step!(x,workspace,b,options,step=0)
-        (;c,u,r,A,M,current,target,iteration) = workspace
-        if step == 0
+    function step!(x,workspace,b,options,state=:start)
+        (;c,u,r,A,M,current,target,iteration,ρ) = workspace
+        if state === :start
+            fill!(u,zero(eltype(u)))
             if options.zero_guess
                 r .= b
             else
                 mul!(c,A,x)
                 r .= b .- c
             end
-            target = stop_criterion.target(x,workspace,b)
+            T = real(eltype(b))
+            if abstol === nothing
+                abstol = zero(T)
+            end
+            if reltol === nothing
+                reltol = sqrt(eps(T))
+            end
+            ρ = one(eltype(x))
+            current = sqrt(dot(r,r))
+            target = max(reltol*current,abstol)
+            iteration = 0
+            state = :advance
         end
-        if maxiters == step
+        if verbose && ( mod(iteration,verbose_frequency)==0 || state===:stop)
+            @printf "%6i %12.3e %12.3e\n" iteration current target
+        end
+        if state == :stop
+            if verbose
+                converged = current <= target
+                println("$( converged ? "Converged" : "Not converged" ) after $iteration iterations")
+            end
             return nothing
         end
         ldiv!(c,M,r)
@@ -274,15 +275,21 @@ function conjugate_gradients(;
         α = ρ / dot(u,c)
         x .= x .+ α .* u
         r .= r .- α .* c
-        step += 1
-        current = stop_criterion.current(x,workspace,b)
-        iteration = step
-        if current <= target
-            step = maxiters
+        current = sqrt(dot(r,r))
+        iteration += 1
+        converged = current <= target
+        if maxiters === nothing
+            maxiters = size(A,1)
         end
-        workspace = (;c,u,r,A,M,current,target,iteration)
-        x,workspace,step
+        tired = iteration == maxiters
+        if converged || tired
+            state = :stop
+        end
+        workspace = (;c,u,r,A,M,current,target,iteration,ρ)
+        x,workspace,state
     end
+    is_iterative = Val(true)
+    linear_solver(;setup,step!,update!,is_iterative)
 end
 
 #for (x,P,state) in iterations!(x,P,b)
