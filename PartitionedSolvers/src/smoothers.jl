@@ -209,6 +209,26 @@ function identity_preconditioner()
     linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
+function print_convergence_step(workspace,verbose,verbose_frequency)
+    iteration = workspace.iteration
+    current = workspace.current
+    target = workspace.target
+    if verbose && mod(iteration,verbose_frequency)==0
+        @printf "%6i %12.3e %12.3e\n" iteration current target
+    end
+end
+
+function print_convergence_end(workspace,verbose)
+    print_convergence_step(workspace,verbose,1)
+    iteration = workspace.iteration
+    current = workspace.current
+    target = workspace.target
+    if verbose
+        converged = current <= target
+        println("$( converged ? "Converged" : "Not converged" ) after $iteration iterations")
+    end
+end
+
 function conjugate_gradients(;
         preconditioner = identity_preconditioner(),
         abstol = nothing,
@@ -256,16 +276,11 @@ function conjugate_gradients(;
             iteration = 0
             state = :advance
         end
-        if verbose && ( mod(iteration,verbose_frequency)==0 || state===:stop)
-            @printf "%6i %12.3e %12.3e\n" iteration current target
-        end
         if state == :stop
-            if verbose
-                converged = current <= target
-                println("$( converged ? "Converged" : "Not converged" ) after $iteration iterations")
-            end
+            print_convergence_end(workspace,verbose)
             return nothing
         end
+        print_convergence_step(workspace,verbose,verbose_frequency)
         ldiv!(c,M,r)
         ρ_prev = ρ
         ρ = dot(c,r)
