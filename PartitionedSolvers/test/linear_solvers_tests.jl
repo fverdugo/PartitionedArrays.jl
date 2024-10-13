@@ -17,7 +17,7 @@ P = PS.identity_solver(;timer_output)
 
 P = PS.richardson(x,A,b;preconditioner=P,timer_output)
 
-P = PS.jacobi(x,A,b;timer_output)
+P = PS.jacobi(x,A,b;timer_output,verbose=true)
 
 x,P = PS.solve!(x,P,b)
 x,P = PS.solve!(x,P,b)
