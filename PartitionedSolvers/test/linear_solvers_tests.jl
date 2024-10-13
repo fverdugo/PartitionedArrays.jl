@@ -10,14 +10,14 @@ b = A*x
 
 P = PS.LinearAlgebra_lu(A,verbose=true,verbosity=(;indentation=">>>> "))
 
-P = PS.identity_solver()
+#P = PS.identity_solver()
 
-P = PS.richardson(x,A,b)
+#P = PS.richardson(x,A,b)
 
-PS.solve!(x,P,b)
-PS.solve!(x,P,b)
-PS.update!(P,A)
-PS.solve!(x,P,b)
+x,P = PS.solve!(x,P,b)
+x,P = PS.solve!(x,P,b)
+P = PS.update!(P,A)
+x, P =PS.solve!(x,P,b)
 
 P |> PS.status |> display
 #P |> PS.timer_output |> display

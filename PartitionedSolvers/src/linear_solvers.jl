@@ -1,23 +1,26 @@
 
-mutable struct Status <: AbstractType
+struct Status <: AbstractType
     steps::Int
     steps_since_update::Int
     updates::Int
-    function Status()
-        new(0,0,0)
-    end
 end
 
-function update!(status::Status)
-    status.updates += 1
-    status.steps_since_update = 0
-    status
+function Status()
+    Status(0,0,0)
 end
 
-function step!(status::Status)
-    status.steps_since_update += 1
-    status.steps += 1
-    status
+function update(status::Status)
+    steps = status.steps
+    steps_since_update = 0
+    updates = status.updates + 1
+    Status(steps,steps_since_update,updates)
+end
+
+function step(status::Status)
+    steps = status.steps + 1
+    steps_since_update = status.steps_since_update + 1
+    updates = status.updates
+    Status(steps,steps_since_update,updates)
 end
 
 function Base.show(io::IO,k::MIME"text/plain",data::Status)
@@ -30,7 +33,7 @@ function status(a)
     workspace(a).status
 end
 
-mutable struct Convergence{T}
+struct Convergence{T}
     current::T
     target::T
     iteration::Int
@@ -61,16 +64,18 @@ function tired(a::Convergence)
     a.iteration >= a.iterations
 end
 
-function start!(a::Convergence,current)
-    a.iteration = 0
-    a.current = current
-    a
+function start(a::Convergence,current)
+    target = a.target
+    iteration = 0
+    iterations = a.iterations
+    Convergence(current,target,iteration,iterations)
 end
 
-function step!(a::Convergence,current)
-    a.iteration += 1
-    a.current = current
-    a
+function step(a::Convergence,current)
+    target = a.target
+    iteration = a.iteration + 1
+    iterations = a.iterations
+    Convergence(current,target,iteration,iterations)
 end
 
 function Base.show(io::IO,k::MIME"text/plain",data::Convergence)
@@ -143,11 +148,12 @@ function LinearAlgebra_lu(x,p;kwargs...)
 end
 
 function update!(P::LinearAlgebra_LU,p)
-    (;verbose,verbosity,timer_output,status,factors) = P.workspace
+    (;factors,verbose,verbosity,timer_output,status) = P.workspace
     A = matrix(p)
     lu!(factors,A)
-    update!(status)
-    P
+    status = update(status)
+    workspace = (;factors,verbose,verbosity,timer_output,status)
+    LinearAlgebra_LU(workspace)
 end
 
 uses_initial_guess(P::LinearAlgebra_LU) = false
@@ -156,10 +162,12 @@ function step!(x,P::LinearAlgebra_LU,b,state=:start;kwargs...)
     if state === :stop
         return nothing
     end
-    (;verbose,verbosity,timer_output,status,factors) = P.workspace
+    (;factors,verbose,verbosity,timer_output,status) = P.workspace
     ldiv!(x,factors,b)
-    step!(status)
+    status = step(status)
     state = :stop
+    workspace = (;factors,verbose,verbosity,timer_output,status)
+    P = LinearAlgebra_LU(workspace)
     x,P,state
 end
 
@@ -187,18 +195,21 @@ function update!(P::JacobiCorrection,p)
     (;Adiag,verbose,verbosity,timer_output,status) = P.workspace
     A = matrix(p)
     dense_diag!(Adiag,A)
-    update!(status)
-    P
+    status = update(status)
+    workspace = (;Adiag,verbose,verbosity,timer_output,status)
+    JacobiCorrection(workspace)
 end
 
 function step!(x,P::JacobiCorrection,b,state=:start;kwargs...)
     if state === :stop
         return nothing
     end
-    (;verbose,verbosity,timer_output,status,Adiag) = P.workspace
+    (;Adiag,verbose,verbosity,timer_output,status) = P.workspace
     diagonal_solve!(x,Adiag,b)
-    step!(status)
+    status = step(status)
     state = :stop
+    workspace = (;Adiag,verbose,verbosity,timer_output,status)
+    P = JacobiCorrection(workspace)
     x,P,state
 end
 
@@ -216,19 +227,22 @@ function identity_solver(
 end
 
 function update!(P::IdentitySolver,p)
-    status = P.workspace.status
-    update!(status)
-    P
+    (;status,verbosity,verbose,timer_output) = P.workspace
+    status = update(status)
+    workspace = (;status,verbosity,verbose,timer_output)
+    IdentitySolver(workspace)
 end
 
 function step!(x,P::IdentitySolver,b,state=:start;kwargs...)
     if state === :stop
         return nothing
     end
-    (;verbose,verbosity,timer_output,status) = P.workspace
+    (;status,verbosity,verbose,timer_output) = P.workspace
     copy!(x,b)
-    step!(status)
+    status = step(status)
     state = :stop
+    workspace = (;status,verbosity,verbose,timer_output)
+    P = IdentitySolver(workspace)
     x,P,state
 end
 
@@ -244,24 +258,21 @@ function richardson(x,A,b;
         verbosity=PS.verbosity(),
         timer_output=TimerOutput()
     )
-    A_ref = Ref(A)
-    P_ref = Ref(P)
     r = similar(b)
     dx = similar(x,axes(A,2))
     status = Status()
     target = 0
     convergence = Convergence(iterations,target)
-    workspace = (;A_ref,r,dx,P_ref,status,convergence,omega,verbose,verbosity,timer_output)
+    workspace = (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output)
     Richardson(workspace)
 end
 
 function update!(S::Richardson,p)
-    (;A_ref,P_ref,verbose,verbosity,timer_output,status,convergence) = S.workspace
-    A = matrix(p)
-    A_ref[] = A
-    update!(P_ref[],p)
-    update!(status)
-    S
+    (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output) = S.workspace
+    P = update!(P,p)
+    status = update(status)
+    workspace = (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output)
+    Richardson(workspace)
 end
 
 function step!(x,S::Richardson,b,phase=:start;kwargs...)
@@ -270,27 +281,27 @@ function step!(x,S::Richardson,b,phase=:start;kwargs...)
         display(S.workspace.convergence)
         return nothing
     end
-    (;verbose,verbosity,timer_output,status,convergence,dx,r,A_ref,P_ref,omega) = S.workspace
+    (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output) = S.workspace
     if phase === :start
         current = convergence.iterations
-        start!(convergence,current)
+        convergence = start(convergence,current)
         print_progress(convergence,verbosity)
         phase = :advance
     end
-    A = A_ref[]
-    P = P_ref[]
     dx .= x
     mul!(r,A,dx)
     r .-= b
     ldiv!(dx,P,r)
     x .-= omega .* dx
     current = convergence.current - 1
-    step!(convergence,current)
-    step!(status)
+    convergence = step(convergence,current)
+    status = step(status)
     print_progress(convergence,verbosity)
     if converged(convergence)
         phase = :stop
     end
+    workspace = (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output)
+    S = Richardson(workspace)
     x,S,phase
 end
 
