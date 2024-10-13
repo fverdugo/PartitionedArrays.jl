@@ -3,6 +3,18 @@ using PartitionedArrays
 using Test
 using SparseMatricesCSR
 
+args = laplacian_fdm((10,10,10))
+A = sparse_matrix(args...)
+display(A)
+
+args = laplacian_fem((10,10,10))
+A = sparse_matrix(args...)
+display(A)
+
+args = linear_elasticity_fem((10,10,10))
+A = sparse_matrix(args...)
+display(A)
+
 function gallery_tests(distribute)
     gallery_tests(distribute,(4,))
     gallery_tests(distribute,(2,2))
