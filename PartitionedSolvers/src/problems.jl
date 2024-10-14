@@ -55,49 +55,62 @@ end
 
 abstract type AbstractNonlinearProblem <: AbstractType end
 
-function nonlinear_problem(rj!,r,j;attributes...)
-    t = linear_problem(j,r;attributes...)
+function nonlinear_problem(rj!,r,j;
+        timer_output=TimerOutput(),
+        attributes...
+    )
+    tangent = linear_problem(j,r;attributes...)
     status = NonlinearProblemStatus()
-    NonlinearProblem(rj!,t,status)
+    workspace = (;rj!,tangent,status,timer_output)
+    NonlinearProblem(workspace)
 end
 
-struct NonlinearProblem{A,B,C} <: AbstractNonlinearProblem
-    update!::A
-    tangent::B
-    status::C
+struct NonlinearProblem{A} <: AbstractNonlinearProblem
+    workspace::A
 end
 
 residual(a::NonlinearProblem) = rhs(tangent(a))
 jacobian(a::NonlinearProblem) = matrix(tangent(a))
-tangent(a::NonlinearProblem) = a.tangent
-status(a::NonlinearProblem) = a.status
+tangent(a::NonlinearProblem) = a.workspace.tangent
+status(a::NonlinearProblem) = a.workspace.status
 
 function update!(p::NonlinearProblem,x;kwargs...)
-    t = tangent(p)
-    r = residual(p)
-    j = jacobian(p)
-    r,j = p.update!(r,j,x)
-    t = LinearProblem(j,r,attributes(t))
-    status = update(p.status)
-    NonlinearProblem(p.update!,t,status)
+    (;rj!,tangent,status,timer_output) = p.workspace
+    @timeit timer_output "nonlinear_problem update!" begin
+        r = rhs(tangent)
+        j = matrix(tangent)
+        r,j = rj!(r,j,x)
+        tangent = LinearProblem(j,r,attributes(tangent))
+        status = update(status)
+        workspace = (;rj!,tangent,status,timer_output)
+        NonlinearProblem(workspace)
+    end
 end
 
 function update_residual!(p::NonlinearProblem,x;kwargs...)
-    t = tangent(p)
-    r = residual(p)
-    r,_ = p.update!(r,nothing,x;kwargs...)
-    t = LinearProblem(matrix(t),r,attributes(t))
-    status = update_residual(p.status)
-    NonlinearProblem(p.update!,t,status)
+    (;rj!,tangent,status,timer_output) = p.workspace
+    @timeit timer_output "nonlinear_problem update_residual!" begin
+        r = rhs(tangent)
+        j = matrix(tangent)
+        r,_ = rj!(r,nothing,x)
+        tangent = LinearProblem(j,r,attributes(tangent))
+        status = update_residual(status)
+        workspace = (;rj!,tangent,status,timer_output)
+        NonlinearProblem(workspace)
+    end
 end
 
 function update_jacobian!(p::NonlinearProblem,x;kwargs...)
-    t = tangent(p)
-    j = jacobian(p)
-    _,j = p.update!(nothing,j,x;kwargs...)
-    t = LinearProblem(j,rhs(t),attributes(t))
-    status = update_jacobian(p.status)
-    NonlinearProblem(p.update!,t,status)
+    (;rj!,tangent,status,timer_output) = p.workspace
+    @timeit timer_output "nonlinear_problem update_jacobian!" begin
+        r = rhs(tangent)
+        j = matrix(tangent)
+        _,j = rj!(nothing,j,x)
+        tangent = LinearProblem(j,r,attributes(tangent))
+        status = update_jacobian(status)
+        workspace = (;rj!,tangent,status,timer_output)
+        NonlinearProblem(workspace)
+    end
 end
 
 ## TODO implement residual, jacobian, tangent

@@ -24,9 +24,9 @@ function step(status::LinearSolverStatus)
 end
 
 function Base.show(io::IO,k::MIME"text/plain",data::LinearSolverStatus)
-    println("Updates since creation: $(data.updates)")
-    println("Solver steps since creation: $(data.steps)")
-    println("Solver steps since last update: $(data.steps_since_update)")
+    println("Linear solver updates since creation: $(data.updates)")
+    println("Linear solver steps since creation: $(data.steps)")
+    println("Linear solver steps since last update: $(data.steps_since_update)")
 end
 
 function status(a)
@@ -351,6 +351,10 @@ struct NewtonRaphson{A} <: AbstractNonlinearSolver
     workspace::A
 end
 
+function linear_solver(a::NewtonRaphson)
+    a.workspace.linear_solver
+end
+
 function newton_raphson(x,p;
         updated=false,
         iterations=1000,
@@ -358,7 +362,7 @@ function newton_raphson(x,p;
         verbose=false,
         verbosity=PS.verbosity(),
         timer_output=TimerOutput(),
-        linear_solver = (dx,t) -> LinearAlgebra_lu(matrix(t);timer_output),
+        linear_solver = LinearAlgebra_lu(jacobian(update!(p,x));timer_output),
     )
     @timeit timer_output "newton_raphson" begin
         if !updated
@@ -366,10 +370,9 @@ function newton_raphson(x,p;
         end
         t = tangent(p)
         dx = similar(rhs(t),axes(matrix(t),2))
-        P = linear_solver(dx,t)
         target = zero(eltype(dx))
         convergence = Convergence(iterations,target)
-        workspace = (;dx,P,verbose,verbosity,timer_output,convergence,reltol_residual)
+        workspace = (;dx,linear_solver,verbose,verbosity,timer_output,convergence,reltol_residual)
         NewtonRaphson(workspace)
     end
 end
@@ -378,7 +381,7 @@ function step!(x,S::NewtonRaphson,p,phase=:start;kwargs...)
     if phase === :stop
         return nothing
     end
-    (;dx,P,verbose,verbosity,timer_output,convergence,reltol_residual) = S.workspace
+    (;dx,linear_solver,verbose,verbosity,timer_output,convergence,reltol_residual) = S.workspace
     @timeit timer_output "newton_raphson step!" begin
         @assert phase in (:start,:stop,:advance)
         if phase === :start
@@ -391,8 +394,8 @@ function step!(x,S::NewtonRaphson,p,phase=:start;kwargs...)
             verbose && print_progress(convergence,verbosity)
         end
         t = tangent(p)
-        P = update!(P,matrix(t))
-        dx,P = solve!(dx,P,rhs(t))
+        linear_solver = update!(linear_solver,matrix(t))
+        dx,linear_solver = solve!(dx,linear_solver,rhs(t))
         x .-= dx
         p = update!(p,x)
         r = residual(p)
@@ -402,7 +405,7 @@ function step!(x,S::NewtonRaphson,p,phase=:start;kwargs...)
         if converged(convergence) || tired(convergence)
             phase = :stop
         end
-        workspace = (;dx,P,verbose,verbosity,timer_output,convergence,reltol_residual)
+        workspace = (;dx,linear_solver,verbose,verbosity,timer_output,convergence,reltol_residual)
         S = NewtonRaphson(workspace)
         x,S,p,phase
     end

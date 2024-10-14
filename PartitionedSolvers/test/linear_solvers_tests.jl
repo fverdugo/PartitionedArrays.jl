@@ -29,6 +29,8 @@ P |> PS.status |> display
 P |> PS.timer_output |> display
 
 
+timer_output = TimerOutput()
+
 r = copy(b)
 j = A
 function rj!(r,j,x)
@@ -36,21 +38,22 @@ function rj!(r,j,x)
     r .-= b
     r,j
 end
-p = PS.nonlinear_problem(rj!,r,j)
+p = PS.nonlinear_problem(rj!,r,j;timer_output)
 
-timer_output = TimerOutput()
 
-linear_solver = (x,t) -> begin
-    indentation = "    "
-    PS.jacobi(x,PS.matrix(t),PS.rhs(t);timer_output,verbose=true,iterations=2,verbosity=PS.verbosity(;indentation))
-end
-
+indentation = "    "
+linear_solver = PS.jacobi(x,A,r;timer_output,verbose=true,iterations=2,verbosity=PS.verbosity(;indentation))
 S = PS.newton_raphson(x,p;verbose=true,iterations=10,timer_output,linear_solver)
 x .= 0
 x,S,p = PS.solve!(x,S,p)
 
 p |> PS.status |> display
+#linear_solver |> PS.status |> display
+# TODO make it mutable?
+PS.linear_solver(S) |> PS.status |> display
 S |> PS.timer_output |> display
+
+# TODO add timer to nonlinear_problem
 
 
 end # module
