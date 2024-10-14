@@ -3,6 +3,7 @@ module LinearSolversTests
 using PartitionedArrays
 import PartitionedSolvers as PS
 using TimerOutputs
+using LinearAlgebra
 
 args = laplacian_fem((10,10,10))
 A = sparse_matrix(args...)
@@ -28,6 +29,28 @@ P |> PS.status |> display
 P |> PS.timer_output |> display
 
 
+r = copy(b)
+j = A
+function rj!(r,j,x)
+    mul!(r,A,x)
+    r .-= b
+    r,j
+end
+p = PS.nonlinear_problem(rj!,r,j)
+
+timer_output = TimerOutput()
+
+linear_solver = (x,t) -> begin
+    indentation = "    "
+    PS.jacobi(x,PS.matrix(t),PS.rhs(t);timer_output,verbose=true,iterations=2,verbosity=PS.verbosity(;indentation))
+end
+
+S = PS.newton_raphson(x,p;verbose=true,iterations=10,timer_output,linear_solver)
+x .= 0
+x,S,p = PS.solve!(x,S,p)
+
+p |> PS.status |> display
+S |> PS.timer_output |> display
 
 
 end # module

@@ -1,29 +1,29 @@
 
-struct Status <: AbstractType
+struct LinearSolverStatus <: AbstractType
     steps::Int
     steps_since_update::Int
     updates::Int
 end
 
-function Status()
-    Status(0,0,0)
+function LinearSolverStatus()
+    LinearSolverStatus(0,0,0)
 end
 
-function update(status::Status)
+function update(status::LinearSolverStatus)
     steps = status.steps
     steps_since_update = 0
     updates = status.updates + 1
-    Status(steps,steps_since_update,updates)
+    LinearSolverStatus(steps,steps_since_update,updates)
 end
 
-function step(status::Status)
+function step(status::LinearSolverStatus)
     steps = status.steps + 1
     steps_since_update = status.steps_since_update + 1
     updates = status.updates
-    Status(steps,steps_since_update,updates)
+    LinearSolverStatus(steps,steps_since_update,updates)
 end
 
-function Base.show(io::IO,k::MIME"text/plain",data::Status)
+function Base.show(io::IO,k::MIME"text/plain",data::LinearSolverStatus)
     println("Updates since creation: $(data.updates)")
     println("Solver steps since creation: $(data.steps)")
     println("Solver steps since last update: $(data.steps_since_update)")
@@ -48,12 +48,7 @@ end
 
 function print_progress(a::Convergence,verbosity)
     s =verbosity.indentation
-    @printf "%s%6i %12.3e %12.3e\n" s a.iteration a.current a.target
-end
-
-function print_progress(a::Convergence{<:Integer},verbosity)
-    s =verbosity.indentation
-    @printf "%s%6i %6i %6i\n" s a.iteration a.current a.target
+    @printf "%s%6i %6i %12.3e %12.3e\n" s a.iteration a.iterations a.current a.target
 end
 
 function converged(a::Convergence)
@@ -98,7 +93,9 @@ function timer_output(a)
     workspace(a).timer_output
 end
 
-function solve!(x,P,f;zero_guess=false)
+abstract type AbstractLinearSolver <: AbstractType end
+
+function solve!(x,P::AbstractLinearSolver,f::AbstractVector;zero_guess=false)
     next = step!(x,P,f;zero_guess)
     while next !== nothing
         x,P,state = next
@@ -106,8 +103,6 @@ function solve!(x,P,f;zero_guess=false)
     end
     x,P
 end
-
-abstract type AbstractLinearSolver <: AbstractType end
 
 function LinearAlgebra.ldiv!(x,P::AbstractLinearSolver,b)
     if uses_initial_guess(x)
@@ -138,7 +133,7 @@ function LinearAlgebra_lu(A;
     )
     @timeit timer_output "LinearAlgebra_lu" begin
         factors = lu(A)
-        status = Status()
+        status = LinearSolverStatus()
         workspace = (;factors,verbose,verbosity,timer_output,status)
         LinearAlgebra_LU(workspace)
     end
@@ -187,7 +182,7 @@ function jacobi_correction(A,b;
         timer_output=TimerOutput())
     @timeit timer_output "jacobi_correction" begin
         Adiag = dense_diag(A)
-        status = Status()
+        status = LinearSolverStatus()
         workspace = (;Adiag,verbose,verbosity,timer_output,status)
         JacobiCorrection(workspace)
     end
@@ -233,7 +228,7 @@ function identity_solver(;
         verbosity=PS.verbosity(),
         timer_output=TimerOutput())
     @timeit timer_output "identity_solver" begin
-        status = Status()
+        status = LinearSolverStatus()
         workspace = (;status,verbosity,verbose,timer_output)
         IdentitySolver(workspace)
     end
@@ -279,7 +274,7 @@ function richardson(x,A,b;
         P = preconditioner
         r = similar(b)
         dx = similar(x,axes(A,2))
-        status = Status()
+        status = LinearSolverStatus()
         target = 0
         convergence = Convergence(iterations,target)
         workspace = (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output)
@@ -297,12 +292,11 @@ function update!(S::Richardson,p)
     end
 end
 
-function step!(x,S::Richardson,b,phase=:start;kwargs...)
+function step!(x,S::Richardson,b,phase=:start;zero_guess=false,kwargs...)
     (;A,r,dx,P,status,convergence,omega,verbose,verbosity,timer_output) = S.workspace
     @timeit timer_output "richardson step!" begin
         @assert phase in (:start,:stop,:advance)
         if phase === :stop
-            verbose && display(convergence)
             return nothing
         end
         if phase === :start
@@ -312,10 +306,14 @@ function step!(x,S::Richardson,b,phase=:start;kwargs...)
             phase = :advance
         end
         dx .= x
-        @timeit timer_output "richardson step! mul!" begin
-            mul!(r,A,dx)
+        if zero_guess
+            r .= .- b
+        else
+            @timeit timer_output "richardson step! mul!" begin
+                mul!(r,A,dx)
+            end
+            r .-= b
         end
-        r .-= b
         @timeit timer_output "richardson step! ldiv!" begin
             ldiv!(dx,P,r)
         end
@@ -333,8 +331,80 @@ function step!(x,S::Richardson,b,phase=:start;kwargs...)
     end
 end
 
-function jacobi(x,A,b;timer_output=TimerOutput(),kwargs...)
+function jacobi(x,A,b;timer_output=TimerOutput(),iterations=10,kwargs...)
     preconditioner = jacobi_correction(A,b;timer_output,kwargs...)
-    richardson(x,A,b;timer_output,preconditioner,kwargs...)
+    richardson(x,A,b;timer_output,preconditioner,iterations,kwargs...)
+end
+
+abstract type AbstractNonlinearSolver <: AbstractType end
+
+function solve!(x,P::AbstractNonlinearSolver,f::AbstractNonlinearProblem;zero_guess=false)
+    next = step!(x,P,f;zero_guess)
+    while next !== nothing
+        x,P,f,state = next
+        next = step!(x,P,f,state)
+    end
+    x,P,f
+end
+
+struct NewtonRaphson{A} <: AbstractNonlinearSolver
+    workspace::A
+end
+
+function newton_raphson(x,p;
+        updated=false,
+        iterations=1000,
+        reltol_residual=1e-12,
+        verbose=false,
+        verbosity=PS.verbosity(),
+        timer_output=TimerOutput(),
+        linear_solver = (dx,t) -> LinearAlgebra_lu(matrix(t);timer_output),
+    )
+    @timeit timer_output "newton_raphson" begin
+        if !updated
+            p = update!(p,x)
+        end
+        t = tangent(p)
+        dx = similar(rhs(t),axes(matrix(t),2))
+        P = linear_solver(dx,t)
+        target = zero(eltype(dx))
+        convergence = Convergence(iterations,target)
+        workspace = (;dx,P,verbose,verbosity,timer_output,convergence,reltol_residual)
+        NewtonRaphson(workspace)
+    end
+end
+
+function step!(x,S::NewtonRaphson,p,phase=:start;kwargs...)
+    if phase === :stop
+        return nothing
+    end
+    (;dx,P,verbose,verbosity,timer_output,convergence,reltol_residual) = S.workspace
+    @timeit timer_output "newton_raphson step!" begin
+        @assert phase in (:start,:stop,:advance)
+        if phase === :start
+            phase = :advance
+            p = update!(p,x)
+            r = residual(p)
+            current = norm(r)
+            target = reltol_residual*current
+            convergence = start(convergence,target)
+            verbose && print_progress(convergence,verbosity)
+        end
+        t = tangent(p)
+        P = update!(P,matrix(t))
+        dx,P = solve!(dx,P,rhs(t))
+        x .-= dx
+        p = update!(p,x)
+        r = residual(p)
+        current = norm(r)
+        convergence = step(convergence,current)
+        verbose && print_progress(convergence,verbosity)
+        if converged(convergence) || tired(convergence)
+            phase = :stop
+        end
+        workspace = (;dx,P,verbose,verbosity,timer_output,convergence,reltol_residual)
+        S = NewtonRaphson(workspace)
+        x,S,p,phase
+    end
 end
 
