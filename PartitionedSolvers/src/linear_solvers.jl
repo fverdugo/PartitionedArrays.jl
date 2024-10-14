@@ -356,7 +356,6 @@ function linear_solver(a::NewtonRaphson)
 end
 
 function newton_raphson(x,p;
-        updated=false,
         iterations=1000,
         reltol_residual=1e-12,
         verbose=false,
@@ -365,9 +364,6 @@ function newton_raphson(x,p;
         linear_solver = LinearAlgebra_lu(jacobian(update!(p,x));timer_output),
     )
     @timeit timer_output "newton_raphson" begin
-        if !updated
-            p = update!(p,x)
-        end
         t = tangent(p)
         dx = similar(rhs(t),axes(matrix(t),2))
         target = zero(eltype(dx))
@@ -410,4 +406,37 @@ function step!(x,S::NewtonRaphson,p,phase=:start;kwargs...)
         x,S,p,phase
     end
 end
+
+#abstract type AbstractODESolver <: AbstractType end
+#
+#struct ForwardEuler{A} <: AbstractODESolver
+#    workspace::A
+#end
+#
+#function forward_euler((u0,v),p)
+#    function problem(t,u0)
+#        function rj!(r,j,u)
+#            v .= (u .- u0) ./ dt
+#            p = update!(p,(u,v))
+#
+#
+#            r,j
+#        end
+#    end
+#
+#
+#end
+#
+#function step!(t,(u0,v),S::ForwardEuler,p,phase=:start;kwargs...)
+#    p = problem(t)
+#    u,S = solve!(u,S,g)
+#
+#
+#    v .= (u .- u0) ./ dt
+#    u0 .= u
+#    S = ForwardEuler(workspace)
+#
+#    t+dt,(u0,v),S,p
+#end
+
 
