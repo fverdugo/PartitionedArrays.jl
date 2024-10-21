@@ -51,6 +51,22 @@ function p_range_tests(distribute)
    periodic = (true,true)
    uniform_partition(rank,np,n,ghost,periodic)
 
+   # uniform Cartesian partition with two layers of ghosts
+   # in the selected directions
+   # pzeros fails, if the partition is not consistent
+   np = (2,2)
+   n = (10,10)
+   ghost = (2,2)
+   uniform_partition(rank,np,n,ghost) |> pzeros
+
+   # uniform Cartesian partition with two layers of ghosts
+   # in the selected directions
+   # pzeros fails, if the partition is not consistent
+   np = (2,2)
+   n = (10,10)
+   periodic = (true,true)
+   uniform_partition(rank,np,n,ghost,periodic) |> pzeros
+
    # Custom linear partition with no ghost
    n_own = map(rank) do rank
        mod(rank,3) + 2

@@ -237,8 +237,8 @@ function Base.fill!(a::SplitVector,v)
 end
 
 function Base.:*(a::Number,b::SplitVector)
-    own_own = a*b.blocks.own
-    ghost_ghost = a*b.blocks.ghost
+    own = a*b.blocks.own
+    ghost = a*b.blocks.ghost
     blocks = split_vector_blocks(own,ghost)
     split_vector(blocks,b.permutation)
 end
@@ -775,6 +775,10 @@ function PVector(::UndefInitializer,index_partition)
     PVector{Vector{Float64}}(undef,index_partition)
 end
 
+function PVector(::UndefInitializer,r::PRange)
+    PVector(undef,partition(r))
+end
+
 """
     PVector{V}(undef,index_partition)
     PVector(undef,index_partition)
@@ -787,6 +791,10 @@ function PVector{V}(::UndefInitializer,index_partition) where V
         allocate_local_values(V,indices)
     end
     PVector(vector_partition,index_partition)
+end
+
+function PVector{V}(::UndefInitializer,r::PRange) where V
+    PVector{V}(undef,partition(r))
 end
 
 function Base.copy!(a::PVector,b::PVector)
@@ -1197,15 +1205,15 @@ function LinearAlgebra.norm(a::PVector,p::Real=2)
     reduce(+,contibs;init=zero(eltype(contibs)))^(1/p)
 end
 
-struct PBroadcasted{A,B,C}
+struct BroadcastedPVector{A,B,C}
     own_values::A
     ghost_values::B
     index_partition::C
 end
-own_values(a::PBroadcasted) = a.own_values
-ghost_values(a::PBroadcasted) = a.ghost_values
+own_values(a::BroadcastedPVector) = a.own_values
+ghost_values(a::BroadcastedPVector) = a.ghost_values
 
-function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
+function Base.broadcasted(f, args::Union{PVector,BroadcastedPVector}...)
     a1 = first(args)
     @boundscheck @assert all(ai->matching_own_indices(PRange(ai.index_partition),PRange(a1.index_partition)),args)
     own_values_in = map(own_values,args)
@@ -1216,31 +1224,31 @@ function Base.broadcasted(f, args::Union{PVector,PBroadcasted}...)
     else
         ghost_values_out = nothing
     end
-    PBroadcasted(own_values_out,ghost_values_out,a1.index_partition)
+    BroadcastedPVector(own_values_out,ghost_values_out,a1.index_partition)
 end
 
-function Base.broadcasted( f, a::Number, b::Union{PVector,PBroadcasted})
+function Base.broadcasted( f, a::Number, b::Union{PVector,BroadcastedPVector})
     own_values_out = map(b->Base.broadcasted(f,a,b),own_values(b))
     if ghost_values(b) !== nothing
         ghost_values_out = map(b->Base.broadcasted(f,a,b),ghost_values(b))
     else
         ghost_values_out = nothing
     end
-    PBroadcasted(own_values_out,ghost_values_out,b.index_partition)
+    BroadcastedPVector(own_values_out,ghost_values_out,b.index_partition)
 end
 
-function Base.broadcasted( f, a::Union{PVector,PBroadcasted}, b::Number)
+function Base.broadcasted( f, a::Union{PVector,BroadcastedPVector}, b::Number)
     own_values_out = map(a->Base.broadcasted(f,a,b),own_values(a))
     if ghost_values(a) !== nothing
         ghost_values_out = map(a->Base.broadcasted(f,a,b),ghost_values(a))
     else
         ghost_values_out = nothing
     end
-    PBroadcasted(own_values_out,ghost_values_out,a.index_partition)
+    BroadcastedPVector(own_values_out,ghost_values_out,a.index_partition)
 end
 
 function Base.broadcasted(f,
-                          a::Union{PVector,PBroadcasted},
+                          a::Union{PVector,BroadcastedPVector},
                           b::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}})
     Base.broadcasted(f,a,Base.materialize(b))
 end
@@ -1248,11 +1256,11 @@ end
 function Base.broadcasted(
     f,
     a::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}},
-    b::Union{PVector,PBroadcasted})
+    b::Union{PVector,BroadcastedPVector})
     Base.broadcasted(f,Base.materialize(a),b)
  end
 
-function Base.materialize(b::PBroadcasted)
+function Base.materialize(b::BroadcastedPVector)
     own_values_out = map(Base.materialize,b.own_values)
     T = eltype(eltype(own_values_out))
     a = PVector{Vector{T}}(undef,b.index_partition)
@@ -1260,7 +1268,7 @@ function Base.materialize(b::PBroadcasted)
     a
 end
 
-function Base.materialize!(a::PVector,b::PBroadcasted)
+function Base.materialize!(a::PVector,b::BroadcastedPVector)
     map(Base.materialize!,own_values(a),own_values(b))
     if b.ghost_values !== nothing && a.index_partition === b.index_partition
         map(Base.materialize!,ghost_values(a),ghost_values(b))
@@ -1271,38 +1279,43 @@ end
 for M in Distances.metrics
     @eval begin
         function (d::$M)(a::PVector,b::PVector)
-            if Distances.parameters(d) !== nothing
-                error("Only distances without parameters are implemented at this moment")
-            end
-            partials = map(own_values(a),own_values(b)) do a,b
-                @boundscheck if length(a) != length(b)
-                    throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
-                end
-                if length(a) == 0
-                    return zero(Distances.result_type(d, a, b))
-                end
-                @inbounds begin
-                    s = Distances.eval_start(d, a, b)
-                    if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
-                        @simd for I in eachindex(a, b)
-                            ai = a[I]
-                            bi = b[I]
-                            s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
-                        end
-                    else
-                        for (ai, bi) in zip(a, b)
-                            s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
-                        end
-                    end
-                    return s
-                end
-            end
-            s = reduce((i,j)->Distances.eval_reduce(d,i,j),
-                       partials,
-                       init=Distances.eval_start(d, a, b))
+            s = distance_eval_body(d,a,b)
             Distances.eval_end(d,s)
         end
     end
+end
+
+function distance_eval_body(d,a::PVector,b::PVector)
+    if Distances.parameters(d) !== nothing
+        error("Only distances without parameters are implemented at this moment")
+    end
+    partials = map(own_values(a),own_values(b)) do a,b
+        @boundscheck if length(a) != length(b)
+            throw(DimensionMismatch("first array has length $(length(a)) which does not match the length of the second, $(length(b))."))
+        end
+        if length(a) == 0
+            return zero(Distances.result_type(d, a, b))
+        end
+        @inbounds begin
+            s = Distances.eval_start(d, a, b)
+            if (IndexStyle(a, b) === IndexLinear() && eachindex(a) == eachindex(b)) || axes(a) == axes(b)
+                for I in eachindex(a, b)
+                    ai = a[I]
+                    bi = b[I]
+                    s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+                end
+            else
+                for (ai, bi) in zip(a, b)
+                    s = Distances.eval_reduce(d, s, Distances.eval_op(d, ai, bi))
+                end
+            end
+            return s
+        end
+    end
+    s = reduce((i,j)->Distances.eval_reduce(d,i,j),
+               partials,
+               init=Distances.eval_start(d, a, b))
+    s
 end
 
 # New stuff
@@ -1499,13 +1512,14 @@ function renumber(a::PVector;kwargs...)
     renumber(a,row_partition_2;kwargs...)
 end
 
-function renumber(a::PVector,row_partition_2;renumber_local_indices=true)
-    # TODO storing the vector in split format would help to return a view
-    # of the input
-    if renumber_local_indices
-        values = map(vcat,own_values(a),ghost_values(a))
+function renumber(a::PVector,row_partition_2;renumber_local_indices=Val(true))
+    if val_parameter(renumber_local_indices)
+        perms = map(row_partition_2) do myrows
+            Int32(1):Int32(local_length(myrows))
+        end
+        values = map(split_vector,own_values(a),ghost_values(a),perms)
     else
-        values = map(copy,local_values(a))
+        values = local_values(a)
     end
     PVector(values,row_partition_2)
 end
