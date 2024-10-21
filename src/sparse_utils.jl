@@ -680,13 +680,13 @@ function spmv_csc!(b,x,colptr_A,rowval_A,nzval_A)
     b
 end
 
-function expand_sparse_matrix_columns(A::SparseMatrixCSR{Bi,Ti,Tv}, n) where {Bi,Tv,Ti}
+function expand_sparse_matrix_columns(A::SparseMatrixCSR{Bi,Tv,Ti}, n) where {Bi,Tv,Ti}
     p,q = size(A)
     @assert n >= q
-    SparseMatrixCSR{Bi,Ti,Tv}(p,n,A.rowptr,A.colval,A.nzval)
+    SparseMatrixCSR{Bi,Tv,Ti}(p,n,A.rowptr,A.colval,A.nzval)
 end
 
-function expand_sparse_matrix_columns(A::SparseMatrixCSC{Ti,Tv}, n) where {Tv,Ti}
+function expand_sparse_matrix_columns(A::SparseMatrixCSC{Tv,Ti}, n) where {Tv,Ti}
     p,q = size(A)
     @assert n >= q
     new_colptr = similar(A.colptr,n+1)
@@ -695,5 +695,5 @@ function expand_sparse_matrix_columns(A::SparseMatrixCSC{Ti,Tv}, n) where {Tv,Ti
     foreach(q+1:n+1) do i
         new_colptr[i] = last_index
     end
-    SparseMatrixCSC{Ti,Tv}(p,n,new_colptr,A.rowval,A.nzval)
+    SparseMatrixCSC{Tv,Ti}(p,n,new_colptr,A.rowval,A.nzval)
 end
