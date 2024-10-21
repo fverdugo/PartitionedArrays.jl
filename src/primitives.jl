@@ -96,6 +96,26 @@ function tuple_of_arrays(a)
     take(a,eltype(a))
 end
 
+"""
+    array_of_tuples(a)
+"""
+function array_of_tuples(a)
+    map(a...) do b...
+        b
+    end
+end
+
+function permute_nesting(a::AbstractArray{<:AbstractArray})
+    s = size(a)
+    map(a...) do b...
+        reshape(collect(b),s)
+    end
+end
+
+function permute_nesting(a::Tuple{Vararg{<:AbstractArray}})
+    array_of_tuples(a)
+end
+
 # We don't need a real task since MPI already is able to do
 # fake_asynchronous (nonblocking) operations.
 # We want to avoid heap allocations of standard tasks.
