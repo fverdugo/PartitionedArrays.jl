@@ -1733,16 +1733,13 @@ function psparse_consistent_impl(A::PSparseMatrix{V,B,C,D,Tv} where {V,B,C,D},
         map_global_to_ghost!(I_rcv_ghost,rows_co)
         map_global_to_own!(J_rcv_own,cols_co)
         map_global_to_ghost!(J_rcv_ghost,cols_co)
-        I2,J2,V2 = findnz(A.blocks.own_ghost)
-        map_ghost_to_global!(J2,cols_fa)
-        map_global_to_ghost!(J2,cols_co)
-        n_own_rows = own_length(rows_co)
         n_ghost_rows = ghost_length(rows_co)
         n_own_cols = own_length(cols_co)
         n_ghost_cols = ghost_length(cols_co)
         TA = typeof(A.blocks.ghost_own)
         own_own = A.blocks.own_own
-        own_ghost = compresscoo(TA,I2,J2,V2,n_own_rows,n_ghost_cols) # TODO this can be improved
+        # New own_ghost shares as much memory with existing own_ghost block as possible. Extent depends on sparse format in use.
+        own_ghost = expand_sparse_matrix_columns(A.blocks.own_ghost,n_ghost_cols) 
         ghost_own = compresscoo(TA,I_rcv_own,J_rcv_own,V_rcv_own,n_ghost_rows,n_own_cols)
         ghost_ghost = compresscoo(TA,I_rcv_ghost,J_rcv_ghost,V_rcv_ghost,n_ghost_rows,n_ghost_cols)
         K_own = precompute_nzindex(ghost_own,I_rcv_own,J_rcv_own)
@@ -1767,7 +1764,8 @@ function psparse_consistent_impl(A::PSparseMatrix{V,B,C,D,Tv} where {V,B,C,D},
         cols_fa = partition(axes(A,2))
         # snd and rcv are swapped on purpose
         parts_rcv,parts_snd = assembly_neighbors(rows_co)
-        lids_rcv,lids_snd = assembly_local_indices(rows_co)
+        # assembly_neighbors is called again in assembly_local_indices?
+        lids_rcv,lids_snd = assembly_local_indices(rows_co,parts_rcv,parts_snd)
         cache_snd = map(consistent_setup_snd,partition(A),parts_snd,lids_snd,rows_co,cols_fa)
         I_snd = map(i->i.I_snd,cache_snd)
         J_snd = map(i->i.J_snd,cache_snd)
@@ -2021,6 +2019,19 @@ function sparse_diag_matrix(d::PVector,shape)
     psparse(I,J,V,row_partition,col_partition;assembled=true) |> fetch
 end
 
+# Version of sparse_diag_matrix for preserving local matrix type T (when default CSC is not wanted)
+function sparse_diag_matrix(::Type{T},d::PVector,shape) where T
+    row_partition,col_partition = map(partition,shape)
+    function setup(own_d,rows,cols)
+        I = own_to_global(rows) |> collect
+        J = own_to_global(cols) |> collect
+        V = own_d
+        I,J,V
+    end
+    I,J,V = map(setup,own_values(d),row_partition,col_partition) |> tuple_of_arrays
+    psparse(T,I,J,V,row_partition,col_partition;assembled=true) |> fetch
+end
+
 function rap(R,A,P;reuse=Val(false))
     Ac = R*A*P
     if val_parameter(reuse)
@@ -2126,6 +2137,15 @@ function Base.:-(I::LinearAlgebra.UniformScaling,A::PSparseMatrix)
     D-A
 end
 
+# Version of I-A for preserving local matrix type T (when default CSC is not wanted)
+function Base.:-(T,I::LinearAlgebra.UniformScaling,A::PSparseMatrix)
+    Tv = eltype(A)
+    row_partition = partition(axes(A,1))
+    d = pones(Tv,row_partition)
+    D = PartitionedArrays.sparse_diag_matrix(T,d,axes(A))
+    D-A
+end
+
 Base.similar(a::PSparseMatrix) = similar(a,eltype(a))
 function Base.similar(a::PSparseMatrix,::Type{T}) where T
     matrix_partition = map(partition(a)) do values
@@ -2212,7 +2232,7 @@ function repartition(A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     end
 end
 
-function repartition(sparse,A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
+function repartition(::Type{T},A::PSparseMatrix,new_rows,new_cols;reuse=Val(false)) where T
     @assert A.assembled "repartition on a sub-assembled matrix not implemented yet"
     function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
         I1,J1,V1 = findnz(A_own_own)
@@ -2232,7 +2252,7 @@ function repartition(sparse,A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     A_cols = partition(axes(A,2))
     I,J,V = map(prepare_triplets,A_own_own,A_own_ghost,A_rows,A_cols) |> tuple_of_arrays
     # TODO this one does not preserve the local storage layout of A
-    t = psparse(sparse,I,J,V,new_rows,new_cols;reuse=true)
+    t = psparse(T,I,J,V,new_rows,new_cols;reuse=true)
     @fake_async begin
         B,cacheB = fetch(t)
         if val_parameter(reuse) == false
@@ -2314,12 +2334,12 @@ function centralize(A::PSparseMatrix)
     own_own_values(a_in_main) |> multicast |> getany
 end
 
-function centralize(sparse,A::PSparseMatrix)
+function centralize(::Type{T},A::PSparseMatrix) where T
     m,n = size(A)
     ranks = linear_indices(partition(A))
     rows_trivial = trivial_partition(ranks,m)
     cols_trivial = trivial_partition(ranks,n)
-    a_in_main = repartition(sparse,A,rows_trivial,cols_trivial) |> fetch
+    a_in_main = repartition(T,A,rows_trivial,cols_trivial) |> fetch
     own_own_values(a_in_main) |> multicast |> getany
 end
 

@@ -553,4 +553,166 @@ function nullspace_linear_elasticity!(B,x)
 end
 
 
+function prolongator(T,
+                     nodes_per_dir,
+                     parts_per_dir,
+                     parts;
+                     index_type::Type{Ti} = Int64,
+                     value_type::Type{Tv} = Float64) where {Ti,Tv}
+    # Improved version of aggregate function not using inefficient direct JaggedRange indexing causing many view allocations
+    # Also uses a generic function to obtain pointer arrays and index arrays to work with both CSC and CSR.
+    # If the problem is symmetric neighbours dont change by this.
+    function aggregate(A,diagA=dense_diag(A);epsilon=0)
+        # This one is algorithm 5.1 from
+        # "Algebraic multigrid by smoothed aggregation for second and fourth order elliptic problems"
+        epsi = epsilon
+        typeof_strength = eltype(A.nzval)
+
+        nnodes = size(A,1)
+        pending = Ti(0)
+        isolated = Ti(-1)
+        
+        node_to_aggregate = fill(pending,nnodes)
+        node_to_old_aggregate = similar(node_to_aggregate)
+
+        node_to_neigs = jagged_array(index_array(A),pointer_array(A))
+        neigs = node_to_neigs.data
+        node_to_vals = jagged_array(A.nzval,pointer_array(A))
+        vals = node_to_vals.data
+        strongly_connected = (node,ineig) -> begin
+            neig = neigs[ineig]
+            aii = diagA[node]
+            ajj = diagA[neig]
+            aij = vals[ineig]
+            abs(aij) > epsi*sqrt(aii*ajj)
+        end
+        coupling_strength = (node,ineig) -> begin
+            abs(vals[ineig])
+        end
+
+        # Initialization
+        for node in 1:nnodes
+            neig_range = jagged_range(node_to_neigs,node)
+            isolated_node = count(i->neigs[i]!=node,neig_range) == 0
+            if isolated_node
+                node_to_aggregate[node] = isolated
+            end
+        end
+        # Step 1
+        aggregate = Ti(0)
+        for node in 1:nnodes
+            if node_to_aggregate[node] != pending
+                continue
+            end
+            neig_range = jagged_range(node_to_neigs,node)
+            all_pending = true
+            for ineig in neig_range
+                neig = neigs[ineig]
+                if neig == node || !strongly_connected(node,ineig)
+                    continue
+                end
+                all_pending &= (node_to_aggregate[neig] == pending)
+            end
+            if !all_pending
+                continue
+            end
+            aggregate += Ti(1)
+            node_to_aggregate[node] = aggregate
+            for ineig in neig_range
+                neig = neigs[ineig]
+                if neig == node || !strongly_connected(node,ineig)
+                    continue
+                end
+                node_to_aggregate[neig] = aggregate
+            end
+        end
+        # Step 2
+        copy!(node_to_old_aggregate,node_to_aggregate)
+        for node in 1:nnodes
+            if node_to_aggregate[node] != pending
+                continue
+            end
+            strength = zero(typeof_strength)
+            neig_range = jagged_range(node_to_neigs, node)
+            for ineig in neig_range
+                neig = neigs[ineig]
+                if neig == node || !strongly_connected(node,ineig)
+                    continue
+                end
+                neig_aggregate = node_to_old_aggregate[neig]
+                if neig_aggregate != pending && neig_aggregate != isolated
+                    neig_strength = coupling_strength(node,ineig)
+                    if neig_strength > strength
+                        strength = neig_strength
+                        node_to_aggregate[node] = neig_aggregate
+                    end
+                end
+            end
+        end
+
+        # Step 3
+        for node in 1:nnodes
+            if node_to_aggregate[node] != pending
+                continue
+            end
+            aggregate += Ti(1)
+            node_to_aggregate[node] = aggregate
+            # neigs = node_to_neigs[node]
+            neig_range = jagged_range(node_to_neigs, node)
+            for ineig in neig_range
+                neig = neigs[ineig]
+                if neig == node || !strongly_connected(node,ineig)
+                    continue
+                end
+                neig_aggregate = node_to_old_aggregate[neig]
+                if neig_aggregate == pending || neig_aggregate == isolated
+                    node_to_aggregate[neig] = aggregate
+                end
+            end
+        end
+        naggregates = aggregate
+
+        if nnodes == 1
+            node_to_aggregate .= 1
+            naggregates = 1
+        end
+        node_to_aggregate, 1:naggregates
+    end
+
+    function aggregate(A::PSparseMatrix,diagA=dense_diag(A);kwargs...)
+        # This is the vanilla "uncoupled" strategy from "Parallel Smoothed Aggregation Multigrid : Aggregation Strategies on Massively Parallel Machines"
+        # TODO: implement other more advanced strategies
+        @assert A.assembled
+        node_to_aggregate_data, local_ranges = map((A,diagA)->aggregate(A,diagA;kwargs...),own_own_values(A),own_values(diagA)) |> tuple_of_arrays
+        nown = map(length,local_ranges)
+        n_aggregates = sum(nown)
+        nparts = length(nown)
+        aggregate_partition = variable_partition(nown,n_aggregates)
+        node_partition = partition(axes(A,1))
+        map(map_own_to_global!,node_to_aggregate_data,aggregate_partition)
+        node_to_aggregate = PVector(node_to_aggregate_data,node_partition)
+        node_to_aggregate, PRange(aggregate_partition)
+    end
+
+    function constant_prolongator(T,node_to_aggregate::PVector,aggregates::PRange,n_nullspace_vecs)
+        if n_nullspace_vecs != 1
+            error("case not implemented yet")
+        end
+        function setup_triplets(node_to_aggregate,nodes)
+            myI = UnitRange{Ti}(1:local_length(nodes))
+            myJ = node_to_aggregate
+            myV = ones(length(node_to_aggregate))
+            (myI,myJ,myV)
+        end
+        node_partition = partition(axes(node_to_aggregate,1))
+        I,J,V = map(setup_triplets,partition(node_to_aggregate),node_partition) |> tuple_of_arrays
+        aggregate_partition = partition(aggregates)
+        J_owner = find_owner(aggregate_partition,J)
+        aggregate_partition = map(union_ghost,aggregate_partition,J,J_owner)
+        map(map_global_to_local!,J,aggregate_partition)
+        P0 = psparse(T,I,J,V,node_partition,aggregate_partition;assembled=true,indices=:local) |> fetch
+        P0
+    end
+end
+
 
