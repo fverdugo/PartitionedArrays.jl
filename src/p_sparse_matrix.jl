@@ -2264,7 +2264,7 @@ function repartition(::Type{T},A::PSparseMatrix,new_rows,new_cols;reuse=Val(fals
     end
 end
 
-function repartition(sparse,A::PSparseMatrix,new_rows,new_cols;reuse=Val(false)) where T
+function repartition(sparse,A::PSparseMatrix,new_rows,new_cols;reuse=Val(false))
     @assert A.assembled "repartition on a sub-assembled matrix not implemented yet"
     function prepare_triplets(A_own_own,A_own_ghost,A_rows,A_cols)
         I1,J1,V1 = findnz(A_own_own)
@@ -2374,7 +2374,7 @@ function centralize(::Type{T},A::PSparseMatrix) where T
     own_own_values(a_in_main) |> multicast |> getany
 end
 
-function centralize(sparse,A::PSparseMatrix) where T
+function centralize(sparse,A::PSparseMatrix)
     m,n = size(A)
     ranks = linear_indices(partition(A))
     rows_trivial = trivial_partition(ranks,m)
