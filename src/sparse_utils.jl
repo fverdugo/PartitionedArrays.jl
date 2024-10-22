@@ -743,24 +743,25 @@ function expand_sparse_matrix_columns(A::SparseMatrixCSC{Tv,Ti}, n) where {Tv,Ti
     SparseMatrixCSC{Tv,Ti}(p,n,new_colptr,A.rowval,A.nzval)
 end
 
+# Currently not implemented by the SparseMatricesCSR module
 function Base.similar(A::SparseMatrixCSR{Bi}, m::Integer, n::Integer) where Bi
     SparseMatrixCSR{1}(m, n, ones(eltype(A.rowptr), m+1), eltype(A.colval)[], eltype(A.nzval)[])
 end
 
+# Currently not implemented by the SparseMatricesCSR module
 function Base.similar(A::SparseMatrixCSR{Bi}) where Bi
     SparseMatrixCSR{Bi}(size(A)..., copy(A.rowptr), copy(colvals(A)), similar(nonzeros(A)))
 end
 
-function Base.copy(A::SparseMatrixCSR{Bi}) where Bi
-    SparseMatrixCSR{Bi}(size(A)..., copy(A.rowptr), copy(colvals(A)), copy(nonzeros(A)))
-end
+# This method is implemented also by SparseMatricesCSR, but related methods aren't.
+# function Base.copy(A::SparseMatrixCSR{Bi}) where Bi
+#     SparseMatrixCSR{Bi}(size(A)..., copy(A.rowptr), copy(colvals(A)), copy(nonzeros(A)))
+# end
 
-function Base.copy(At::Transpose{Tv,SparseMatrixCSR{Bi,Tv,Ti}}) where {Bi,Tv,Ti}
-    A = At.parent
-    p,q = size(A)
-    Acsc = ascsc(A)
-    Acsc_T = copy(transpose(Acsc)) # materialize SparseMAtrixCSC transpose
-    SparseMatrixCSR{Bi}(q, p, Acsc_T.colptr, rowvals(Acsc_T), nonzeros(Acsc_T))
+# Currently not implemented by the SparseMatricesCSR module
+function Base.copy(At::Transpose{Tv,SparseMatrixCSR{Bi,Tv,Ti}} where {Bi,Tv,Ti})
+    Acsc_T = copy(transpose(ascsc(At.parent))) # materialize SparseMatrixCSC transpose
+    ascsr(Acsc_T)
 end
 
 function SparseMatricesCSR.sparsecsr(A::SparseMatrixCSC)
