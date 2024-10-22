@@ -2142,7 +2142,7 @@ function Base.:-(T,I::LinearAlgebra.UniformScaling,A::PSparseMatrix)
     Tv = eltype(A)
     row_partition = partition(axes(A,1))
     d = pones(Tv,row_partition)
-    D = PartitionedArrays.sparse_diag_matrix(T,d,axes(A))
+    D = sparse_diag_matrix(T,d,axes(A))
     D-A
 end
 
