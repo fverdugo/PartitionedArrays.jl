@@ -1,4 +1,377 @@
 
+abstract type AbstractProblem <: AbstractType end
+abstract type AbstractSolver <: AbstractType end
+abstract type AbstractAge <: AbstractType end
+
+#function update(;kwargs...)
+#    function update_it(p)
+#        update(p;kwargs...)
+#    end
+#end
+#
+#function update(s::AbstractSolver)
+#    function update_solver(p)
+#        update(s,p)
+#    end
+#end
+#
+#function update(p::AbstractProblem;kwargs...)
+#    function update_problem(args...)
+#        update(p,args...;kwargs...)
+#    end
+#end
+
+function solve(solver)
+    next = step(solver)
+    while next !== nothing
+        solver,state =  next
+        next = step(solver,state)
+    end
+    solver
+end
+
+function history(solver)
+    History(solver)
+end
+
+struct History{A}
+    solver::A
+end
+
+function Base.iterate(a::History)
+    next = step(a.solver)
+    if next === nothing
+        return nothing
+    end
+    solution(problem(a.solver)), next
+end
+
+function Base.iterate(a::History,next)
+    s,state = next
+    next = step(s,state)
+    if next === nothing
+        return nothing
+    end
+    solution(problem(s)), next
+end
+
+workspace(a) = a.workspace
+solution(a) = a.solution
+jacobian(a) = a.jacobian
+residual(a) = a.residual
+attributes(a) = a.attributes
+problem(a) = a.problem
+age(a) = a.age
+matrix(a) = a.matrix
+rhs(a) = a.rhs
+uses_initial_guess(a) = val_parameter(a.uses_initial_guess)
+constant_jacobian(a) = val_parameter(a.constant_jacobian)
+
+solution(a::AbstractProblem) = solution(workspace(a))
+jacobian(a::AbstractProblem) = jacobian(workspace(a))
+residual(a::AbstractProblem) = residual(workspace(a))
+age(a::AbstractProblem) = age(workspace(a))
+matrix(a::AbstractProblem) = matrix(workspace(a))
+rhs(a::AbstractProblem) = rhs(workspace(a))
+problem(a::AbstractSolver) = problem(workspace(a))
+
+abstract type AbstractLinearProblem <: AbstractProblem end
+
+struct LinearProblemAge <: AbstractAge
+    solution::Int
+    matrix::Int
+    rhs::Int
+end
+
+function linear_problem_age()
+    LinearProblemAge(1,1,1)
+end
+
+function increment(a::LinearProblemAge;solution=0,matrix=0,rhs=0)
+    LinearProblemAge(
+                          a.solution + solution,
+                          a.matrix + matrix,
+                          a.rhs + rhs,
+                         )
+end
+
+function linear_problem(solution,matrix,rhs;attributes...)
+    age = linear_problem_age()
+    workspace = (;solution,matrix,rhs,age)
+    LinearProblem(workspace,attributes)
+end
+
+struct LinearProblem{A,B} <: AbstractLinearProblem
+    workspace::A
+    attributes::B
+end
+
+function update(p::LinearProblem;kwargs...)
+    a = age(p)
+    if haskey(kwargs,:matrix)
+        A = kwargs.matrix
+        a = increment(a,matrix=1)
+    else
+        A = matrix(p)
+    end
+    if haskey(kwargs,:rhs)
+        b = kwargs.rhs
+        a = increment(a,rhs=1)
+    else
+        b = rhs(p)
+    end
+    if haskey(kwargs,:solution)
+        x = kwargs.solution
+        a = increment(a,solution=1)
+    else
+        x = solution(p)
+    end
+    attrs = attributes(p)
+    workspace = (;matrix=A,rhs=b,solution=x,attributes=attrs,age=a)
+    LinearProblem(workspace)
+end
+
+abstract type AbstractLinearSolver <: AbstractSolver end
+
+function LinearAlgebra.ldiv!(x,solver::AbstractLinearSolver,b)
+    if uses_initial_guess(attributes(solver))
+        fill!(x,zero(eltype(x)))
+    end
+    smooth!(x,solver,b;zero_guess=true)
+    x
+end
+
+function smooth!(x,s::AbstractLinearSolver,b;kwargs...)
+    p = problem(s)
+    p = update(p;solution=x,rhs=b)
+    s = update(s,p)
+    s = solve(s)
+    x = solution(s)
+end
+
+function linear_solver(update,step,workspace;
+        uses_initial_guess = Val(true),
+    )
+    attributes = (;uses_initial_guess)
+    matrix_age = age(matrix(problem(workspace)))
+    LinearSolver(update,step,workspace,attributes,matrix_age)
+end
+
+struct LinearSolver <: AbstractLinearSolver
+    update::A
+    step::B
+    workspace::C
+    attributes::D
+    matrix_age::Int
+end
+
+function update(s::LinearSolver,p::AbstractLinearProblem)
+    matrix_age = s.matrix_age
+    if matrix_age != matrix(age(p))
+        workspace = s.update(s.workspace,matrix(p))
+        matrix_age = matrix(age(p))
+    end
+    LinearSolver(s.update,s.step,workspace,matrix_age)
+end
+
+function step(s::LinearSolver)
+    next = s.step(s.workspace)
+    if next === nothing
+        return nothing
+    end
+    workspace, state = next
+    LinearSolver(s.update,s.step,workspace,s.matrix_age), state
+end
+
+function step(s::LinearSolver,state)
+    next = s.step(s.workspace,state)
+    if next === nothing
+        return nothing
+    end
+    workspace, state = next
+    LinearSolver(s.update,s.step,workspace,s.matrix_age), state
+end
+
+abstract type AbstractNonlinearProblem <: AbstractProblem end
+
+#function update(p::AbstractNonlinearProblem;kwargs...)
+#    function update_nonlinear_problem(x)
+#        update(p,x;kwargs...)
+#    end
+#end
+
+struct NonlinearProblemAge <: AbstractAge
+    solution::Int
+    residual::Int
+    jacobian::Int
+end
+
+function nonlinear_problem_age()
+    NonlinearProblemAge(0,0,0)
+end
+
+function increment(a::NonlinearProblemAge;solution=0,residual=0,jacobian=0)
+    NonlinearProblemAge(
+                          a.solution + solution,
+                          a.residual + residual,
+                          a.jacobian + jacobian,
+                         )
+end
+
+function nonlinear_problem(update,workspace;attributes...)
+    NonlinearProblem(update,workspace,attributes)
+end
+
+struct NonlinearProblem{A,B,C} <: AbstractNonlinearProblem
+    update::A
+    workspace::B
+    attributes::C
+end
+
+function update(p::NonlinearProblem,x;kwargs...)
+    workspace = p.update(p.workspace,x;kwargs...)
+    NonlinearProblem(p.update,workspace)
+end
+
+abstract type AbstractNonlinearSolver <: AbstractType end
+
+workspace(a::AbstractNonlinearProblem) = a.workspace
+
+struct NonlinearSolver{A,B,C,D,E} <: AbstractNonlinearSolver
+    step::B
+    update::C
+    workspace::D
+    attributes::E
+end
+
+function update(s::NonlinearSolver,p::AbstractNonlinearProblem)
+    workspace = s.update(s.workspace,p)
+    NonlinearSolver(s.step,s.update,workspace,s.attributes)
+end
+
+function step(s::NonlinearSolver)
+    next = s.step(s.workspace)
+    if next === nothing
+        return nothing
+    end
+    workspace, state = next
+    NonlinearSolver(s.update,s.step,workspace,s.attributes), state
+end
+
+function step(s::NonlinearSolver,state)
+    next = s.step(s.workspace,state)
+    if next === nothing
+        return nothing
+    end
+    workspace, state = next
+    NonlinearSolver(s.update,s.step,workspace,s.attributes), state
+end
+
+abstract type AbstractODEProblem <: AbstractProblem end
+
+#function update(p::AbstractODEProblem;kwargs...)
+#    function update_ode_problem(x)
+#        update(p,x;kwargs...)
+#    end
+#end
+
+struct ODEProblemAge <: AbstractAge
+    solution::Int
+    residual::Int
+    jacobian::Int
+end
+
+function ode_problem_age()
+    ODEProblemAge(0,0,0)
+end
+
+function increment(a::ODEProblemAge;solution=0,residual=0,jacobian=0)
+    ODEProblemAge(
+                          a.solution + solution,
+                          a.residual + residual,
+                          a.jacobian + jacobian,
+                         )
+end
+
+function ode_problem(update,workspace;constant_jacobian=Val(false))
+    attributes = (;constant_jacobian)
+    ODEProblem(update,workspace,attributes)
+end
+
+struct ODEProblem{A,B,C} <: AbstractODEProblem
+    update::A
+    workspace::B
+    attributes::C
+end
+
+function update(p::ODEProblem,x;kwargs...)
+    workspace = p.update(p.workspace,x;kwargs...)
+    ODEProblem(p.update,workspace)
+end
+
+abstract type AbstractODESolver <: AbstractType end
+
+workspace(a::AbstractODEProblem) = a.workspace
+
+struct ODESolver{A,B,C,D,E} <: AbstractODESolver
+    step::B
+    update::C
+    workspace::D
+    attributes::E
+end
+
+function update(s::ODESolver,p::AbstractODEProblem)
+    workspace = s.update(s.workspace,p)
+    ODESolver(s.step,s.update,workspace,s.attributes)
+end
+
+function step(s::ODESolver)
+    next = s.step(s.workspace)
+    if next === nothing
+        return nothing
+    end
+    workspace, state = next
+    ODESolver(s.update,s.step,workspace,s.attributes), state
+end
+
+function step(s::ODESolver,state)
+    next = s.step(s.workspace,state)
+    if next === nothing
+        return nothing
+    end
+    workspace, state = next
+    ODESolver(s.update,s.step,workspace,s.attributes), state
+end
+
+
+
+
+
+
+
+
+
+
+function be(ode)
+    t = first(interval(ode))
+    w = workspace(ode)
+    p = NonlinearProblem(w) do w,u
+        x = (t,u,v)
+        w = x |> update(ode,(1,1/d)) |> workspace
+        w
+    end
+end
+
+
+
+
+
+
+
+
+
+
+
 function linear_problem(args...;nullspace=nothing,block_size=1)
     attributes = (;nullspace,block_size)
     LinearProblem(args...,attributes)
