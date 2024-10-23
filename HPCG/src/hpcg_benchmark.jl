@@ -1,11 +1,5 @@
-include("ref_cg.jl")
-include("opt_cg.jl")
-include("report_results.jl")
-include("opt_mg_preconditioner.jl")
-include("ref_mg_preconditioner.jl")
-
 """
-	hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60) -> output to file
+	hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_type = "txt", output_folder = "results") -> output to file
 
 	High performance congjugate gradient benchmark. 
 
@@ -22,6 +16,8 @@ include("ref_mg_preconditioner.jl")
 	- `ny`: points in the y direction for each process.
 	- `nz`: points in the z direction for each process.
 	- `total_runtime`: desired total runtime (official time requirement is 1800).
+	- `output_type`: output results to txt or json.
+	- `output_folder`: location of output.
 
 	# Output
 
@@ -75,7 +71,7 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 		end
 	end
 
-	# all reduce for worst time
+	# All reduce for worst time
 	r = reduction(max, map(rank -> opt_worst_time, ranks); destination = :all)
 	map(r) do r
 		opt_worst_time = r
@@ -104,7 +100,7 @@ function hpcg_benchmark(distribute, np, nx, ny, nz; total_runtime = 60, output_t
 end
 
 """
-	hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60) -> output to file
+	hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60, output_type = "txt", output_folder = "results") -> output to file
 
 	Run the benchmark using MPI.
 
@@ -115,6 +111,8 @@ end
 	- `ny`: points in the y direction for each process
 	- `nz`: points in the z direction for each process
 	- `total_runtime`: desired total runtime (official requirement is 1800)
+	- `output_type`: output results to txt or json.
+	- `output_folder`: location of output.
 
 	# Output
 
@@ -127,7 +125,7 @@ function hpcg_benchmark_mpi(np, nx, ny, nz; total_runtime = 60, output_type = "t
 end
 
 """
-	hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60) -> output to file
+	hpcg_benchmark_debug(np, nx, ny, nz; total_runtime = 60, output_type = "txt", output_folder = "results") -> output to file
 
 	Run the benchmark using debug array.
 
@@ -138,6 +136,8 @@ end
 	- `ny`: points in the y direction for each process
 	- `nz`: points in the z direction for each process
 	- `total_runtime`: desired total runtime (official requirement is 1800)
+	- `output_type`: output results to txt or json.
+	- `output_folder`: location of output.
 
 	# Output
 

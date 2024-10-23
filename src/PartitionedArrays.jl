@@ -10,8 +10,6 @@ using MPI: MPI
 using IterativeSolvers: IterativeSolvers
 using Distances: Distances
 using BlockArrays
-using Polyester
-
 
 export length_to_ptrs!
 export rewind_ptrs!

@@ -1,5 +1,5 @@
 """
-	Conjugate gradient solver from IterativeSolvers with benchmark timing added.
+	Conjugate gradient solver from IterativeSolvers with benchmark timing integrated.
 """
 mutable struct PCGIterable{precT, matT, solT, vecT, numT <: Real, paramT <: Number}
 	Pl::precT
@@ -22,6 +22,17 @@ end
 
 @inline done(it::PCGIterable, iteration::Int) = iteration ≥ it.maxiter || converged(it)
 
+"""
+	Intermediate CG state variables to be used inside cg and cg!. 
+	`u`, `r` and `c` should be of the same type as the solution of `cg` or `cg!`.
+	Used in opt_cg and ref_cg.
+"""
+struct CGStateVariables{T, Tx <: AbstractArray{T}}
+	u::Tx
+	r::Tx
+	c::Tx
+end
+
 #####################
 # Preconditioned CG #
 #####################
@@ -31,7 +42,6 @@ function iterate(it::PCGIterable, iteration::Int = start(it))
 	if done(it, iteration)
 		return nothing
 	end
-
 
 	it.timing_data[1] += @elapsed begin # total time
 		# Apply left preconditioner
@@ -46,7 +56,7 @@ function iterate(it::PCGIterable, iteration::Int = start(it))
 		it.timing_data[3] += @elapsed it.u .= it.c .+ β .* it.u
 
 		# c = A * u
-		it.timing_data[4] += @elapsed mul!(it.c, it.A, it.u)
+		it.timing_data[4] += @elapsed mul_no_lat!(it.c, it.A, it.u)
 		it.timing_data[2] += @elapsed uc = dot(it.u, it.c)
 		α = it.ρ / uc
 
@@ -62,21 +72,6 @@ end
 
 # Utility functions
 
-"""
-Intermediate CG state variables to be used inside cg and cg!. `u`, `r` and `c` should be of the same type as the solution of `cg` or `cg!`.
-```
-struct CGStateVariables{T,Tx<:AbstractArray{T}}
-	u::Tx
-	r::Tx
-	c::Tx
-end
-```
-"""
-struct CGStateVariables{T, Tx <: AbstractArray{T}}
-	u::Tx
-	r::Tx
-	c::Tx
-end
 
 function cg_iterator!(x, A, b, timing_data, Pl = Identity();
 	tolerance::Float64 = 0.0,

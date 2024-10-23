@@ -10,6 +10,8 @@
 	- `nr_cg_sets`: number of times the optimised version is run.
 	- `norm_data`: convergence data of all cg sets.
 	- `geom`: struct contianing geometry data.
+	- `output_type`: output file type txt or json.
+	- `output_folder`: output location.
 
 	# Output
 
@@ -98,7 +100,10 @@ function report_results(np, times, levels, ref_max_iters, opt_max_iters, nr_cg_s
 	end
 
 	# Write results to file. 
-	isdir(output_folder) || mkdir(output_folder)
+	if output_type != "none"
+		isdir(output_folder) || mkdir(output_folder)
+	end
+
 	if output_type == "json"
 		filename_json = output_folder * "/hpcg-benchmark_results" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * ".json"
 		json_dict = OrderedDict()

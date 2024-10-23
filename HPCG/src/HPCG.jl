@@ -9,12 +9,8 @@ using Statistics
 using Primes
 using DataStructures
 using JSON
-using SparseArrays
 using SparseMatricesCSR
-using Polyester
-using LoopVectorization
 import Base: iterate
-using ThreadPinning
 
 export hpcg_benchmark_mpi
 export hpcg_benchmark_debug
@@ -29,5 +25,8 @@ export pc_solve!
 include("hpcg_utils.jl")
 include("compute_optimal_xyz.jl")
 include("sparse_matrix.jl")
-
+include("ref_cg.jl")
+include("opt_cg.jl")
+include("report_results.jl")
+include("mg_preconditioner.jl")
 end # module HPCG

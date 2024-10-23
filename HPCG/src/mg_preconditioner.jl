@@ -1,4 +1,29 @@
+"""
+	Geometry
 
+	Collect data about the geometry of the problem.
+
+	# Arguments
+
+	- `nx`: points in the x direction for each process
+	- `ny`: points in the y direction for each process
+	- `nz`: points in the z direction for each process
+	- `npx`: parts in the x direction 
+	- `npy`: parts in the y direction 
+	- `npz`: parts in the z direction 
+	- `nnz`: number of non zeroes in sparse matrices of the preconditioner
+	- `nrows`: number of rows in each of the sparse matrices of the preconditioner
+"""
+struct Geometry
+	nx::Int64
+	ny::Int64
+	nz::Int64
+	npx::Int64
+	npy::Int64
+	npz::Int64
+	nnz::Vector{Int64}
+	nrows::Vector{Int64}
+end
 
 """
 	Mg_preconditioner
@@ -16,7 +41,7 @@
 	- `l`: number of levels in the preconditioner
 
 """
-struct opt_Mg_preconditioner{A, B, C, D, E, F, G}
+struct Mg_preconditioner{A, B, C, D, E, F, G}
 	f2c::Vector{A}
 	A_vec::Vector{B}
 	gs_states::Vector{C}
@@ -25,7 +50,7 @@ struct opt_Mg_preconditioner{A, B, C, D, E, F, G}
 	Axf::Vector{F}
 	l::G
 
-	function opt_Mg_preconditioner(f2c, A_vec, gs_states, r, x, Axf, l)
+	function Mg_preconditioner(f2c, A_vec, gs_states, r, x, Axf, l)
 		A = typeof(f2c[1])
 		B = typeof(A_vec[1])
 		C = typeof(gs_states[1])
@@ -37,7 +62,46 @@ struct opt_Mg_preconditioner{A, B, C, D, E, F, G}
 	end
 end
 
-function opt_generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
+"""
+	restrict_operator(nx, ny, nz) -> f2c
+
+	Creates a mapping for vector x to a coarse vector x corresponding to a 
+		mapping for a matrix to a matrix that is half the size in all directions.
+
+	# Arguments
+
+	- `nx`: points in the x direction for each process
+	- `ny`: points in the y direction for each process
+	- `nz`: points in the z direction for each process
+
+	# Output
+
+	- `f2c`: fine to coarse mapping vector.
+"""
+function restrict_operator(nx, ny, nz)
+	@assert (nx % 2 == 0) && (ny % 2 == 0) && (nz % 2 == 0)
+	nxc = div(nx, 2)
+	nyc = div(ny, 2)
+	nzc = div(nz, 2)
+	local_number_of_rows = nxc * nyc * nzc
+	f2c = zeros(Int32, local_number_of_rows)
+	for izc in 1:nzc
+		izf = 2 * (izc - 1)
+		for iyc in 1:nyc
+			iyf = 2 * (iyc - 1)
+			for ixc in 1:nxc
+				ixf = 2 * (ixc - 1)
+				current_coarse_row = (izc - 1) * nxc * nyc + (iyc - 1) * nxc + (ixc - 1) + 1
+				current_fine_row = izf * nx * ny + iyf * nx + ixf
+				f2c[current_coarse_row] = current_fine_row + 1
+			end
+		end
+	end
+	return f2c
+end
+
+
+function generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
 	gnx = npx * nx
 	gny = npy * ny
 	gnz = npz * nz
@@ -70,7 +134,7 @@ end
 	- `Mg_preconditioner`: struct containing preconditioner data
 	- `Geometry`: struct containing geometry data
 """
-function opt_pc_setup(np, ranks, l, nx, ny, nz)
+function pc_setup(np, ranks, l, nx, ny, nz)
 	f2c_vec = Vector{Vector{Int32}}(undef, l - 1)
 	r = Vector{PVector}(undef, l)
 	x = Vector{PVector}(undef, l)
@@ -79,10 +143,10 @@ function opt_pc_setup(np, ranks, l, nx, ny, nz)
 	npx, npy, npz = compute_optimal_shape_XYZ(np)
 	nnz_vec = Vector{Int64}(undef, l)
 	nrows_vec = Vector{Int64}(undef, l)
-	solver = PartitionedSolvers.additive_schwarz_correction_2(gauss_seidel(; iters = 1))
+	solver = PartitionedSolvers.additive_schwarz_correction_partition(gauss_seidel(; iters = 1))
 
 	# create top problem 
-	A, r, x, Axf, gs_state = opt_generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
+	A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
 	A_vec = Vector{typeof(A)}(undef, l)
 	r_vec = Vector{typeof(r)}(undef, l)
 	x_vec = Vector{typeof(r)}(undef, l)
@@ -107,7 +171,7 @@ function opt_pc_setup(np, ranks, l, nx, ny, nz)
 		nx = div(nx, 2)
 		ny = div(ny, 2)
 		nz = div(nz, 2)
-		A, r, x, Axf, gs_state = opt_generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
+		A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
 		A_vec[i] = A
 		r_vec[i] = r
 		x_vec[i] = x
@@ -117,7 +181,7 @@ function opt_pc_setup(np, ranks, l, nx, ny, nz)
 		nnz_vec[i] = PartitionedArrays.nnz(A)
 
 	end
-	opt_Mg_preconditioner(f2c_vec, A_vec, gs_states, r_vec, x_vec, Axf_vec, l), Geometry(tnx, tny, tnz, npx, npy, npz, nnz_vec, nrows_vec)
+	Mg_preconditioner(f2c_vec, A_vec, gs_states, r_vec, x_vec, Axf_vec, l), Geometry(tnx, tny, tnz, npx, npy, npz, nnz_vec, nrows_vec)
 end
 
 """
@@ -135,9 +199,9 @@ end
 
 	- `x`: approximated solution.
 """
-function LinearAlgebra.ldiv!(x, P::opt_Mg_preconditioner, b)
+function LinearAlgebra.ldiv!(x, P::Mg_preconditioner, b)
 	fill!(x, zero(eltype(x)))
-	opt_pc_solve!(x, P, b, P.l; zero_guess = true)
+	pc_solve!(x, P, b, P.l; zero_guess = true)
 	x
 end
 
@@ -157,8 +221,8 @@ end
 
 	- `r_c`: coarse residual.
 """
-function opt_restrict!(r_c, r_f, Axf, f2c)
-	for (i, v) in collect(enumerate(f2c))
+function restrict!(r_c, r_f, Axf, f2c)
+	for (i, v) in enumerate(f2c)
 		r_c[i] = r_f[v] - Axf[v]
 	end
 	r_c
@@ -179,8 +243,8 @@ end
 
 	- `x_f`: fine approximated solution.
 """
-function opt_prolongate!(x_f, x_c, f2c)
-	for (i, v) in collect(enumerate(f2c))
+function prolongate!(x_f, x_c, f2c)
+	for (i, v) in enumerate(f2c)
 		x_f[v] += x_c[i]
 	end
 	x_f
@@ -202,9 +266,9 @@ end
 
 	- `r_c`: coarse residual.
 """
-function opt_p_restrict!(r_c, r_f, Axf, f2c)
+function p_restrict!(r_c, r_f, Axf, f2c)
 	map(local_values(r_f), local_values(Axf), local_values(r_c)) do rf_local, Axf_local, rc_local
-		opt_restrict!(rc_local, rf_local, Axf_local, f2c)
+		restrict!(rc_local, rf_local, Axf_local, f2c)
 	end
 	r_c
 end
@@ -225,9 +289,9 @@ end
 
 	- `x_f`: fine approximated solution.
 """
-function opt_p_prolongate!(x_f, x_c, f2c)
+function p_prolongate!(x_f, x_c, f2c)
 	map(local_values(x_f), local_values(x_c)) do xf_local, xc_local
-		opt_prolongate!(xf_local, xc_local, f2c)
+		prolongate!(xf_local, xc_local, f2c)
 	end
 	x_f
 end
@@ -247,16 +311,16 @@ end
 
 	- `x`: approximated solution.
 """
-function opt_pc_solve!(x, s::opt_Mg_preconditioner, b, l; zero_guess = false)
+function pc_solve!(x, s::Mg_preconditioner, b, l; zero_guess = false)
 	if l == 1
 		solve!(x, s.gs_states[l], b; zero_guess) # bottom solve
 	else
 		solve!(x, s.gs_states[l], b; zero_guess) # presmoother 
-		mul!(s.Axf[l], s.A_vec[l], x)
-		opt_p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
+		mul_no_lat!(s.Axf[l], s.A_vec[l], x)
+		p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
 		s.x[l-1] .= 0.0
-		opt_pc_solve!(s.x[l-1], s, s.r[l-1], l - 1; zero_guess = true)
-		opt_p_prolongate!(x, s.x[l-1], s.f2c[l-1])
+		pc_solve!(s.x[l-1], s, s.r[l-1], l - 1; zero_guess = true)
+		p_prolongate!(x, s.x[l-1], s.f2c[l-1])
 		consistent!(x) |> wait
 		solve!(x, s.gs_states[l], b) # post smooth
 	end

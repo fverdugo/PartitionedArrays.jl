@@ -79,23 +79,6 @@ function gauss_seidel(; iters = 1, sweep = :symmetric)
 		state
 	end
 
-	# function gauss_seidel_sweep!(x, A::SparseArrays.AbstractSparseMatrixCSC, diagA, b, cols)
-	# 	#assumes symmetric matrix
-	# 	for col in cols
-	# 		s = b[col]
-	# 		for p in nzrange(A, col)
-	# 			row = A.rowval[p]
-	# 			a = A.nzval[p]
-	# 			s -= a * x.parent[row]
-	# 		end
-	# 		d = diagA[col]
-	# 		s += d * x[col]
-	# 		s = s / d
-	# 		x[col] = s
-	# 	end
-	# 	x
-	# end
-
 	function gauss_seidel_sweep!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
 		#assumes symmetric matrix
 		for row in rows
@@ -113,6 +96,7 @@ function gauss_seidel(; iters = 1, sweep = :symmetric)
 		x
 	end
 
+	# Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
 	function gauss_seidel_sweep_zero!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
 		#assumes symmetric matrix
 		for row in rows
@@ -132,22 +116,6 @@ function gauss_seidel(; iters = 1, sweep = :symmetric)
 		x
 	end
 
-	function gauss_seidel_backwards_sweep!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
-		#assumes symmetric matrix
-		for row in rows
-			s = b[row]
-			for p in reverse(nzrange(A, row))
-				col = A.colval[p]
-				a = A.nzval[p]
-				s -= a * x[col]
-			end
-			d = diagA[row]
-			s += d * x[row]
-			s = s / d
-			x[row] = s
-		end
-		x
-	end
 	function solve!(x, state, b, options)
 		(diagA, A_ref) = state
 		A = A_ref[]
@@ -156,9 +124,7 @@ function gauss_seidel(; iters = 1, sweep = :symmetric)
 		for iter in 1:iters
 			if sweep === :symmetric || sweep === :forward
 				if options.zero_guess
-
 					gauss_seidel_sweep_zero!(x, A, diagA, b, 1:n)
-					#gauss_seidel_sweep!(x, A, diagA, b, 1:n)
 				else
 					gauss_seidel_sweep!(x, A, diagA, b, 1:n)
 				end
@@ -252,7 +218,7 @@ function additive_schwarz_correction(local_solver)
 	linear_solver(; setup, update!, solve!, finalize!)
 end
 
-function additive_schwarz_correction_2(local_solver)
+function additive_schwarz_correction_partition(local_solver)
 	# For parallel matrices
 	function setup(x, A::PSparseMatrix, b, options)
 		map(
