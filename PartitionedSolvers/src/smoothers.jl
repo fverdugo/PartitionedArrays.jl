@@ -1,63 +1,68 @@
 
 function lu_solver()
-	setup(x, op, b, options) = lu(op)
-	update!(state, op, options) = lu!(state, op)
-	solve!(x, P, b, options) = ldiv!(x, P, b)
-	linear_solver(; setup, solve!, update!)
+    setup(x,op,b,options) = lu(op)
+    update!(state,op,options) = lu!(state,op)
+    solve!(x,P,b,options) = ldiv!(x,P,b)
+    uses_initial_guess = Val(false)
+    linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
 function jacobi_correction()
-	setup(x, op, b, options) = dense_diag!(similar(b), op)
-	update!(state, op, options) = dense_diag!(state, op)
-	function solve!(x, state, b, options)
-		x .= state .\ b
-	end
-	linear_solver(; setup, update!, solve!)
+    setup(x,op,b,options) = dense_diag!(similar(b),op)
+    update!(state,op,options) = dense_diag!(state,op)
+    function solve!(x,state,b,options)
+        x .= state .\ b
+        x
+    end
+    uses_initial_guess = Val(false)
+    linear_solver(;setup,update!,solve!,uses_initial_guess)
 end
 
-function richardson(solver; iters, omega = 1)
-	function setup(x, A, b, options)
-		A_ref = Ref(A)
-		r = similar(b)
-		dx = similar(x, axes(A, 2))
-		P = PartitionedSolvers.setup(solver, dx, A, r)
-		state = (r, dx, P, A_ref)
-	end
-	function update!(state, A, options)
-		(r, dx, P, A_ref) = state
-		A_ref[] = A
-		PartitionedSolvers.update!(P, A)
-		state
-	end
-	function solve!(x, state, b, options)
-		(r, dx, P, A_ref) = state
-		A = A_ref[]
-
-		if options.zero_guess
-			for iter in 1:iters
-				dx .= x
-				#mul!(r, A, dx) # skip if zero
-				r .= 0
-				r .-= b
-				ldiv!(dx, P, r)
-				x .-= omega .* dx # if zero no minus
-			end
-		else
-			for iter in 1:iters
-				dx .= x
-				mul!(r, A, dx) # skip if zero
-				r .-= b
-				ldiv!(dx, P, r)
-				x .-= omega .* dx # if zero no minus
-			end
-		end
-		(; iters)
-	end
-	function finalize!(state)
-		(r, dx, P, A_ref) = state
-		PartitionedSolvers.finalize!(P)
-	end
-	linear_solver(; setup, update!, solve!, finalize!)
+function richardson(solver;iters,omega=1)
+    function setup(x,A,b,options)
+        A_ref = Ref(A)
+        r = similar(b)
+        dx = similar(x,axes(A,2))
+        P = PartitionedSolvers.setup(solver,dx,A,r)
+        state = (r,dx,P,A_ref)
+    end
+    function update!(state,A,options)
+        (r,dx,P,A_ref) = state
+        A_ref[] = A
+        PartitionedSolvers.update!(P,A)
+        state
+    end
+    function solve!(x,state,b,options)
+        (r,dx,P,A_ref) = state
+        A = A_ref[]
+        for iter in 1:iters
+            dx .= x
+            mul!(r,A,dx)
+            r .-= b
+            ldiv!(dx,P,r)
+            x .-= omega .* dx
+        end
+        x, (;iters)
+    end
+    function step!(x,state,b,options,step=0)
+        if step == iters
+            return nothing
+        end
+        (r,dx,P,A_ref) = state
+        A = A_ref[]
+        dx .= x
+        mul!(r,A,dx)
+        r .-= b
+        ldiv!(dx,P,r)
+        x .-= omega .* dx
+        x,step+1
+    end
+    function finalize!(state)
+        (r,dx,P,A_ref) = state
+        PartitionedSolvers.finalize!(P)
+    end
+    returns_history = Val(true)
+    linear_solver(;setup,update!,solve!,finalize!,step!,returns_history)
 end
 
 function jacobi(; kwargs...)
@@ -161,8 +166,8 @@ function local_solver_options(A, options)
 	end
 end
 
-struct AdditiveSchwarzSetup{A}
-	local_setups::A
+struct AdditiveSchwarzSetup{A} <: AbstractType
+    local_setups::A
 end
 
 function additive_schwarz_correction(local_solver)
