@@ -3,7 +3,8 @@ function lu_solver()
     setup(x,op,b,options) = lu(op)
     update!(state,op,options) = lu!(state,op)
     solve!(x,P,b,options) = ldiv!(x,P,b)
-    linear_solver(;setup,solve!,update!)
+    uses_initial_guess = Val(false)
+    linear_solver(;setup,solve!,update!,uses_initial_guess)
 end
 
 function jacobi_correction()
@@ -11,8 +12,10 @@ function jacobi_correction()
     update!(state,op,options) = dense_diag!(state,op)
     function solve!(x,state,b,options)
         x .= state .\ b
+        x
     end
-    linear_solver(;setup,update!,solve!)
+    uses_initial_guess = Val(false)
+    linear_solver(;setup,update!,solve!,uses_initial_guess)
 end
 
 function richardson(solver;iters,omega=1)
@@ -39,13 +42,27 @@ function richardson(solver;iters,omega=1)
             ldiv!(dx,P,r)
             x .-= omega .* dx
         end
-        (;iters)
+        x, (;iters)
+    end
+    function step!(x,state,b,options,step=0)
+        if step == iters
+            return nothing
+        end
+        (r,dx,P,A_ref) = state
+        A = A_ref[]
+        dx .= x
+        mul!(r,A,dx)
+        r .-= b
+        ldiv!(dx,P,r)
+        x .-= omega .* dx
+        x,step+1
     end
     function finalize!(state)
         (r,dx,P,A_ref) = state
         PartitionedSolvers.finalize!(P)
     end
-    linear_solver(;setup,update!,solve!,finalize!)
+    returns_history = Val(true)
+    linear_solver(;setup,update!,solve!,finalize!,step!,returns_history)
 end
 
 function jacobi(;kwargs...)
@@ -82,7 +99,6 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-
     function gauss_seidel_sweep!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
         #assumes symmetric matrix
         for row in rows
@@ -99,7 +115,6 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-
     # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
     function gauss_seidel_sweep_zero!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
         #assumes symmetric matrix
@@ -119,7 +134,6 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    
     function solve!(x, state, b, options)
         (diagA, A_ref) = state
         A = A_ref[]
@@ -165,7 +179,7 @@ function local_solver_options(A,options)
     end
 end
 
-struct AdditiveSchwarzSetup{A}
+struct AdditiveSchwarzSetup{A} <: AbstractType
     local_setups::A
 end
 
