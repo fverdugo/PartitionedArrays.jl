@@ -328,10 +328,6 @@ function step(s::NonlinearSolver,state)
     s,state
 end
 
-function problem(s::NonlinearSolver)
-    s.problem
-end
-
 abstract type NewAbstractODEProblem <: NewAbstractProblem end
 
 #function update(p::NewAbstractODEProblem;kwargs...)
@@ -418,48 +414,34 @@ struct ODESolver{A,B,C,D,E} <: NewAbstractODESolver
     update::A
     step::B
     problem::C
-    status::D
+    workspace::D
     attributes::E
 end
 
-function update(s::ODESolver;kwargs...)
-    s.update(;kwargs...)
-    s
+function update(s::ODESolver;problem=s.problem,kwargs...)
+    p = update(problem;kwargs...)
+    workspace = s.update(s.workspace,p)
+    ODESolver(s.update,s.step,p,workspace,s.attributes)
 end
 
 function step(s::ODESolver)
-    next = s.step()
+    next = s.step(s.workspace,s.problem)
     if next === nothing
         return nothing
     end
-    s,next
+    workspace,p,state = next
+    s = ODESolver(s.update,s.step,p,workspace,s.attributes)
+    s,state
 end
 
 function step(s::ODESolver,state)
-    next = s.step(state)
+    next = s.step(s.workspace,s.problem,state)
     if next === nothing
         return nothing
     end
-    s,next
-end
-
-function problem(s::ODESolver)
-    s.problem()
-end
-
-function status(s::ODESolver)
-    s.status()
-end
-
-function verbosity(;level=0, prefix="")
-    (;level,prefix)
-end
-
-function print_time_step(verbosity,t,tend)
-    if verbosity.level > 0
-        s = verbosity.prefix
-        @printf "%s%12.3e %12.3e\n" s t tend
-    end
+    workspace,p,state = next
+    s = ODESolver(s.update,s.step,p,workspace,s.attributes)
+    s,state
 end
 
 #function linear_problem(args...;nullspace=nothing,block_size=1)

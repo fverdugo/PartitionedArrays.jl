@@ -146,70 +146,86 @@ function mock_ode(u)
     x = (0,u,v)
     ts = (0,10)
     PS.ode_problem(ts,r,j,x) do r,j,x,dx
-        (t,u,v) = x
+        (t,u2,v2) = x
         du,dv = dx
         if r !== nothing
-            r = 2*u^2 + v - 4*t + 1
+            r = 2*u2^2 + v2 - 4*t + 1
         end
         if j !== nothing
-            j = 4*u*du + dv
+            j = 4*u2*du + dv
         end
         r,j
     end
+end
+
+function mock_ode_solver_problem(x,dt,ode)
+    t,u,_ = PS.solution(ode)
+    p = PS.nonlinear_problem(PS.residual(ode),PS.jacobian(ode),x) do r,j,x
+        v2 = (x - u) / dt
+        rj! = PS.inplace(ode)
+        r,j = rj!(r,j,(t,x,v2),(1.,1/dt))
+        r,j
+    end
+end
+
+function mock_ode_solver_update(workspace,ode)
+    (;s,dt) = workspace
+    x = PS.solution(s)
+    p = mock_ode_solver_problem(x,dt,ode)
+    s = PS.update(s,problem=p)
+    (;s,dt)
+end
+
+using InteractiveUtils
+
+function mock_ode_solver_step(workspace,ode,phase=:start)
+    if phase === :stop
+        return nothing
+    end
+    (;s,dt) = workspace
+    t,u,v = PS.solution(ode)
+    if phase === :start
+        t = first(PS.interval(ode))
+        phase = :advance
+    end
+    s = PS.solve(s)
+    x = PS.solution(s)
+    t += dt
+    v = (x - u) / dt
+    u = x
+    ode = PS.update(ode,solution=(t,u,v))
+    tend = last(PS.interval(ode))
+    if t >= tend
+        phase = :stop
+    end
+    workspace = (;s,dt)
+    workspace = mock_ode_solver_update(workspace,ode)
+    workspace,ode,phase
 end
 
 function mock_ode_solver(ode;
         dt = (PS.interval(ode)[2]-PS.interval(ode)[1])/10,
         solver = mock_nonlinear_solver)
-    t,u,v = PS.solution(ode)
-    tend = last(PS.interval(ode))
-    x = copy(u)
-    p = PS.nonlinear_problem(PS.residual(ode),PS.jacobian(ode),x) do r,j,x
-        v = (x - u) / dt
-        rj! = PS.inplace(ode)
-        r,j = rj!(r,j,(t,x,v),(1.,1/dt))
-        r,j
-    end
-    S = solver(p)
-    function update(;problem=ode,kwargs...)
-        ode = PS.update(problem;kwargs...)
-        t,u,v = PS.solution(ode)
-        tend = last(PS.interval(ode))
-    end
-    function step(phase=:start)
-        if phase === :stop
-            return nothing
-        end
-        if phase === :start
-            t = first(PS.interval(ode))
-            phase = :advance
-        end
-        S = PS.solve(S)
-        x = PS.solution(S)
-        t += dt
-        v = (x - u) / dt
-        u = x
-        ode = PS.update(ode,solution=(t,u,v))
-        if t >= tend
-            phase = :stop
-        end
-        phase
-    end
-    problem() = ode
-    status() = nothing
-    PS.ode_solver(update,step,problem,status)
+    _,u,_ = PS.solution(ode)
+    x = u
+    p = mock_ode_solver_problem(x,dt,ode)
+    s = solver(p)
+    workspace = (;s,dt)
+    PS.ode_solver(mock_ode_solver_update,mock_ode_solver_step,ode,workspace)
 end
 
-u = 2.0
-p = mock_ode(u)
-s = mock_ode_solver(p)
-for x in PS.history(s)
-    @show x
+function main()
+    u = 2.0
+    p = mock_ode(u)
+    s = mock_ode_solver(p)
+    #for x in PS.history(s)
+    #    @show x
+    #end
+    s = PS.update(s,solution=(0.0,u,0.0))
+    s = PS.solve(s)
 end
-s = PS.update(s,solution=(0.0,u,0.0))
-@show PS.solution(s)
-@time s = PS.solve(s)
-@show PS.solution(s)
+
+main()
 
 
 end # module
