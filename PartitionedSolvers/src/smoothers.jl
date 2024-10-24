@@ -99,11 +99,11 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    function gauss_seidel_sweep!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
+    function gauss_seidel_sweep!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
         #assumes symmetric matrix
         for row in rows
             s = b[row]
-            for p in nzrange(A, row)
+            for p in nzrange(A,row)
                 col = A.colval[p]
                 a = A.nzval[p]
                 s -= a * x[col]
@@ -116,11 +116,11 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         x
     end
     # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
-    function gauss_seidel_sweep_zero!(x, A::SparseMatricesCSR.SparseMatrixCSR, diagA, b, rows)
+    function gauss_seidel_sweep_zero!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
         #assumes symmetric matrix
         for row in rows
             s = b[row]
-            for p in nzrange(A, row)
+            for p in nzrange(A,row)
                 col = A.colval[p]
                 if col < row
                     a = A.nzval[p]
@@ -134,21 +134,21 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
-    function solve!(x, state, b, options)
-        (diagA, A_ref) = state
+    function solve!(x,state,b,options)
+        (diagA,A_ref) = state
         A = A_ref[]
         n = length(b)
 
         for iter in 1:iters
             if sweep === :symmetric || sweep === :forward
                 if options.zero_guess
-                    gauss_seidel_sweep_zero!(x, A, diagA, b, 1:n)
+                    gauss_seidel_sweep_zero!(x,A,diagA,b,1:n)
                 else
-                    gauss_seidel_sweep!(x, A, diagA, b, 1:n)
+                    gauss_seidel_sweep!(x,A,diagA,b,1:n)
                 end
             end
             if sweep === :symmetric || sweep === :backward
-                gauss_seidel_sweep!(x, A, diagA, b, n:-1:1)
+                gauss_seidel_sweep!(x,A,diagA,b,n:-1:1)
             end
         end
         x
@@ -238,30 +238,30 @@ end
 
 function additive_schwarz_correction_partition(local_solver)
     # For parallel matrices
-    function setup(x, A::PSparseMatrix, b, options)
+    function setup(x,A::PSparseMatrix,b,options)
         map(
             local_solver.setup,
             partition(x),
             partition(A),
             own_values(b),
-            local_setup_options(A, options),
+            local_setup_options(A,options),
         ) |> AdditiveSchwarzSetup
     end
-    function update!(state::AdditiveSchwarzSetup, A, options)
+    function update!(state::AdditiveSchwarzSetup,A,options)
         map(
             local_solver.update!,
             state.local_setups,
             partition(A),
-            local_setup_options(A, options),
+            local_setup_options(A,options),
         )
     end
-    function solve!(x, state::AdditiveSchwarzSetup, b, options)
+    function solve!(x,state::AdditiveSchwarzSetup,b,options)
         map(
             local_solver.solve!,
             partition(x),
             state.local_setups,
             own_values(b),
-            local_solver_options(b, options),
+            local_solver_options(b,options),
         )
         x
     end
@@ -272,21 +272,21 @@ function additive_schwarz_correction_partition(local_solver)
         nothing
     end
     # Fall back for sequential matrices
-    function setup(x, A, b, options)
-        local_solver.setup(x, A, b, options)
+    function setup(x,A,b,options)
+        local_solver.setup(x,A,b,options)
     end
-    function update!(state, A, options)
-        local_solver.update!(state, A, options)
+    function update!(state,A,options)
+        local_solver.update!(state,A,options)
     end
-    function solve!(x, state, b, options)
-        local_solver.solve!(x, state, b, options)
+    function solve!(x,state,b,options)
+        local_solver.solve!(x,state,b,options)
         x
     end
     function finalize!(state)
         local_solver.finalize!(state)
         nothing
     end
-    linear_solver(; setup, update!, solve!, finalize!)
+    linear_solver(;setup,update!,solve!,finalize!)
 end
 
 # Wrappers
