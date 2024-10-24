@@ -602,7 +602,6 @@ function csrr_to_csc_step_2(
 end
 
 @inline function spmv!(b, A, x)
-	#@show typeof(A)
 	mul!(b, A, x)
 end
 
@@ -617,8 +616,6 @@ function spmv!(b, A::SparseMatrixCSR{1}, x)
 	end
 	spmv_csr!(b, x, A.rowptr, A.colval, A.nzval)
 end
-
-
 
 function spmtv!(b, A::SparseMatrixCSR{1}, x)
 	@boundscheck begin
@@ -666,33 +663,6 @@ function spmv_csr!(b, x, rowptr_A, colval_A, nzval_A)
 	b
 end
 
-# function t_spmv_csr!(b, x, rowptr_A, colval_A, nzval_A)
-# 	ncols = length(x)
-# 	nrows = length(b)
-# 	u = one(eltype(rowptr_A))
-# 	z = zero(eltype(b))
-
-# 	@sync for (ichunk, inds) in enumerate(chunks(1:nrows; n = Threads.nthreads()))
-# 		Threads.@spawn for row in inds
-# 			@inbounds begin
-# 				pini = rowptr_A[row]
-# 				pend = rowptr_A[row+1]
-# 				bi = zero(eltype(b))
-# 				p = pini
-# 				while p < pend
-# 					aij = nzval_A[p]
-# 					col = colval_A[p]
-# 					xj = x[col]
-# 					bi += aij * xj
-# 					p += u
-# 				end
-# 				b[row] = bi
-# 			end
-# 		end
-# 	end
-# 	b
-# end
-
 function spmv_csc!(b, x, colptr_A, rowval_A, nzval_A)
 	ncols = length(x)
 	nrows = length(b)
@@ -713,4 +683,3 @@ function spmv_csc!(b, x, colptr_A, rowval_A, nzval_A)
 	end
 	b
 end
-
