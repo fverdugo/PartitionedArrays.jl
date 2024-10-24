@@ -235,6 +235,15 @@ end
 #
 #main()
 
+u = 2.0
+p = mock_ode(u)
+s = mock_ode_solver(p)
+
+for x in PS.history(s)
+    @show x
+end
+#s = PS.update(s,solution=(0.0,u,0.0))
+#PS.solve(s)
 
 end # module
 

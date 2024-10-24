@@ -39,17 +39,14 @@ end
 
 function Base.iterate(a::History)
     solver, state = step(a.solver)
-    if state === :stop
-        return nothing
-    end
-    solution(problem(a.solver)), (solver,state)
+    solution(problem(solver)), (solver,state)
 end
 
 function Base.iterate(a::History,(solver,state))
-    solver, state = step(solver,state)
     if state === :stop
         return nothing
     end
+    solver, state = step(solver,state)
     solution(problem(solver)), (solver,state)
 end
 
