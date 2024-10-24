@@ -6,9 +6,9 @@ using LinearAlgebra
 using Printf
 using CircularArrays
 using StaticArrays
-using MPI: MPI
-using IterativeSolvers: IterativeSolvers
-using Distances: Distances
+import MPI
+import IterativeSolvers
+import Distances
 using BlockArrays
 
 export length_to_ptrs!
