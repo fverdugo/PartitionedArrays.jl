@@ -86,6 +86,7 @@ jobs:
           julia --project=HPCG -e '
             using Pkg
             Pkg.develop(path=".")
+            Pkg.develop(path="./PartitionedSolvers")
             Pkg.test("HPCG")'
   docs:
     name: Documentation
