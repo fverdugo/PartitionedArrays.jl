@@ -8,3 +8,7 @@ Manifest.toml
 docs/build/
 tmp/
 docs/src/examples.md
+
+HPCG/src/results/
+
+HPCG/results/
