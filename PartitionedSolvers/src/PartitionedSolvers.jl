@@ -5,6 +5,8 @@ using PartitionedArrays: val_parameter
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers
+using Printf
+using NLsolve
 
 export setup
 export solve!
@@ -38,5 +40,8 @@ export amg_fine_params
 export amg_coarse_params
 export amg_statistics
 include("amg.jl")
+
+include("new/interfaces.jl")
+include("new/wrappers.jl")
 
 end # module
