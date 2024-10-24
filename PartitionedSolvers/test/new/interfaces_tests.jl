@@ -60,18 +60,20 @@ for x in PS.history(ls)
     @show x
 end
 
-function mock_nonlinear_problem(x)
-    r = 0*x
-    j = 0*x
-    PS.nonlinear_problem(r,j,x) do r,j,x
-        if r !== nothing
-            r = 2*x^2 - 4
+function mock_nonlinear_problem(x0)
+    r0 = 0*x0
+    j0 = 0*x0
+    workspace = nothing
+    PS.nonlinear_problem(x0,r0,j0,workspace) do p
+        x = PS.solution(p)
+        if PS.residual(p) !== nothing
+            p = PS.update(p,residual = 2*x^2 - 4)
         end
-        if j !== nothing
-            j = 4*x
+        if PS.jacobian(p) !== nothing
+            p = PS.update(p,jacobian = 4*x)
         end
-        r,j
-    end
+        p
+    end |> PS.update
 end
 
 function mock_nonlinear_solver_update(ws,p)
@@ -123,7 +125,6 @@ end
 #end
 #
 #main()
-#main()
 
 x = 1.0
 p = mock_nonlinear_problem(x)
@@ -145,38 +146,44 @@ function mock_ode(u)
     v = 0*u
     x = (0,u,v)
     ts = (0,10)
-    PS.ode_problem(ts,r,j,x) do r,j,x,dx
-        (t,u2,v2) = x
-        du,dv = dx
-        if r !== nothing
-            r = 2*u2^2 + v2 - 4*t + 1
+    dx = (u,u)
+    workspace = nothing
+    PS.ode_problem(x,r,j,ts,dx,workspace) do ode
+        (t,u2,v2) = PS.solution(ode)
+        du,dv = PS.coefficients(ode)
+        if PS.residual(ode) !== nothing
+            ode = PS.update(ode,residual = 2*u2^2 + v2 - 4*t + 1)
         end
-        if j !== nothing
-            j = 4*u2*du + dv
+        if PS.jacobian(ode) !== nothing
+            ode = PS.update(ode,jacobian = 4*u2*du + dv)
         end
-        r,j
+        ode
+    end |> PS.update
+end
+
+function mock_ode_solver_problem(x0,dt,ode0)
+    t,u, = PS.solution(ode0)
+    workspace = nothing
+    PS.nonlinear_problem(PS.residual(ode0),PS.jacobian(ode0),x0,workspace) do p
+        x = PS.solution(p)
+        v = (x - u) / dt
+        r = PS.residual(p)
+        j = PS.jacobian(p)
+        ode = PS.update(ode0,residual=r,jacobian=p,solution=(t,x,v))
+        r = PS.residual(ode)
+        j = PS.jacobian(ode)
+        p = PS.update(p,residual=r,jacobian=j)
     end
 end
 
-function mock_ode_solver_problem(x,dt,ode)
-    t,u,_ = PS.solution(ode)
-    p = PS.nonlinear_problem(PS.residual(ode),PS.jacobian(ode),x) do r,j,x
-        v2 = (x - u) / dt
-        rj! = PS.inplace(ode)
-        r,j = rj!(r,j,(t,x,v2),(1.,1/dt))
-        r,j
-    end
-end
-
-function mock_ode_solver_update(workspace,ode)
+function mock_ode_solver_update(workspace,ode0)
     (;s,dt) = workspace
+    ode = PS.update(ode0,coefficients=(1.0,1/dt))
     x = PS.solution(s)
     p = mock_ode_solver_problem(x,dt,ode)
     s = PS.update(s,problem=p)
     (;s,dt)
 end
-
-using InteractiveUtils
 
 function mock_ode_solver_step(workspace,ode,phase=:start)
     #if phase === :stop
@@ -203,9 +210,10 @@ function mock_ode_solver_step(workspace,ode,phase=:start)
     workspace,ode,phase
 end
 
-function mock_ode_solver(ode;
-        dt = (PS.interval(ode)[2]-PS.interval(ode)[1])/10,
+function mock_ode_solver(ode0;
+        dt = (PS.interval(ode0)[2]-PS.interval(ode0)[1])/10,
         solver = mock_nonlinear_solver)
+    ode = PS.update(ode0,coefficients=(1.0,1/dt))
     _,u,_ = PS.solution(ode)
     x = u
     p = mock_ode_solver_problem(x,dt,ode)
@@ -214,18 +222,18 @@ function mock_ode_solver(ode;
     PS.ode_solver(mock_ode_solver_update,mock_ode_solver_step,ode,workspace)
 end
 
-function main()
-    u = 2.0
-    p = mock_ode(u)
-    s = mock_ode_solver(p)
-    for x in PS.history(s)
-        @show x
-    end
-    s = PS.update(s,solution=(0.0,u,0.0))
-    @time s = PS.solve(s)
-end
-
-main()
+#function main()
+#    u = 2.0
+#    p = mock_ode(u)
+#    s = mock_ode_solver(p)
+#    for x in PS.history(s)
+#        @show x
+#    end
+#    s = PS.update(s,solution=(0.0,u,0.0))
+#    @time s = PS.solve(s)
+#end
+#
+#main()
 
 
 end # module

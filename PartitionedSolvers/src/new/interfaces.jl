@@ -60,8 +60,10 @@ attributes(a) = a.attributes
 problem(a) = a.problem
 matrix(a) = a.matrix
 rhs(a) = a.rhs
-inplace(a) = a.inplace
+statement(a) = a.statement
+workspace(a) = a.workspace
 interval(a) = a.interval
+coefficients(a) = a.coefficients
 uses_initial_guess(a) = val_parameter(a.uses_initial_guess)
 constant_jacobian(a) = val_parameter(a.constant_jacobian)
 
@@ -224,20 +226,17 @@ abstract type NewAbstractNonlinearProblem <: NewAbstractProblem end
 #                         )
 #end
 
-function nonlinear_problem(args...;update=true,attributes...)
-    p = NonlinearProblem(args...,attributes)
-    if update
-        p = PartitionedSolvers.update(p)
-    end
-    p
+function nonlinear_problem(args...;attributes...)
+    NonlinearProblem(args...,attributes)
 end
 
-struct NonlinearProblem{A,B,C,D,E} <: NewAbstractNonlinearProblem
-    inplace::A
-    residual::B
-    jacobian::C
-    solution::D
-    attributes::E
+struct NonlinearProblem{A,B,C,D,E,F} <: NewAbstractNonlinearProblem
+    statement::A
+    solution::B
+    residual::C
+    jacobian::D
+    workspace::E
+    attributes::F
 end
 
 #function linear_problem(p::NonlinearProblem)
@@ -255,12 +254,12 @@ end
 #    update(lp,matrix=j,rhs=j)
 #end
 
-function update(p::NonlinearProblem;kwargs...)
+function set(p::NonlinearProblem;kwargs...)
     data = (;kwargs...)
-    if hasproperty(data,:inplace)
-        rj! = data.inplace
+    if hasproperty(data,:statement)
+        st = data.statement
     else
-        rj! = inplace(p)
+        st = statement(p)
     end
     if hasproperty(data,:residual)
         b = data.residual
@@ -282,8 +281,15 @@ function update(p::NonlinearProblem;kwargs...)
     else
         attrs = attributes(p)
     end
-    b,A = rj!(b,A,x)
-    NonlinearProblem(rj!,b,A,x,attrs)
+    NonlinearProblem(st,x,b,A,p.workspace,attrs)
+end
+
+function update(p::NonlinearProblem;kwargs...)
+    p = set(p;kwargs...)
+    q = set(p,statement=Base.identity)
+    q = p.statement(q)
+    p = set(q,statement=p.statement)
+    p
 end
 
 abstract type NewAbstractNonlinearSolver <: NewAbstractSolver end
@@ -358,21 +364,23 @@ function ode_problem(args...;constant_jacobian=Val(false))
     ODEProblem(args...,attributes)
 end
 
-struct ODEProblem{A,B,C,D,E,F} <: NewAbstractODEProblem
-    inplace::A
-    interval::B
+struct ODEProblem{A,B,C,D,E,F,G,H} <: NewAbstractODEProblem
+    statement::A
+    solution::B
     residual::C
     jacobian::D
-    solution::E
-    attributes::F
+    interval::E
+    coefficients::F
+    workspace::G
+    attributes::H
 end
 
-function update(p::ODEProblem;kwargs...)
+function set(p::ODEProblem;kwargs...)
     data = (;kwargs...)
-    if hasproperty(data,:inplace)
-        rj! = data.inplace
+    if hasproperty(data,:statement)
+        st = data.statement
     else
-        rj! = inplace(p)
+        st = statement(p)
     end
     if hasproperty(data,:residual)
         b = data.residual
@@ -399,7 +407,20 @@ function update(p::ODEProblem;kwargs...)
     else
         i = interval(p)
     end
-    ODEProblem(rj!,i,b,A,x,attrs)
+    if hasproperty(data,:coefficients)
+        c = data.coefficients
+    else
+        c = coefficients(p)
+    end
+    p = ODEProblem(st,x,b,A,i,c,p.workspace,attrs)
+end
+
+function update(p::ODEProblem;kwargs...)
+    p = set(p;kwargs...)
+    q = set(p,statement=Base.identity)
+    q = p.statement(q)
+    p = set(q,statement=p.statement)
+    p
 end
 
 abstract type NewAbstractODESolver <: NewAbstractSolver end
@@ -482,21 +503,21 @@ end
 #end
 #
 #struct NonlinearProblem{A,B,C,D,E}
-#    inplace::A
+#    statement::A
 #    solution::B
 #    residual::C
 #    jacobian::D
 #    attributes::E
 #end
 #
-#inplace(a) = a.inplace
+#statement(a) = a.statement
 #residual(a) = a.residual
 #jacobian(a) = a.jacobian
 #
 ##function update!(p::NonlinearProblem;kwargs...)
 ##    @assert issubset(propertynames(kwargs),propertynames(p))
-##    if hasproperty(kwargs,:inplace)
-##        p.inplace = kwargs.inplace
+##    if hasproperty(kwargs,:statement)
+##        p.statement = kwargs.statement
 ##    end
 ##    if hasproperty(kwargs,:residual)
 ##        p.residual = kwargs.residual
@@ -519,7 +540,7 @@ end
 #end
 #
 #struct ODEProblem{A,B,C,D,E,F}
-#    inplace::A
+#    statement::A
 #    interval::B
 #    solution::C
 #    residual::D
@@ -531,8 +552,8 @@ end
 #
 ##function update!(p::ODEProblem;kwargs...)
 ##    @assert issubset(propertynames(kwargs),propertynames(p))
-##    if hasproperty(kwargs,:inplace)
-##        p.inplace = kwargs.inplace
+##    if hasproperty(kwargs,:statement)
+##        p.statement = kwargs.statement
 ##    end
 ##    if hasproperty(kwargs,:residual)
 ##        p.residual = kwargs.residual
@@ -882,7 +903,7 @@ end
 #        x = solution(problem)
 #        J = jacobian(problem)
 #        r = residual(problem)
-#        rj! = inplace(problem)
+#        rj! = statement(problem)
 #        if phase === :start
 #            rj!(r,J,x)
 #            res_error = convergence.res_norm(r)
@@ -932,7 +953,7 @@ end
 #    J = jacobian(ode)
 #    r = residual(ode)
 #    attrs = attributes(problem)
-#    rj! = inplace(problem)
+#    rj! = statement(problem)
 #    if constant_jacobian(ode)
 #        rj!(r,j,(t,u,v),(1,1/dt))
 #        lp = linear_problem(x,J,r;attrs...)
