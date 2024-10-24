@@ -159,37 +159,45 @@ struct NewLinearSolver{A,B,C,D,E} <: NewAbstractLinearSolver
     update::A
     step::B
     problem::C
-    status::D
+    workspace::D
     attributes::E
 end
 
-function update(s::NewLinearSolver;kwargs...)
-    s.update(;kwargs...)
-    s
+function update(s::NewLinearSolver;problem=s.problem,kwargs...)
+    p = update(problem;kwargs...)
+    workspace = s.workspace
+    if haskey(kwargs,:matrix) || problem !== s.problem
+        workspace = s.update(workspace,matrix(p))
+    end
+    NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
 end
 
 function step(s::NewLinearSolver)
-    next = s.step()
+    p = s.problem
+    x = solution(p)
+    b = rhs(p)
+    next = s.step(x,s.workspace,b)
     if next === nothing
         return nothing
     end
-    s,next
+    x,workspace,state = next
+    p = update(p,solution=x)
+    s = NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
+    s,state
 end
 
 function step(s::NewLinearSolver,state)
-    next = s.step(state)
+    p = s.problem
+    x = solution(p)
+    b = rhs(p)
+    next = s.step(x,s.workspace,b,state)
     if next === nothing
         return nothing
     end
-    s,next
-end
-
-function problem(s::NewLinearSolver)
-    s.problem()
-end
-
-function status(s::NewLinearSolver)
-    s.status()
+    x,workspace,state = next
+    p = update(p,solution=x)
+    s = NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
+    s,state
 end
 
 abstract type NewAbstractNonlinearProblem <: NewAbstractProblem end
@@ -290,37 +298,38 @@ struct NonlinearSolver{A,B,C,D,E} <: NewAbstractNonlinearSolver
     update::A
     step::B
     problem::C
-    status::D
+    workspace::D
     attributes::E
 end
 
-function update(s::NonlinearSolver;kwargs...)
-    s.update(;kwargs...)
-    s
+function update(s::NonlinearSolver;problem=s.problem,kwargs...)
+    p = update(problem;kwargs...)
+    workspace = s.update(s.workspace,p)
+    NonlinearSolver(s.update,s.step,p,workspace,s.attributes)
 end
 
 function step(s::NonlinearSolver)
-    next = s.step()
+    next = s.step(s.workspace,s.problem)
     if next === nothing
         return nothing
     end
-    s,next
+    workspace,p,state = next
+    s = NonlinearSolver(s.update,s.step,p,workspace,s.attributes)
+    s,state
 end
 
 function step(s::NonlinearSolver,state)
-    next = s.step(state)
+    next = s.step(s.workspace,s.problem,state)
     if next === nothing
         return nothing
     end
-    s,next
+    workspace,p,state = next
+    s = NonlinearSolver(s.update,s.step,p,workspace,s.attributes)
+    s,state
 end
 
 function problem(s::NonlinearSolver)
-    s.problem()
-end
-
-function status(s::NonlinearSolver)
-    s.status()
+    s.problem
 end
 
 abstract type NewAbstractODEProblem <: NewAbstractProblem end

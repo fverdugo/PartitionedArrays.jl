@@ -5,26 +5,33 @@ using Test
 
 function mock_linear_solver(p)
     Ainv = 1/PS.matrix(p)
-    function update(;problem=p,kwargs...)
-        p = PS.update(problem;kwargs...)
-        if haskey(kwargs,:matrix) || problem !== p
-            Ainv = 1/PS.matrix(p)
-        end
-        p
+    function update(Ainv,A)
+        Ainv = 1/A
     end
-    function step(phase=:start)
+    function step(x,Ainv,b,phase=:start)
         if phase === :stop
             return nothing
         end
-        x = Ainv*PS.rhs(p)
-        p = PS.update(p,solution=x)
+        x = Ainv*b
         phase = :stop
+        x,Ainv,phase
     end
-    problem() = p
-    status() = nothing
     uses_initial_guess = false
-    PS.linear_solver(update,step,problem,status;uses_initial_guess)
+    PS.linear_solver(update,step,p,Ainv;uses_initial_guess)
 end
+
+#function main()
+#    x = 0.0
+#    A = 2.0
+#    b = 12.0
+#    @time lp = PS.linear_problem(x,A,b)
+#    @time ls = mock_linear_solver(lp)
+#    @time ls = PS.solve(ls)
+#    @time x = PS.solution(ls)
+#    @time ls = PS.update(ls,matrix=2*A)
+#    @time ls = PS.solve(ls)
+#end
+#main()
 
 x = 0.0
 A = 2.0
@@ -44,9 +51,10 @@ ls = PS.solve(ls)
 x = PS.solution(ls)
 @test x == (2*A)\b
 
-ls,phase = PS.step(ls)
-next = PS.step(ls,phase)
-@test next === nothing
+ls = PS.update(ls,rhs=4*b)
+ls = PS.solve(ls)
+x = PS.solution(ls)
+@test x == (2*A)\(4*b)
 
 for x in PS.history(ls)
     @show x
@@ -66,41 +74,56 @@ function mock_nonlinear_problem(x)
     end
 end
 
+function mock_nonlinear_solver_update(ws,p)
+    (;ls,iteration,iterations) = ws
+    ls = PS.update(ls;matrix=PS.jacobian(p),rhs=PS.residual(p))
+    (;ls,iteration,iterations)
+end
+
+function mock_nonlinear_solver_step(ws,p,phase=:start)
+    if phase === :stop
+        return nothing
+    end
+    (;ls,iteration,iterations) = ws
+    if phase === :start
+        iteration = 0
+        phase = :advance
+    end
+    ls = PS.solve(ls)
+    x = PS.solution(p)
+    x -= PS.solution(ls)
+    p = PS.update(p,solution=x)
+    iteration += 1
+    if iteration == iterations
+        phase = :stop
+    end
+    ws = (;ls,iteration,iterations)
+    ws = mock_nonlinear_solver_update(ws,p)
+    ws,p,phase
+end
+
 function mock_nonlinear_solver(p;solver=mock_linear_solver,iterations=10)
     iteration = 0
     dx = PS.solution(p)
     lp = PS.linear_problem(dx,PS.jacobian(p),PS.residual(p))
     ls = solver(lp)
-    function update(;problem=p,kwargs...)
-        p = PS.update(problem;kwargs...)
-        lp = PS.linear_problem(dx,PS.jacobian(p),PS.residual(p))
-        ls = PS.update(ls;problem=lp)
-        p
-    end
-    function step(phase=:start)
-        if phase === :stop
-            return nothing
-        end
-        if phase === :start
-            iteration = 0
-            phase = :advance
-        end
-        ls = PS.solve(ls)
-        dx = PS.solution(ls)
-        x = PS.solution(p)
-        x -= dx
-        p = PS.update(p,solution=x)
-        ls = PS.update(ls;matrix=PS.jacobian(p),rhs=PS.residual(p))
-        iteration += 1
-        if iteration == iterations
-            phase = :stop
-        end
-        phase
-    end
-    problem() = p
-    status() = nothing
-    PS.nonlinear_solver(update,step,problem,status)
+    workspace = (;ls,iteration,iterations)
+    PS.nonlinear_solver(
+        mock_nonlinear_solver_update,
+        mock_nonlinear_solver_step,
+        p,
+        workspace)
 end
+
+#function main()
+#    x = 1
+#    p = mock_nonlinear_problem(x)
+#    s = mock_nonlinear_solver(p)
+#    s = PS.solve(s)
+#end
+#
+#main()
+#main()
 
 x = 1
 p = mock_nonlinear_problem(x)
