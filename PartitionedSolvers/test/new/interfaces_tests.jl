@@ -116,16 +116,16 @@ function mock_nonlinear_solver(p;solver=mock_linear_solver,iterations=10)
 end
 
 #function main()
-#    x = 1
-#    p = mock_nonlinear_problem(x)
-#    s = mock_nonlinear_solver(p)
-#    s = PS.solve(s)
+#    x = 1.0
+#    @time p = mock_nonlinear_problem(x)
+#    @time s = mock_nonlinear_solver(p)
+#    @time s = PS.solve(s)
 #end
 #
 #main()
 #main()
 
-x = 1
+x = 1.0
 p = mock_nonlinear_problem(x)
 @show PS.residual(p)
 @show PS.jacobian(p)
@@ -133,7 +133,7 @@ p = mock_nonlinear_problem(x)
 s = mock_nonlinear_solver(p)
 s = PS.solve(s)
 
-x = 1
+x = 1.0
 s = PS.update(s,solution=x)
 for x in PS.history(s)
     @show x
@@ -200,13 +200,13 @@ function mock_ode_solver(ode;
     PS.ode_solver(update,step,problem,status)
 end
 
-u = 2
+u = 2.0
 p = mock_ode(u)
 s = mock_ode_solver(p)
 for x in PS.history(s)
     @show x
 end
-s = PS.update(s,solution=(0,u,0))
+s = PS.update(s,solution=(0.0,u,0.0))
 @show PS.solution(s)
 @time s = PS.solve(s)
 @show PS.solution(s)
