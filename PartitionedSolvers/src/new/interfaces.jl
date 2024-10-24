@@ -63,6 +63,11 @@ interval(a) = a.interval
 coefficients(a) = a.coefficients
 uses_initial_guess(a) = val_parameter(a.uses_initial_guess)
 constant_jacobian(a) = val_parameter(a.constant_jacobian)
+is_mutable(a) = val_parameter(a.is_mutable)
+
+uses_initial_guess(a::NewAbstractSolver) = uses_initial_guess(attributes(a))
+constant_jacobian(a::NewAbstractProblem) = constant_jacobian(attributes(a))
+is_mutable(a::NewAbstractProblem) = is_mutable(attributes(a))
 
 #solution(a::NewAbstractProblem) = solution(workspace(a))
 #jacobian(a::NewAbstractProblem) = jacobian(workspace(a))
@@ -93,7 +98,8 @@ abstract type NewAbstractLinearProblem <: NewAbstractProblem end
 #                         )
 #end
 
-function linear_problem(solution,matrix,rhs;attributes...)
+function linear_problem(solution,matrix,rhs;is_mutable=Val(true))
+    attributes = (;is_mutable)
     LinearProblem(solution,matrix,rhs,attributes)
 end
 
@@ -223,7 +229,8 @@ abstract type NewAbstractNonlinearProblem <: NewAbstractProblem end
 #                         )
 #end
 
-function nonlinear_problem(args...;attributes...)
+function nonlinear_problem(args...;is_mutable=Val(true))
+    attributes = (;is_mutable)
     NonlinearProblem(args...,attributes)
 end
 
@@ -356,8 +363,8 @@ abstract type NewAbstractODEProblem <: NewAbstractProblem end
 #end
 
 
-function ode_problem(args...;constant_jacobian=Val(false))
-    attributes = (;constant_jacobian)
+function ode_problem(args...;constant_jacobian=Val(false),is_mutable=Val(true))
+    attributes = (;constant_jacobian,is_mutable)
     ODEProblem(args...,attributes)
 end
 
