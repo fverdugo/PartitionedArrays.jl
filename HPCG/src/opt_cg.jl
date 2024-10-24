@@ -1,7 +1,7 @@
 """
-	opt_cg!(x, A, b; kwargs...) -> x
+    opt_cg!(x, A, b; kwargs...) -> x
 
-	This version can be changed to implement optimisations.
+    This version can be changed to implement optimisations.
 
 # Arguments
 
@@ -23,10 +23,10 @@
 
 """
 function opt_cg!(x, A, b, timing_data;
-	tolerance::Float64 = 0.0,
-	maxiter::Int = size(A, 2),
-	statevars::CGStateVariables = CGStateVariables(zero(x), similar(x), similar(x)),
-	Pl = Identity())
+    tolerance::Float64 = 0.0,
+    maxiter::Int = size(A, 2),
+    statevars::CGStateVariables = CGStateVariables(zero(x), similar(x), similar(x)),
+    Pl = Identity())
 
-	return ref_cg!(x, A, b, timing_data, maxiter = maxiter, tolerance = tolerance, Pl = Pl, statevars = statevars)
+    return ref_cg!(x, A, b, timing_data, maxiter = maxiter, tolerance = tolerance, Pl = Pl, statevars = statevars)
 end
