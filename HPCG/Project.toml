@@ -1,0 +1,29 @@
+name = "HPCG"
+uuid = "f200b046-3a0e-49a8-9a9e-044aa3bf7874"
+authors = ["Reinier van Elderen <reiniervanelderen@hotmail.com>"]
+version = "0.1.0"
+
+[deps]
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
+PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
+PartitionedSolvers = "11b65f7f-80ac-401b-9ef2-3db765482d62"
+Primes = "27ebfcd6-29c5-5fa9-bf4b-fb8fc14df3ae"
+SparseMatricesCSR = "a0a7dd2c-ebf4-11e9-1f05-cf50bc540ca1"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+DataStructures = "0.18"
+DelimitedFiles = "1.9"
+JSON = "0.21"
+MPI = "0.20"
+PartitionedArrays = "0.5"
+PartitionedSolvers = "0.2"
+Primes = "0.5"
+SparseMatricesCSR = "0.6"
+julia = "1.1"

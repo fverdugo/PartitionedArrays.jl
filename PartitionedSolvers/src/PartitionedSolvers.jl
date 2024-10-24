@@ -7,6 +7,7 @@ using LinearAlgebra
 using IterativeSolvers
 using Printf
 using NLsolve
+using SparseMatricesCSR
 
 export setup
 export solve!
