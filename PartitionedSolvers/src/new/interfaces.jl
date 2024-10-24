@@ -22,10 +22,9 @@ abstract type NewAbstractAge <: AbstractType end
 #end
 
 function solve(solver)
-    next = step(solver)
-    while next !== nothing
-        solver,state =  next
-        next = step(solver,state)
+    solver, state = step(solver)
+    while state !== :stop
+        solver, state = step(solver,state)
     end
     solver
 end
@@ -39,20 +38,19 @@ struct History{A}
 end
 
 function Base.iterate(a::History)
-    next = step(a.solver)
-    if next === nothing
+    solver, state = step(a.solver)
+    if state === :stop
         return nothing
     end
-    solution(problem(a.solver)), next
+    solution(problem(a.solver)), (solver,state)
 end
 
-function Base.iterate(a::History,next)
-    s,state = next
-    next = step(s,state)
-    if next === nothing
+function Base.iterate(a::History,(solver,state))
+    solver, state = step(solver,state)
+    if state === :stop
         return nothing
     end
-    solution(problem(s)), next
+    solution(problem(solver)), (solver,state)
 end
 
 solution(a) = a.solution
@@ -177,9 +175,9 @@ function step(s::NewLinearSolver)
     x = solution(p)
     b = rhs(p)
     next = s.step(x,s.workspace,b)
-    if next === nothing
-        return nothing
-    end
+    #if next === nothing
+    #    return nothing
+    #end
     x,workspace,state = next
     p = update(p,solution=x)
     s = NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
@@ -191,9 +189,9 @@ function step(s::NewLinearSolver,state)
     x = solution(p)
     b = rhs(p)
     next = s.step(x,s.workspace,b,state)
-    if next === nothing
-        return nothing
-    end
+    #if next === nothing
+    #    return nothing
+    #end
     x,workspace,state = next
     p = update(p,solution=x)
     s = NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
@@ -310,9 +308,9 @@ end
 
 function step(s::NonlinearSolver)
     next = s.step(s.workspace,s.problem)
-    if next === nothing
-        return nothing
-    end
+    #if next === nothing
+    #    return nothing
+    #end
     workspace,p,state = next
     s = NonlinearSolver(s.update,s.step,p,workspace,s.attributes)
     s,state
@@ -320,9 +318,9 @@ end
 
 function step(s::NonlinearSolver,state)
     next = s.step(s.workspace,s.problem,state)
-    if next === nothing
-        return nothing
-    end
+    #if next === nothing
+    #    return nothing
+    #end
     workspace,p,state = next
     s = NonlinearSolver(s.update,s.step,p,workspace,s.attributes)
     s,state
@@ -426,9 +424,9 @@ end
 
 function step(s::ODESolver)
     next = s.step(s.workspace,s.problem)
-    if next === nothing
-        return nothing
-    end
+    #if next === nothing
+    #    return nothing
+    #end
     workspace,p,state = next
     s = ODESolver(s.update,s.step,p,workspace,s.attributes)
     s,state
@@ -436,9 +434,9 @@ end
 
 function step(s::ODESolver,state)
     next = s.step(s.workspace,s.problem,state)
-    if next === nothing
-        return nothing
-    end
+    #if next === nothing
+    #    return nothing
+    #end
     workspace,p,state = next
     s = ODESolver(s.update,s.step,p,workspace,s.attributes)
     s,state

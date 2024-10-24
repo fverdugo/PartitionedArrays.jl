@@ -9,9 +9,9 @@ function mock_linear_solver(p)
         Ainv = 1/A
     end
     function step(x,Ainv,b,phase=:start)
-        if phase === :stop
-            return nothing
-        end
+        #if phase === :stop
+        #    return nothing
+        #end
         x = Ainv*b
         phase = :stop
         x,Ainv,phase
@@ -43,8 +43,8 @@ x = PS.solution(ls)
 @test x == A\b
 
 ls,phase = PS.step(ls)
-next = PS.step(ls,phase)
-@test next === nothing
+ls,phase = PS.step(ls,phase)
+@test phase === :stop
 
 ls = PS.update(ls,matrix=2*A)
 ls = PS.solve(ls)
@@ -81,9 +81,9 @@ function mock_nonlinear_solver_update(ws,p)
 end
 
 function mock_nonlinear_solver_step(ws,p,phase=:start)
-    if phase === :stop
-        return nothing
-    end
+    #if phase === :stop
+    #    return nothing
+    #end
     (;ls,iteration,iterations) = ws
     if phase === :start
         iteration = 0
@@ -179,9 +179,9 @@ end
 using InteractiveUtils
 
 function mock_ode_solver_step(workspace,ode,phase=:start)
-    if phase === :stop
-        return nothing
-    end
+    #if phase === :stop
+    #    return nothing
+    #end
     (;s,dt) = workspace
     t,u,v = PS.solution(ode)
     if phase === :start
@@ -218,11 +218,11 @@ function main()
     u = 2.0
     p = mock_ode(u)
     s = mock_ode_solver(p)
-    #for x in PS.history(s)
-    #    @show x
-    #end
+    for x in PS.history(s)
+        @show x
+    end
     s = PS.update(s,solution=(0.0,u,0.0))
-    s = PS.solve(s)
+    @time s = PS.solve(s)
 end
 
 main()
