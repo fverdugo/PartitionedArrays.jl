@@ -115,6 +115,26 @@ function gauss_seidel(;iters=1,sweep=:symmetric)
         end
         x
     end
+
+    # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
+    function gauss_seidel_sweep_zero!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
+        #assumes symmetric matrix
+        for col in cols
+            s = b[col]
+            for p in nzrange(A,col)
+                row = A.rowval[p]
+                if col < row
+                    a = A.nzval[p]
+                    s -= a*x[row]
+                end
+            end
+            d = diagA[col]
+            #s += d*x[col]
+            s = s/d
+            x[col] = s
+        end
+        x
+    end
     # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
     function gauss_seidel_sweep_zero!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
         #assumes symmetric matrix
