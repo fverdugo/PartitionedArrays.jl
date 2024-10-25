@@ -30,16 +30,21 @@ function solve(solver)
 end
 
 function history(solver)
-    History(solver)
+    history(identity,solver)
 end
 
-struct History{A}
-    solver::A
+function history(f,solver)
+    History(f,solver)
+end
+
+struct History{A,B}
+    f::A
+    solver::B
 end
 
 function Base.iterate(a::History)
     solver, state = step(a.solver)
-    solution(problem(solver)), (solver,state)
+    a.f(solver), (solver,state)
 end
 
 function Base.iterate(a::History,(solver,state))
@@ -47,7 +52,7 @@ function Base.iterate(a::History,(solver,state))
         return nothing
     end
     solver, state = step(solver,state)
-    solution(problem(solver)), (solver,state)
+    a.f(solver), (solver,state)
 end
 
 solution(a) = a.solution

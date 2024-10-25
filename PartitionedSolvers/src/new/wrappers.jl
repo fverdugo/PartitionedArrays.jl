@@ -12,7 +12,7 @@ function LinearAlgebra_lu(p)
         x,F,phase
     end
     uses_initial_guess = false
-    PS.linear_solver(update,step,p,F;uses_initial_guess)
+    linear_solver(update,step,p,F;uses_initial_guess)
 end
 
 function NLSolvers_nlsolve_setup(p)
@@ -44,8 +44,9 @@ function NLSolvers_nlsolve(p;kwargs...)
         df = workspace
         x = solution(p)
         result = NLsolve.nlsolve(df,x;kwargs...)
-        copyto!(x,result.x)
-        workspace,p,phase = :stop
+        copyto!(x,result.zero)
+        phase = :stop
+        workspace,p,phase
     end
     nonlinear_solver(update,step,p,workspace)
 end

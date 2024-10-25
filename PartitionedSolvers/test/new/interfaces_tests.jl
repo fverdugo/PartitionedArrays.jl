@@ -57,7 +57,11 @@ ls = PS.solve(ls)
 x = PS.solution(ls)
 @test x == (2*A)\(4*b)
 
-for x in PS.history(ls)
+for ls in PS.history(ls)
+    @show ls
+end
+
+for x in PS.history(PS.solution,ls)
     @show x
 end
 
@@ -138,7 +142,7 @@ s = PS.solve(s)
 
 x = 1.0
 s = PS.update(s,solution=x)
-for x in PS.history(s)
+for x in PS.history(PS.solution,s)
     @show x
 end
 
@@ -243,7 +247,7 @@ u = 2.0
 p = mock_ode(u)
 s = mock_ode_solver(p)
 
-for x in PS.history(s)
+for x in PS.history(PS.solution,s)
     @show x
 end
 #s = PS.update(s,solution=(0.0,u,0.0))
