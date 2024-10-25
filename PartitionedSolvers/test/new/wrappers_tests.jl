@@ -1,6 +1,6 @@
 module WrappersTests
 
-import PartitionedSolvers: PS
+import PartitionedSolvers as PS
 import PartitionedArrays as PA
 using Test
 using LinearAlgebra

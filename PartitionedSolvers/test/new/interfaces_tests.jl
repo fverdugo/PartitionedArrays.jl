@@ -1,6 +1,6 @@
 module InterfacesTests
 
-import PartitionedSolvers: PS
+import PartitionedSolvers as PS
 
 using Test
 

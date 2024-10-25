@@ -113,8 +113,8 @@ abstract type AbstractLinearProblem <: AbstractProblem end
 #                         )
 #end
 
-function linear_problem(solution,matrix,rhs;uses_mutable_types=Val(true))
-    attributes = (;uses_mutable_types)
+function linear_problem(solution,matrix,rhs;uses_mutable_types=Val(true),nullspace=nothing)
+    attributes = (;uses_mutable_types,nullspace)
     LinearProblem(solution,matrix,rhs,attributes)
 end
 
@@ -124,6 +124,8 @@ struct LinearProblem{A,B,C,D} <: AbstractLinearProblem
     rhs::C
     attributes::D
 end
+
+nullspace(a::LinearProblem) = a.attributes.nullspace
 
 function update(p::LinearProblem;kwargs...)
     data = (;kwargs...)

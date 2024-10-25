@@ -1,4 +1,15 @@
 
+function default_nullspace(A)
+    T = eltype(A)
+    [ones(T,size(A,2))]
+end
+
+function default_nullspace(A::PSparseMatrix)
+    col_partition = partition(axes(A,2))
+    T = eltype(A)
+    [ pones(T,col_partition) ]
+end
+
 function aggregate(A,diagA=dense_diag(A);epsilon)
     # TODO It assumes CSC format for the moment
 
@@ -744,7 +755,7 @@ function dofs_to_node(dofs, block_size)
 end
 
 function amg_level_params_linear_elasticity(block_size;
-    pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
+    pre_smoother = p-> additive_schwarz(p;local_solver=q->gauss_seidel(q;iterations=1),iterations=1),
     coarsening = smoothed_aggregation_with_block_size(;approximate_omega = lambda_generic,
     tentative_prolongator = tentative_prolongator_with_block_size, block_size = block_size),
     cycle = v_cycle,
@@ -756,7 +767,7 @@ function amg_level_params_linear_elasticity(block_size;
 end
 
 function amg_level_params(;
-    pre_smoother = additive_schwarz(gauss_seidel(;iters=1);iters=1),
+    pre_smoother = p-> additive_schwarz(p;local_solver=q->gauss_seidel(q;iterations=1),iterations=1),
     coarsening = smoothed_aggregation(;),
     cycle = v_cycle,
     pos_smoother = pre_smoother,
@@ -774,23 +785,24 @@ end
 
 function amg_coarse_params(;
     #TODO more resonable defaults?
-    coarse_solver = lu_solver(),
+    coarse_solver = LinearAlgebra_lu,
     coarse_size = 10,
     )
     coarse_params = (;coarse_solver,coarse_size)
     coarse_params
 end
 
-function amg(;
+function amg(p;
         fine_params=amg_fine_params(),
         coarse_params=amg_coarse_params(),)
     amg_params = (;fine_params,coarse_params)
-    setup(x,O,b,options) = amg_setup(x,O,b,nullspace(options),amg_params)
-    update! = amg_update!
-    solve! = amg_solve!
-    finalize! = amg_finalize!
-    uses_nullspace = Val(true)
-    linear_solver(;setup,update!,solve!,finalize!,uses_nullspace)
+
+    x = solution(p)
+    b = rhs(p)
+    A = matrix(p)
+    B = nullspace(p)
+    setup = amg_setup(x,A,b,B,amg_params)
+    linear_solver(amg_update!,amg_step!,p,setup)
 end
 
 function amg_setup(x,A,b,::Nothing,amg_params)
@@ -807,8 +819,8 @@ function amg_setup(x,A,b,B,amg_params)
             return nothing
         end
         (;pre_smoother,pos_smoother,coarsening,cycle) = fine_level
-        pre_setup = setup(pre_smoother,x,A,b)
-        pos_setup = setup(pos_smoother,x,A,b)
+        pre_setup = pre_smoother(linear_problem(x,A,b))
+        pos_setup = pos_smoother(linear_problem(x,A,b))
         coarsen, _ = coarsening
         Ac,Bc,R,P,Ac_setup = coarsen(A,B)
         nc = size(Ac,1)
@@ -830,28 +842,29 @@ function amg_setup(x,A,b,B,amg_params)
     end
     n_fine_levels = count(i->i!==nothing,fine_levels)
     nlevels = n_fine_levels+1
-    coarse_solver_setup = setup(coarse_solver,x,A,b)
+    coarse_solver_setup = coarse_solver(linear_problem(x,A,b))
     coarse_level = (;coarse_solver_setup)
     (;nlevels,fine_levels,coarse_level,amg_params)
 end
 
-function amg_solve!(x,setup,b,options)
+function amg_step!(x,setup,b,phase=:start;kwargs...)
     level=1
     amg_cycle!(x,setup,b,level)
-    x
+    phase=:stop
+    x,setup,phase
 end
 
 function amg_cycle!(x,setup,b,level)
     amg_params = setup.amg_params
     if level == setup.nlevels
         coarse_solver_setup = setup.coarse_level.coarse_solver_setup
-        return solve!(x,coarse_solver_setup,b)
+        return smooth!(x,coarse_solver_setup,b)
     end
     level_params = amg_params.fine_params[level]
     level_setup = setup.fine_levels[level]
     (;cycle) = level_params
     (;R,P,r,rc,rc2,e,ec,ec2,A,Ac,pre_setup,pos_setup) = level_setup
-    solve!(x,pre_setup,b)
+    smooth!(x,pre_setup,b)
     mul!(r,A,x)
     r .= b .- r
     mul!(rc2,R,r)
@@ -861,16 +874,16 @@ function amg_cycle!(x,setup,b,level)
     ec2 .= ec
     mul!(e,P,ec2)
     x .+= e
-    solve!(x,pos_setup,b)
+    smooth!(x,pos_setup,b)
     x
 end
 
-function amg_statistics(P::Preconditioner)
+function amg_statistics(P)
     # Taken from: An Introduction to Algebraic Multigrid, R. D. Falgout, April 25, 2006
     # Grid complexity is the total number of grid points on all grids divided by the number
     # of grid points on the fine grid. Operator complexity is the total number of nonzeroes in the linear operators
     # on all grids divided by the number of nonzeroes in the fine grid operator
-    setup = P.solver_setup
+    setup = P.workspace
     nlevels = setup.nlevels
     level_rows = zeros(Int,nlevels)
     level_nnz = zeros(Int,nlevels)
@@ -909,7 +922,7 @@ end
     amg_cycle!(args...)
 end
 
-function amg_update!(setup,A,options)
+function amg_update!(setup,A)
     amg_params = setup.amg_params
     nlevels = setup.nlevels
     for level in 1:(nlevels-1)
@@ -918,13 +931,13 @@ function amg_update!(setup,A,options)
         (;coarsening) = level_params
         _, coarsen! = coarsening
         (;R,P,A,Ac,Ac_setup,pre_setup,pos_setup) = level_setup
-        update!(pre_setup,A)
-        update!(pos_setup,A)
+        update(pre_setup,matrix=A)
+        update(pos_setup,matrix=A)
         coarsen!(A,Ac,R,P,Ac_setup)
         A = Ac
     end
     coarse_solver_setup = setup.coarse_level.coarse_solver_setup
-    update!(coarse_solver_setup,A)
+    update(coarse_solver_setup,matrix=A)
     setup
 end
 
