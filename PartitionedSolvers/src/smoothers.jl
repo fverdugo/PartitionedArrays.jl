@@ -1,343 +1,356 @@
 
-function lu_solver()
-    setup(x,op,b,options) = lu(op)
-    update!(state,op,options) = lu!(state,op)
-    solve!(x,P,b,options) = ldiv!(x,P,b)
-    uses_initial_guess = Val(false)
-    linear_solver(;setup,solve!,update!,uses_initial_guess)
-end
-
-function jacobi_correction()
-    setup(x,op,b,options) = dense_diag!(similar(b),op)
-    update!(state,op,options) = dense_diag!(state,op)
-    function solve!(x,state,b,options)
-        x .= state .\ b
-        x
+function identity_solver(p)
+    @assert uses_mutable_types(p)
+    workspace = nothing
+    function update(workspace,A)
+        workspace
+    end
+    function step(x,workspace,b,phase=:start;kwargs...)
+        copyto!(x,b)
+        phase = :stop
+        x,workspace,phase
     end
     uses_initial_guess = Val(false)
-    linear_solver(;setup,update!,solve!,uses_initial_guess)
+    linear_solver(update,step,p,uses_initial_guess)
 end
 
-function richardson(solver;iters,omega=1)
-    function setup(x,A,b,options)
-        A_ref = Ref(A)
-        r = similar(b)
-        dx = similar(x,axes(A,2))
-        P = PartitionedSolvers.setup(solver,dx,A,r)
-        state = (r,dx,P,A_ref)
+function jacobi_correction(p)
+    @assert uses_mutable_types(p)
+    Adiag = dense_diag!(similar(rhs(p)),matrix(p))
+    function update(Adiag,A)
+        dense_diag!(Adiag,A)
+        Adiag
     end
-    function update!(state,A,options)
-        (r,dx,P,A_ref) = state
-        A_ref[] = A
-        PartitionedSolvers.update!(P,A)
-        state
+    function step(x,Adiag,b,phase=:start;kwargs...)
+        x .= Adiag .\ b
+        phase = :stop
+        x,Adiag,phase
     end
-    function solve!(x,state,b,options)
-        (r,dx,P,A_ref) = state
-        A = A_ref[]
-        for iter in 1:iters
-            dx .= x
-            mul!(r,A,dx)
-            r .-= b
-            ldiv!(dx,P,r)
-            x .-= omega .* dx
-        end
-        x, (;iters)
-    end
-    function step!(x,state,b,options,step=0)
-        if step == iters
-            return nothing
-        end
-        (r,dx,P,A_ref) = state
-        A = A_ref[]
-        dx .= x
-        mul!(r,A,dx)
-        r .-= b
-        ldiv!(dx,P,r)
-        x .-= omega .* dx
-        x,step+1
-    end
-    function finalize!(state)
-        (r,dx,P,A_ref) = state
-        PartitionedSolvers.finalize!(P)
-    end
-    returns_history = Val(true)
-    linear_solver(;setup,update!,solve!,finalize!,step!,returns_history)
+    uses_initial_guess = Val(false)
+    linear_solver(update,step,p,Adiag;uses_initial_guess)
 end
 
-function jacobi(;kwargs...)
-    solver = jacobi_correction()
-    richardson(solver;kwargs...)
+function richardson(p;
+        P=preconditioner(identity_solver,p) ,
+        iterations=10,
+        omega=1,
+        update_P = true,
+    )
+    @assert uses_mutable_types(p)
+    iteration = 0
+    A = matrix(p)
+    ws = (;iterations,P,iteration,omega,update_P,A)
+    linear_solver(richardson_update,richardson_step,p,ws)
 end
 
-function gauss_seidel(;iters=1,sweep=:symmetric)
-    @assert sweep in (:forward,:backward,:symmetric)
-    function setup(x,A,b,options)
-        diagA = dense_diag!(similar(b),A)
-        A_ref = Ref(A)
-        (diagA,A_ref)
+function richardson_update(ws,A)
+    (;iterations,P,iteration,omega,update_P) = ws
+    if update_P
+        P = update(P,matrix=A)
     end
-    function update!(state,A,options)
-        (diagA,A_ref) = state
-        dense_diag!(diagA,A)
-        A_ref[] = A
-        state
+    iteration = 0
+    ws = (;iterations,P,iteration,omega,update_P,A)
+end
+
+function richardson_step(x,ws,b,phase=:start;kwargs...)
+    (;iterations,P,iteration,omega,update_P,A) = ws
+    if phase === :start
+        iteration = 0
+        phase = :advance
     end
-    function gauss_seidel_sweep!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
-        #assumes symmetric matrix
-        for col in cols
-            s = b[col]
-            for p in nzrange(A,col)
-                row = A.rowval[p]
-                a = A.nzval[p]
-                s -= a*x[row]
-            end
-            d = diagA[col]
-            s += d*x[col]
-            s = s/d
-            x[col] = s
+    dx = solution(P)
+    r = rhs(P)
+    dx .= x
+    mul!(r,A,dx)
+    r .-= b
+    ldiv!(dx,P,r)
+    x .-= omega .* dx
+    iteration += 1
+    if iteration == iterations
+        phase = :stop
+    end
+    ws = (;iterations,P,iteration,omega,update_P,A)
+    x,ws,phase
+end
+
+function jacobi(p;iterations=10,omega=1)
+    P = preconditioner(jacobi_correction,p)
+    update_P = true
+    richardson(p;P,update_P,iterations,omega)
+end
+
+function gauss_seidel(p;iterations=1,sweep=:symmetric)
+    @assert uses_mutable_types(p)
+    iteration = 0
+    A = matrix(p)
+    Adiag = dense_diag!(similar(rhs(p)),A)
+    ws = (;iterations,sweep,iteration,A,Adiag)
+    linear_solver(gauss_seidel_update,gauss_seidel_step,p,ws)
+end
+
+function gauss_seidel_update(ws,A)
+    (;iterations,sweep,iteration,A,Adiag) = ws
+    dense_diag!(Adiag,A)
+    iteration = 0
+    ws = (;iterations,sweep,iteration,A,Adiag)
+end
+
+function gauss_seidel_step(x,ws,b,phase=:start;zero_guess=false,kwargs...)
+    (;iterations,sweep,iteration,A,Adiag) = ws
+    if phase === :start
+        iteration = 0
+        phase = :advance
+    end
+    if (! zero_guess) && isa(x,PVector)
+        consistent!(x) |> wait
+    end
+    # TODO the meaning of :forward and :backward
+    # depends on the sparse matrix format
+    if sweep === :symmetric || sweep === :forward
+        if zero_guess
+            gauss_seidel_forward_sweep_zero!(x,A,Adiag,b)
+        else
+            gauss_seidel_forward_sweep!(x,A,Adiag,b)
         end
-        x
     end
-    function gauss_seidel_sweep!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
-        #assumes symmetric matrix
-        for row in rows
-            s = b[row]
-            for p in nzrange(A,row)
-                col = A.colval[p]
+    if sweep === :symmetric || sweep === :backward
+        gauss_seidel_backward_sweep!(x,A,Adiag,b)
+    end
+    iteration += 1
+    if iteration == iterations
+        phase = :stop
+    end
+    ws = (;iterations,sweep,iteration,A,Adiag)
+    x,ws,phase
+end
+
+function gauss_seidel_forward_sweep!(x,A,diagA,b)
+    n = length(b)
+    gauss_seidel_sweep!(x,A,diagA,b,1:n)
+end
+
+function gauss_seidel_backward_sweep!(x,A,diagA,b)
+    n = length(b)
+    gauss_seidel_sweep!(x,A,diagA,b,n:-1:1)
+end
+
+function gauss_seidel_forward_sweep!(x,A::PSparseMatrix,diagA,b)
+    foreach(gauss_seidel_forward_sweep!,partition(x),partition(A),partition(diagA),own_values(b))
+end
+
+function gauss_seidel_backward_sweep!(x,A::PSparseMatrix,diagA,b)
+    foreach(gauss_seidel_backward_sweep!,partition(x),partition(A),partition(diagA),own_values(b))
+end
+
+function gauss_seidel_sweep!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
+    # assumes symmetric matrix
+    for col in cols
+        s = b[col]
+        for p in nzrange(A,col)
+            row = A.rowval[p]
+            a = A.nzval[p]
+            s -= a*x[row]
+        end
+        d = diagA[col]
+        s += d*x[col]
+        s = s/d
+        x[col] = s
+    end
+    x
+end
+
+function gauss_seidel_sweep!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
+    for row in rows
+        s = b[row]
+        for p in nzrange(A,row)
+            col = A.colval[p]
+            a = A.nzval[p]
+            s -= a * x[col]
+        end
+        d = diagA[row]
+        s += d * x[row]
+        s = s / d
+        x[row] = s
+    end
+    x
+end
+
+function gauss_seidel_sweep!(x,A::PartitionedArrays.AbstractSplitMatrix,diagA,b,cols)
+    @assert isa(A.row_permutation,UnitRange)
+    @assert isa(A.col_permutation,UnitRange)
+    Aoo = A.blocks.own_own
+    Aoh = A.blocks.own_ghost
+    gauss_seidel_sweep_split!(x,Aoo,Aoh,diagA,b,cols)
+end
+
+function gauss_seidel_sweep_split!(x,Aoo::SparseMatricesCSR.SparseMatrixCSR,Aoh,diagA,b,rows)
+    for row in rows
+        s = b[row]
+        for p in nzrange(Aoo,row)
+            col = Aoo.colval[p]
+            a = Aoo.nzval[p]
+            s -= a * x[col]
+        end
+        for p in nzrange(Aoh,row)
+            col = Aoh.colval[p]
+            a = Aoh.nzval[p]
+            s -= a * x[col]
+        end
+        d = diagA[row]
+        s += d * x[row]
+        s = s / d
+        x[row] = s
+    end
+    x
+end
+
+function gauss_seidel_forward_sweep_zero!(x,A,diagA,b)
+    n = length(b)
+    gauss_seidel_sweep_zero!(x,A,diagA,b,1:n)
+end
+
+# TODO not sure if correct
+function gauss_seidel_backward_sweep_zero!(x,A,diagA,b)
+    n = length(b)
+    gauss_seidel_sweep_zero!(x,A,diagA,b,n:-1:1)
+end
+
+function gauss_seidel_forward_sweep_zero!(x,A::PSparseMatrix,diagA,b)
+    foreach(gauss_seidel_forward_sweep_zero!,partition(x),partition(A),partition(diagA),own_values(b))
+end
+
+function gauss_seidel_backward_sweep_zero!(x,A::PSparseMatrix,diagA,b)
+    foreach(gauss_seidel_backward_sweep_zero!,partition(x),partition(A),partition(diagA),own_values(b))
+end
+
+# Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
+function gauss_seidel_sweep_zero!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
+    gauss_seidel_sweep!(x,A,diagA,b,cols)
+    ## There is a bug, falling back to nonzero x
+    ##assumes symmetric matrix
+    #for col in cols
+    #    s = b[col]
+    #    for p in nzrange(A,col)
+    #        row = A.rowval[p]
+    #        if col < row
+    #            a = A.nzval[p]
+    #            s -= a*x[row]
+    #        end
+    #    end
+    #    d = diagA[col]
+    #    #s += d*x[col]
+    #    s = s/d
+    #    x[col] = s
+    #end
+    #x
+end
+# Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
+function gauss_seidel_sweep_zero!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
+    rows
+    length(x)
+    size(A)
+    length(b)
+    #assumes symmetric matrix
+    for row in rows
+        s = b[row]
+        for p in nzrange(A,row)
+            col = A.colval[p]
+            if col < row
                 a = A.nzval[p]
                 s -= a * x[col]
             end
-            d = diagA[row]
-            s += d * x[row]
-            s = s / d
-            x[row] = s
         end
-        x
+        d = diagA[row]
+        #s += d * x[col]
+        s = s / d
+        x[row] = s
     end
+    x
+end
 
-    # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
-    function gauss_seidel_sweep_zero!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
-        #assumes symmetric matrix
-        for col in cols
-            s = b[col]
-            for p in nzrange(A,col)
-                row = A.rowval[p]
-                if col < row
-                    a = A.nzval[p]
-                    s -= a*x[row]
-                end
-            end
-            d = diagA[col]
-            #s += d*x[col]
-            s = s/d
-            x[col] = s
-        end
-        x
-    end
-    # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
-    function gauss_seidel_sweep_zero!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
-        #assumes symmetric matrix
-        for row in rows
-            s = b[row]
-            for p in nzrange(A,row)
-                col = A.colval[p]
-                if col < row
-                    a = A.nzval[p]
-                    s -= a * x[col]
-                end
-            end
-            d = diagA[row]
-            #s += d * x[col]
-            s = s / d
-            x[row] = s
-        end
-        x
-    end
-    function solve!(x,state,b,options)
-        (diagA,A_ref) = state
-        A = A_ref[]
-        n = length(b)
+function gauss_seidel_sweep_zero!(x,A::PartitionedArrays.AbstractSplitMatrix,diagA,b,cols)
+    @assert isa(A.row_permutation,UnitRange)
+    @assert isa(A.col_permutation,UnitRange)
+    Aoo = A.blocks.own_own
+    Aoh = A.blocks.own_ghost
+    gauss_seidel_sweep_zero_split!(x,Aoo,Aoh,diagA,b,cols)
+end
 
-        for iter in 1:iters
-            if sweep === :symmetric || sweep === :forward
-                if options.zero_guess
-                    gauss_seidel_sweep_zero!(x,A,diagA,b,1:n)
-                else
-                    gauss_seidel_sweep!(x,A,diagA,b,1:n)
-                end
-            end
-            if sweep === :symmetric || sweep === :backward
-                gauss_seidel_sweep!(x,A,diagA,b,n:-1:1)
+function gauss_seidel_sweep_zero_split!(x,Aoo::SparseMatricesCSR.SparseMatrixCSR,Aoh,diagA,b,rows)
+    for row in rows
+        s = b[row]
+        for p in nzrange(Aoo,row)
+            col = Aoo.colval[p]
+            if col < row
+                a = Aoo.nzval[p]
+                s -= a * x[col]
             end
         end
-        x
-    end
-    linear_solver(;setup,update!,solve!)
-end
-
-function additive_schwarz(local_solver;iters=1)
-    richardson(additive_schwarz_correction(local_solver);iters)
-end
-
-function local_setup_options(A,options)
-    if nullspace(options) !== nothing
-        ns = map(i->own_values(i),nullspace(options))
-        map(ns) do ns
-            setup_options(;nullspace=ns)
+        for p in nzrange(Aoh,row)
+            col = Aoh.colval[p]
+            if col < row
+                a = Aoh.nzval[p]
+                s -= a * x[col]
+            end
         end
-    else
-        map(partition(A)) do A
-            options
-        end
+        d = diagA[row]
+        #s += d * x[col]
+        s = s / d
+        x[row] = s
     end
+    x
 end
 
-function local_solver_options(A,options)
-    map(partition(A)) do A
-        options
-    end
+function additive_schwarz_correction(p;local_solver=LinearAlgebra_lu)
+    x = solution(p)
+    A = matrix(p)
+    b = rhs(p)
+    local_s = additive_schwarz_correction_setup(local_solver,x,A,b)
+    uses_initial_guess = Val(false)
+    linear_solver(
+        additive_schwarz_correction_update,
+        additive_schwarz_correction_step,
+        p,
+        local_s;
+        uses_initial_guess
+       )
 end
 
-struct AdditiveSchwarzSetup{A} <: AbstractType
-    local_setups::A
+function additive_schwarz_correction_setup(local_solver,x,A::PSparseMatrix,b)
+    local_p = map(linear_problem,own_values(x),own_own_values(A),own_values(b))
+    local_s = map(local_solver,local_p)
 end
 
-function additive_schwarz_correction(local_solver)
-    # For parallel matrices
-    function setup(x,A::PSparseMatrix,b,options)
-        map(
-            local_solver.setup,
-            own_values(x),
-            own_own_values(A),
-            own_values(b),
-            local_setup_options(A,options),
-           ) |> AdditiveSchwarzSetup
-    end
-    function update!(state::AdditiveSchwarzSetup,A,options)
-        map(
-            local_solver.update!,
-            state.local_setups,
-            own_own_values(A),
-            local_setup_options(A,options),
-           )
-    end
-    function solve!(x,state::AdditiveSchwarzSetup,b,options)
-        map(
-            local_solver.solve!,
-            own_values(x),
-            state.local_setups,
-            own_values(b),
-            local_solver_options(b,options)
-           )
-        x
-    end
-    function finalize!(state::AdditiveSchwarzSetup)
-        map(
-            local_solver.finalize!,
-            state.local_setups)
-        nothing
-    end
-    # Fall back for sequential matrices
-    function setup(x,A,b,options)
-        local_solver.setup(x,A,b,options)
-    end
-    function update!(state,A,options)
-        local_solver.update!(state,A,options)
-    end
-    function solve!(x,state,b,options)
-        local_solver.solve!(x,state,b,options)
-        x
-    end
-    function finalize!(state)
-        local_solver.finalize!(state)
-        nothing
-    end
-    linear_solver(;setup,update!,solve!,finalize!)
+function additive_schwarz_correction_update(local_s,A::PSparseMatrix)
+    local_s = map(additive_schwarz_correction_update,local_s,own_own_values(A))
 end
 
-function additive_schwarz_correction_partition(local_solver)
-    # For parallel matrices
-    function setup(x,A::PSparseMatrix,b,options)
-        map(
-            local_solver.setup,
-            partition(x),
-            partition(A),
-            own_values(b),
-            local_setup_options(A,options),
-        ) |> AdditiveSchwarzSetup
-    end
-    function update!(state::AdditiveSchwarzSetup,A,options)
-        map(
-            local_solver.update!,
-            state.local_setups,
-            partition(A),
-            local_setup_options(A,options),
-        )
-    end
-    function solve!(x,state::AdditiveSchwarzSetup,b,options)
-        map(
-            local_solver.solve!,
-            partition(x),
-            state.local_setups,
-            own_values(b),
-            local_solver_options(b,options),
-        )
-        x
-    end
-    function finalize!(state::AdditiveSchwarzSetup)
-        map(
-            local_solver.finalize!,
-            state.local_setups)
-        nothing
-    end
-    # Fall back for sequential matrices
-    function setup(x,A,b,options)
-        local_solver.setup(x,A,b,options)
-    end
-    function update!(state,A,options)
-        local_solver.update!(state,A,options)
-    end
-    function solve!(x,state,b,options)
-        local_solver.solve!(x,state,b,options)
-        x
-    end
-    function finalize!(state)
-        local_solver.finalize!(state)
-        nothing
-    end
-    linear_solver(;setup,update!,solve!,finalize!)
+function additive_schwarz_correction_step(x::PVector,local_s,b,phase=:start;kwargs...)
+    foreach(ldiv!,own_values(x),local_s,own_values(b))
+    phase = :stop
+    x,local_s,phase
 end
 
-# Wrappers
-
-function linear_solver(::typeof(LinearAlgebra.lu))
-    lu_solver()
+function additive_schwarz_correction_setup(local_solver,x,A,b)
+    local_p = linear_problem(x,A,b)
+    local_s = local_solver(local_p)
 end
 
-function linear_solver(::typeof(IterativeSolvers.cg);Pl,kwargs...)
-    function setup(x,A,b,options)
-        Pl_solver = linear_solver(Pl)
-        P = PartitionedSolvers.setup(Pl_solver,x,A,b;options...)
-        A_ref = Ref(A)
-        (;P,A_ref)
+function additive_schwarz_correction_update(local_s,A)
+    local_s = update(local_s,matrix=A)
+end
+
+function additive_schwarz_correction_step(x,local_s,b,phase=:start;kwargs...)
+    ldiv!(x,local_s,b)
+    phase = :stop
+    x,local_s,phase
+end
+
+function additive_schwarz(p;local_solver=LinearAlgebra_lu,iterations=1)
+    P = preconditioner(p) do dp
+        additive_schwarz_correction(dp;local_solver)
     end
-    function update!(state,A,options)
-        (;P,A_ref) = state
-        A_ref[] = A
-        P = PartitionedSolvers.update!(P,A;options...)
-        state
-    end
-    function solve!(x,state,b,options)
-        (;P,A_ref) = state
-        A = A_ref[]
-        IterativeSolvers.cg!(x,A,b;Pl=P,kwargs...)
-    end
-    function finalize!(state,A,options)
-        (;P) = state
-        PartitionedSolvers.finalize!(P)
-        nothing
-    end
-    linear_solver(;setup,update!,solve!,finalize!)
+    update_P = true
+    richardson(p;P,update_P,iterations)
 end
 

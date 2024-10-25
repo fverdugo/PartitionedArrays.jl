@@ -1,7 +1,8 @@
 module AMGTests
 
 using PartitionedArrays
-using PartitionedSolvers
+import PartitionedSolvers as PS
+import PartitionedSolvers
 using LinearAlgebra
 using IterativeSolvers
 using IterativeSolvers: cg!
@@ -222,61 +223,56 @@ b = A*x
 y = similar(x)
 y .= 0
 
-solver = amg()
-S = setup(solver,y,A,b)
-solve!(y,S,b)
-update!(S,2*A)
-solve!(y,S,b)
-finalize!(S)
+p = PS.linear_problem(y,A,b)
 
-amg_statistics(S) |> display
+S = PS.amg(p)
+S = PS.solve(S)
+S = PS.update(S,matrix=2*A)
+S = PS.solve(S)
+
+PS.amg_statistics(S) |> display
 
 # Non-default options
 
-level_params = amg_level_params(;
-    pre_smoother = PartitionedSolvers.jacobi(;iters=10,omega=2/3),
-    cycle = v_cycle,
+level_params = PS.amg_level_params(;
+    pre_smoother = p->PartitionedSolvers.jacobi(p;iterations=10,omega=2/3),
+    cycle = PS.v_cycle,
    )
 
-fine_params = amg_fine_params(;
+fine_params = PS.amg_fine_params(;
     level_params,
     n_fine_levels=5)
 
 coarse_params = (;
-    coarse_solver = lu_solver(),
+    coarse_solver = PS.LinearAlgebra_lu,
     coarse_size = 15,
    )
 
-solver = amg(;fine_params,coarse_params)
 
 # Now with a nullspace
 
-B = default_nullspace(A)
-S = setup(solver,y,A,b;nullspace=B)
-solve!(y,S,b)
-update!(S,2*A;nullspace=B)
-solve!(y,S,b)
-finalize!(S)
+B = PS.default_nullspace(A)
+p = PS.linear_problem(y,A,b;nullspace=B)
+
+S = PS.amg(p;fine_params,coarse_params)
+PS.solve(S)
+PS.update(S,matrix=2*A)
+PS.solve(S)
 
 # Now as a preconditioner
 
-level_params = amg_level_params(;
-   pre_smoother = PartitionedSolvers.gauss_seidel(;iters=1),
+level_params = PS.amg_level_params(;
+   pre_smoother = p->PartitionedSolvers.gauss_seidel(p;iterations=1),
    )
 
-fine_params = amg_fine_params(;level_params)
+fine_params = PS.amg_fine_params(;level_params)
 
-Pl = setup(amg(;fine_params),y,A,b;nullspace=B)
+p = PS.linear_problem(y,A,b;nullspace=B)
+
+Pl = PS.amg(p;fine_params)
+
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
-
-solver = linear_solver(IterativeSolvers.cg;Pl=amg(;fine_params),verbose=true)
-S = setup(solver,y,A,b)
-solve!(y,S,b)
-update!(S,2*A)
-solve!(y,S,b)
-
-
 
 # Now for linear elasticity (sequential)
 
@@ -297,16 +293,15 @@ b = A*x_exact
 y = similar(x_exact)
 y .= 0
 
-level_params = amg_level_params_linear_elasticity(block_size)
-fine_params = amg_fine_params(;level_params)
-solver = amg(;fine_params)
+level_params = PS.amg_level_params_linear_elasticity(block_size)
+fine_params = PS.amg_fine_params(;level_params)
 
-Pl = setup(solver,y,A,b;nullspace=B)
+p = PS.linear_problem(y,A,b;nullspace=B)
+Pl = PS.amg(p;fine_params)
+
 cg!(y,A,b;Pl,verbose=true)
 println("Linear Elasticity norm of error: $(norm(y-x_exact))")
 @test y ≈ x_exact
-
-
 
 # Now in parallel
 
@@ -322,36 +317,34 @@ b = A*x
 y = similar(x)
 y .= 0
 
-solver = amg()
-S = setup(solver,y,A,b)
-amg_statistics(S) |> display
-solve!(y,S,b)
-update!(S,2*A)
-solve!(y,S,b)
-finalize!(S)
+p = PS.linear_problem(y,A,b)
+
+S = PS.amg(p)
+PS.amg_statistics(S) |> display
+PS.solve(S)
+PS.update(S,matrix=2*A)
+PS.solve(S)
 
 # Now with a nullspace
 
-B = default_nullspace(A)
-solver = amg()
-S = setup(solver,y,A,b;nullspace=B)
-solve!(y,S,b)
-update!(S,2*A)
-solve!(y,S,b)
-finalize!(S)
+B = PS.default_nullspace(A)
+p = PS.linear_problem(y,A,b;nullspace=B)
+S = PS.amg(p)
+PS.solve(S)
+PS.update(S,matrix=2*A)
+PS.solve(S)
 
-level_params = amg_level_params(;
-    pre_smoother = PartitionedSolvers.jacobi(;iters=1,omega=2/3),
-    coarsening = smoothed_aggregation(;repartition_threshold=10000000)
+level_params = PS.amg_level_params(;
+    pre_smoother = p->PartitionedSolvers.jacobi(p;iterations=1,omega=2/3),
+    coarsening = PS.smoothed_aggregation(;repartition_threshold=10000000)
    )
 
-fine_params = amg_fine_params(;
+fine_params = PS.amg_fine_params(;
     level_params,
     n_fine_levels=5)
 
-solver = amg(;fine_params)
-
-Pl = setup(solver,y,A,b;nullspace=B)
+p = PS.linear_problem(y,A,b;nullspace=B)
+Pl = PS.amg(p;fine_params)
 y .= 0
 cg!(y,A,b;Pl,verbose=true)
 
@@ -364,7 +357,9 @@ x_exact = pones(partition(axes(A,2)))
 b = A*x_exact
 x = similar(b,axes(A,2))
 x .= 0
-Pl = setup(amg(),x,A,b)
+
+p = PS.linear_problem(x,A,b)
+Pl = PS.amg(p)
 _, history = cg!(x,A,b;Pl,log=true)
 display(history)
 
@@ -385,11 +380,11 @@ b = A*x_exact
 y = similar(b,axes(A,2))
 y .= 0
 
-level_params = amg_level_params_linear_elasticity(block_size)
-fine_params = amg_fine_params(;level_params)
-solver = amg(;fine_params)
+level_params = PS.amg_level_params_linear_elasticity(block_size)
+fine_params = PS.amg_fine_params(;level_params)
 
-Pl = setup(solver,y,A,b;nullspace=B) 
+p = PS.linear_problem(y,A,b;nullspace=B)
+Pl = PS.amg(p;fine_params)
 cg!(y,A,b;Pl,verbose=true)
 @test y ≈ x_exact
 

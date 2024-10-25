@@ -85,6 +85,18 @@ function laplacian_fdm(
     I,J,V,node_partition,node_partition
 end
 
+function laplacian_fdm(nodes_per_dir;kwargs...)
+    parts_per_dir = map(n->1,nodes_per_dir)
+    ranks = LinearIndices((1,))
+    args = laplacian_fdm(nodes_per_dir,parts_per_dir,ranks;kwargs...)
+    I = getany(args[1])
+    J = getany(args[2])
+    V = getany(args[3])
+    nrows = length(PRange(args[4]))
+    ncols = length(PRange(args[5]))
+    I,J,V,nrows,ncols
+end
+
 """
     laplacian_fem(
             nodes_per_dir,
@@ -224,6 +236,18 @@ function laplacian_fem(
         setup(cells,Ti,Tv)
     end |> tuple_of_arrays
     I,J,V,node_partition,node_partition
+end
+
+function laplacian_fem(nodes_per_dir;kwargs...)
+    parts_per_dir = map(n->1,nodes_per_dir)
+    ranks = LinearIndices((1,))
+    args = laplacian_fem(nodes_per_dir,parts_per_dir,ranks;kwargs...)
+    I = getany(args[1])
+    J = getany(args[2])
+    V = getany(args[3])
+    nrows = length(PRange(args[4]))
+    ncols = length(PRange(args[5]))
+    I,J,V,nrows,ncols
 end
 
 function linear_elasticity_fem(
@@ -384,6 +408,18 @@ function linear_elasticity_fem(
         setup(cells,Ti,Tv)
     end |> tuple_of_arrays
     I,J,V,dof_partition,dof_partition
+end
+
+function linear_elasticity_fem(nodes_per_dir;kwargs...)
+    parts_per_dir = map(n->1,nodes_per_dir)
+    ranks = LinearIndices((1,))
+    args = linear_elasticity_fem(nodes_per_dir,parts_per_dir,ranks;kwargs...)
+    I = getany(args[1])
+    J = getany(args[2])
+    V = getany(args[3])
+    nrows = length(PRange(args[4]))
+    ncols = length(PRange(args[5]))
+    I,J,V,nrows,ncols
 end
 
 function node_to_dof_partition(node_partition,D)

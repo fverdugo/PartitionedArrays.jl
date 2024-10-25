@@ -1353,7 +1353,7 @@ function assemble!(B::PSparseMatrix,A::PSparseMatrix,cache)
     psparse_assemble_impl!(B,A,T,cache)
 end
 
-function psparse_assemble_impl(A,::Type,rows)
+function psparse_assemble_impl(A,::Type,rows;kwargs...)
     error("Case not implemented yet")
 end
 

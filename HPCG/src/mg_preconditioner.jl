@@ -110,7 +110,7 @@ function generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
     Axf = similar(r)
     Axf .= 0
     x .= 0
-    gs_state = setup(solver, x, A, r)
+    gs_state = solver(PartitionedSolvers.linear_problem(x, A, r))
     return A, r, x, Axf, gs_state
 end
 
@@ -139,11 +139,11 @@ function pc_setup(np, ranks, l, nx, ny, nz)
     r = Vector{PVector}(undef, l)
     x = Vector{PVector}(undef, l)
     Axf = Vector{PVector}(undef, l)
-    gs_states = Vector{PartitionedSolvers.Preconditioner}(undef, l)
+    gs_states = Vector{PartitionedSolvers.LinearSolver}(undef, l)
     npx, npy, npz = compute_optimal_shape_XYZ(np)
     nnz_vec = Vector{Int64}(undef, l)
     nrows_vec = Vector{Int64}(undef, l)
-    solver = PartitionedSolvers.additive_schwarz_correction_partition(gauss_seidel(; iters = 1))
+    solver = p -> PartitionedSolvers.gauss_seidel(p;iterations=1)
 
     # create top problem 
     A, r, x, Axf, gs_state = generate_problem(ranks, npx, npy, npz, nx, ny, nz, solver)
@@ -313,16 +313,16 @@ end
 """
 function pc_solve!(x, s::Mg_preconditioner, b, l; zero_guess = false)
     if l == 1
-        solve!(x, s.gs_states[l], b; zero_guess) # bottom solve
+        PartitionedSolvers.smooth!(x, s.gs_states[l], b; zero_guess) # bottom solve
     else
-        solve!(x, s.gs_states[l], b; zero_guess) # presmoother 
+        PartitionedSolvers.smooth!(x, s.gs_states[l], b; zero_guess) # presmoother 
         mul_no_lat!(s.Axf[l], s.A_vec[l], x)
         p_restrict!(s.r[l-1], b, s.Axf[l], s.f2c[l-1])
         s.x[l-1] .= 0.0
         pc_solve!(s.x[l-1], s, s.r[l-1], l - 1; zero_guess = true)
         p_prolongate!(x, s.x[l-1], s.f2c[l-1])
-        consistent!(x) |> wait
-        solve!(x, s.gs_states[l], b) # post smooth
+        #consistent!(x) |> wait #Already inside gauss_seidel
+        PartitionedSolvers.smooth!(x, s.gs_states[l], b) # post smooth
     end
     x
 end
