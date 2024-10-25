@@ -114,7 +114,7 @@ function gauss_seidel_step(x,ws,b,phase=:start;zero_guess=false,kwargs...)
         end
     end
     if sweep === :symmetric || sweep === :backward
-        gauss_seidel_forward_sweep!(x,A,Adiag,b)
+        gauss_seidel_backward_sweep!(x,A,Adiag,b)
     end
     iteration += 1
     if iteration == iterations
@@ -135,11 +135,11 @@ function gauss_seidel_backward_sweep!(x,A,diagA,b)
 end
 
 function gauss_seidel_forward_sweep!(x,A::PSparseMatrix,diagA,b)
-    foreach(gauss_seidel_forward_sweep!,partition(x),partition(A),partition(diagA),partition(b))
+    foreach(gauss_seidel_forward_sweep!,partition(x),partition(A),partition(diagA),own_values(b))
 end
 
 function gauss_seidel_backward_sweep!(x,A::PSparseMatrix,diagA,b)
-    foreach(gauss_seidel_backward_sweep!,partition(x),partition(A),partition(diagA),partition(b))
+    foreach(gauss_seidel_backward_sweep!,partition(x),partition(A),partition(diagA),own_values(b))
 end
 
 function gauss_seidel_sweep!(x,A::SparseArrays.AbstractSparseMatrixCSC,diagA,b,cols)
@@ -216,11 +216,11 @@ function gauss_seidel_backward_sweep_zero!(x,A,diagA,b)
 end
 
 function gauss_seidel_forward_sweep_zero!(x,A::PSparseMatrix,diagA,b)
-    foreach(gauss_seidel_forward_sweep_zero!,partition(x),partition(A),partition(diagA),partition(b))
+    foreach(gauss_seidel_forward_sweep_zero!,partition(x),partition(A),partition(diagA),own_values(b))
 end
 
 function gauss_seidel_backward_sweep_zero!(x,A::PSparseMatrix,diagA,b)
-    foreach(gauss_seidel_backward_sweep_zero!,partition(x),partition(A),partition(diagA),partition(b))
+    foreach(gauss_seidel_backward_sweep_zero!,partition(x),partition(A),partition(diagA),own_values(b))
 end
 
 # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
@@ -246,6 +246,10 @@ function gauss_seidel_sweep_zero!(x,A::SparseArrays.AbstractSparseMatrixCSC,diag
 end
 # Zero guess: only calculate points below diagonal of sparse matrix in forward sweep.
 function gauss_seidel_sweep_zero!(x,A::SparseMatricesCSR.SparseMatrixCSR,diagA,b,rows)
+    rows
+    length(x)
+    size(A)
+    length(b)
     #assumes symmetric matrix
     for row in rows
         s = b[row]
