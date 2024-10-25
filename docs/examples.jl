@@ -236,10 +236,10 @@ history
 
 # Now solve the system while using an AMG preconditioner.
 
-using PartitionedSolvers
+import PartitionedSolvers as PS
 
 x .= 0
-Pl = setup(amg(),x,A,b)
+Pl = PS.amg(PS.linear_problem(x,A,b))
 _, history = IterativeSolvers.cg!(x,A,b;Pl,log=true)
 history
 
