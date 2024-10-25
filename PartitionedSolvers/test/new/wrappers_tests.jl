@@ -27,6 +27,16 @@ x = PS.solution(s)
 ldiv!(x,s,b)
 PS.smooth!(x,s,b)
 
+x .= 0
+p = PS.update(p,solution=x)
+s = PS.IterativeSolvers_cg(p;verbose=true)
+s = PS.solve(s)
+
+Pl = PS.LinearAlgebra_lu(p)
+x .= 0
+p = PS.update(p,solution=x)
+s = PS.IterativeSolvers_cg(p;verbose=true,Pl)
+s = PS.solve(s)
 
 r = similar(b)
 w = nothing
@@ -44,27 +54,15 @@ p = PS.nonlinear_problem(x,r,A,w) do p2
     p2
 end
 
-s = PS.NLSolvers_nlsolve(p;show_trace=true)
-s = PS.solve(s)
-
-
-dx = copy(x)
-lp = PS.linear_problem(dx,A,r)
-ls = PS.LinearAlgebra_lu(lp)
-function linsolve(dx,A,b)
-    ls = PS.update(ls,matrix=A)
-    ldiv!(dx,ls,b)
-    dx
-end
-
 x .= 0
-s = PS.NLSolvers_nlsolve(p;show_trace=true,linsolve)
+p = PS.update(p,solution=x)
+s = PS.NLSolvers_nlsolve(p;show_trace=true,method=:newton)
 s = PS.solve(s)
 
-
-
-
-
-
+linsolve = PS.NLSolvers_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
+x .= 0
+p = PS.update(p,solution=x)
+s = PS.NLSolvers_nlsolve(p;show_trace=true,linsolve,method=:newton)
+s = PS.solve(s)
 
 end # module

@@ -15,6 +15,19 @@ function LinearAlgebra_lu(p)
     linear_solver(update,step,p,F;uses_initial_guess)
 end
 
+function IterativeSolvers_cg(p;kwargs...)
+    A = matrix(p)
+    function update(state,A)
+        A
+    end
+    function step(x,A,b,phase=:start)
+        IterativeSolvers.cg!(x,A,b;kwargs...)
+        phase = :stop
+        x,A,phase
+    end
+    linear_solver(update,step,p,A)
+end
+
 function NLSolvers_nlsolve_setup(p)
     function f!(r,x)
         update(p,residual=r,jacobian=nothing,solution=x)
@@ -51,4 +64,17 @@ function NLSolvers_nlsolve(p;kwargs...)
     nonlinear_solver(update,step,p,workspace)
 end
 
+function NLSolvers_nlsolve_linsolve(solver,p)
+    x = solution(p)
+    A = jacobian(p)
+    r = residual(p)
+    dx = similar(x,axes(A,2))
+    lp = linear_problem(dx,A,r)
+    ls = solver(lp)
+    function linsolve(dx,A,b)
+        ls = update(ls,matrix=A)
+        ldiv!(dx,ls,b)
+        dx
+    end
+end
 
