@@ -6,12 +6,12 @@ function LinearAlgebra_lu(p)
         lu!(F,A)
         F
     end
-    function step(x,F,b,phase=:start)
+    function step(x,F,b,phase=:start;kwargs...)
         ldiv!(x,F,b)
         phase = :stop
         x,F,phase
     end
-    uses_initial_guess = false
+    uses_initial_guess = Val(false)
     linear_solver(update,step,p,F;uses_initial_guess)
 end
 
@@ -20,7 +20,7 @@ function IterativeSolvers_cg(p;kwargs...)
     function update(state,A)
         A
     end
-    function step(x,A,b,phase=:start)
+    function step(x,A,b,phase=:start;kwargs...)
         IterativeSolvers.cg!(x,A,b;kwargs...)
         phase = :stop
         x,A,phase
@@ -50,7 +50,7 @@ function NLSolvers_nlsolve(p;kwargs...)
     function update(workspace,p)
         workspace = NLSolvers_nlsolve_setup(p)
     end
-    function step(workspace,p,phase=:start)
+    function step(workspace,p,phase=:start;kwargs...)
         if phase === :stop
             return nothing
         end

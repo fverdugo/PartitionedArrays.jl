@@ -1,6 +1,7 @@
 module InterfacesTests
 
-import PartitionedSolvers as PS
+import PartitionedSolvers: PS
+
 using Test
 
 function mock_linear_solver(p)

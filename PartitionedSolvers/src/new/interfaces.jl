@@ -1,7 +1,12 @@
 
-abstract type NewAbstractProblem <: AbstractType end
-abstract type NewAbstractSolver <: AbstractType end
-abstract type NewAbstractAge <: AbstractType end
+abstract type AbstractType end
+function Base.show(io::IO,data::AbstractType)
+    print(io,"PartitionedSolvers.$(nameof(typeof(data)))(…)")
+end
+
+abstract type AbstractProblem <: AbstractType end
+abstract type AbstractSolver <: AbstractType end
+#abstract type AbstractAge <: AbstractType end
 
 #function update(;kwargs...)
 #    function update_it(p)
@@ -9,41 +14,42 @@ abstract type NewAbstractAge <: AbstractType end
 #    end
 #end
 #
-#function update(s::NewAbstractSolver)
+#function update(s::AbstractSolver)
 #    function update_solver(p)
 #        update(s,p)
 #    end
 #end
 #
-#function update(p::NewAbstractProblem;kwargs...)
+#function update(p::AbstractProblem;kwargs...)
 #    function update_problem(args...)
 #        update(p,args...;kwargs...)
 #    end
 #end
 
-function solve(solver)
-    solver, state = step(solver)
+function solve(solver;kwargs...)
+    solver, state = step(solver;kwargs...)
     while state !== :stop
         solver, state = step(solver,state)
     end
     solver
 end
 
-function history(solver)
-    history(identity,solver)
+function history(solver;kwargs...)
+    History(identity,solver,kwargs)
 end
 
-function history(f,solver)
-    History(f,solver)
+function history(f,solver;kwargs...)
+    History(f,solver,kwargs)
 end
 
-struct History{A,B}
+struct History{A,B,C}
     f::A
     solver::B
+    kwargs::C
 end
 
 function Base.iterate(a::History)
-    solver, state = step(a.solver)
+    solver, state = step(a.solver;a.kwargs...)
     a.f(solver), (solver,state)
 end
 
@@ -70,22 +76,26 @@ uses_initial_guess(a) = val_parameter(a.uses_initial_guess)
 constant_jacobian(a) = val_parameter(a.constant_jacobian)
 uses_mutable_types(a) = val_parameter(a.uses_mutable_types)
 
-uses_initial_guess(a::NewAbstractSolver) = uses_initial_guess(attributes(a))
-constant_jacobian(a::NewAbstractProblem) = constant_jacobian(attributes(a))
-uses_mutable_types(a::NewAbstractProblem) = uses_mutable_types(attributes(a))
+uses_initial_guess(a::AbstractSolver) = uses_initial_guess(attributes(a))
+constant_jacobian(a::AbstractProblem) = constant_jacobian(attributes(a))
+uses_mutable_types(a::AbstractProblem) = uses_mutable_types(attributes(a))
 
-#solution(a::NewAbstractProblem) = solution(workspace(a))
-#jacobian(a::NewAbstractProblem) = jacobian(workspace(a))
-#residual(a::NewAbstractProblem) = residual(workspace(a))
-#age(a::NewAbstractProblem) = age(workspace(a))
-#matrix(a::NewAbstractProblem) = matrix(workspace(a))
-#rhs(a::NewAbstractProblem) = rhs(workspace(a))
+#solution(a::AbstractProblem) = solution(workspace(a))
+#jacobian(a::AbstractProblem) = jacobian(workspace(a))
+#residual(a::AbstractProblem) = residual(workspace(a))
+#age(a::AbstractProblem) = age(workspace(a))
+#matrix(a::AbstractProblem) = matrix(workspace(a))
+#rhs(a::AbstractProblem) = rhs(workspace(a))
 
-solution(a::NewAbstractSolver) = solution(problem(a))
+solution(a::AbstractSolver) = solution(problem(a))
+matrix(a::AbstractSolver) = matrix(problem(a))
+rhs(a::AbstractSolver) = rhs(problem(a))
+residual(a::AbstractSolver) = residual(problem(a))
+jacobian(a::AbstractSolver) = jacobian(problem(a))
 
-abstract type NewAbstractLinearProblem <: NewAbstractProblem end
+abstract type AbstractLinearProblem <: AbstractProblem end
 
-#struct LinearProblemAge <: NewAbstractAge
+#struct LinearProblemAge <: AbstractAge
 #    solution::Int
 #    matrix::Int
 #    rhs::Int
@@ -108,7 +118,7 @@ function linear_problem(solution,matrix,rhs;uses_mutable_types=Val(true))
     LinearProblem(solution,matrix,rhs,attributes)
 end
 
-struct LinearProblem{A,B,C,D} <: NewAbstractLinearProblem
+struct LinearProblem{A,B,C,D} <: AbstractLinearProblem
     solution::A
     matrix::B
     rhs::C
@@ -140,9 +150,9 @@ function update(p::LinearProblem;kwargs...)
     LinearProblem(x,A,b,attrs)
 end
 
-abstract type NewAbstractLinearSolver <: NewAbstractSolver end
+abstract type AbstractLinearSolver <: AbstractSolver end
 
-function LinearAlgebra.ldiv!(x,solver::NewAbstractLinearSolver,b)
+function LinearAlgebra.ldiv!(x,solver::AbstractLinearSolver,b)
     if uses_initial_guess(attributes(solver))
         fill!(x,zero(eltype(x)))
     end
@@ -150,9 +160,9 @@ function LinearAlgebra.ldiv!(x,solver::NewAbstractLinearSolver,b)
     x
 end
 
-function smooth!(x,s::NewAbstractLinearSolver,b;kwargs...)
+function smooth!(x,s::AbstractLinearSolver,b;kwargs...)
     s = update(s,solution=x,rhs=b)
-    s = solve(s)
+    s = solve(s;kwargs...)
     x
 end
 
@@ -160,10 +170,10 @@ function linear_solver(args...;
         uses_initial_guess = Val(true),
     )
     attributes = (;uses_initial_guess)
-    NewLinearSolver(args...,attributes)
+    LinearSolver(args...,attributes)
 end
 
-struct NewLinearSolver{A,B,C,D,E} <: NewAbstractLinearSolver
+struct LinearSolver{A,B,C,D,E} <: AbstractLinearSolver
     update::A
     step::B
     problem::C
@@ -171,30 +181,30 @@ struct NewLinearSolver{A,B,C,D,E} <: NewAbstractLinearSolver
     attributes::E
 end
 
-function update(s::NewLinearSolver;problem=s.problem,kwargs...)
+function update(s::LinearSolver;problem=s.problem,kwargs...)
     p = update(problem;kwargs...)
     workspace = s.workspace
     if haskey(kwargs,:matrix) || problem !== s.problem
         workspace = s.update(workspace,matrix(p))
     end
-    NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
+    LinearSolver(s.update,s.step,p,workspace,s.attributes)
 end
 
-function step(s::NewLinearSolver)
+function step(s::LinearSolver;kwargs...)
     p = s.problem
     x = solution(p)
     b = rhs(p)
-    next = s.step(x,s.workspace,b)
+    next = s.step(x,s.workspace,b;kwargs...)
     #if next === nothing
     #    return nothing
     #end
     x,workspace,state = next
     p = update(p,solution=x)
-    s = NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
+    s = LinearSolver(s.update,s.step,p,workspace,s.attributes)
     s,state
 end
 
-function step(s::NewLinearSolver,state)
+function step(s::LinearSolver,state)
     p = s.problem
     x = solution(p)
     b = rhs(p)
@@ -204,19 +214,26 @@ function step(s::NewLinearSolver,state)
     #end
     x,workspace,state = next
     p = update(p,solution=x)
-    s = NewLinearSolver(s.update,s.step,p,workspace,s.attributes)
+    s = LinearSolver(s.update,s.step,p,workspace,s.attributes)
     s,state
 end
 
-abstract type NewAbstractNonlinearProblem <: NewAbstractProblem end
+function preconditioner(solver,p)
+    dx = similar(solution(p),axes(matrix(p),2))
+    r = similar(rhs(p),axes(matrix(p),1))
+    dp = update(p,solution=dx,rhs=r)
+    solver(dp)
+end
 
-#function update(p::NewAbstractNonlinearProblem;kwargs...)
+abstract type AbstractNonlinearProblem <: AbstractProblem end
+
+#function update(p::AbstractNonlinearProblem;kwargs...)
 #    function update_nonlinear_problem(x)
 #        update(p,x;kwargs...)
 #    end
 #end
 
-#struct NonlinearProblemAge <: NewAbstractAge
+#struct NonlinearProblemAge <: AbstractAge
 #    solution::Int
 #    residual::Int
 #    jacobian::Int
@@ -239,7 +256,7 @@ function nonlinear_problem(args...;uses_mutable_types=Val(true))
     NonlinearProblem(args...,attributes)
 end
 
-struct NonlinearProblem{A,B,C,D,E,F} <: NewAbstractNonlinearProblem
+struct NonlinearProblem{A,B,C,D,E,F} <: AbstractNonlinearProblem
     statement::A
     solution::B
     residual::C
@@ -301,13 +318,13 @@ function update(p::NonlinearProblem;kwargs...)
     p
 end
 
-abstract type NewAbstractNonlinearSolver <: NewAbstractSolver end
+abstract type AbstractNonlinearSolver <: AbstractSolver end
 
 function nonlinear_solver(args...;attributes...)
     NonlinearSolver(args...,attributes)
 end
 
-struct NonlinearSolver{A,B,C,D,E} <: NewAbstractNonlinearSolver
+struct NonlinearSolver{A,B,C,D,E} <: AbstractNonlinearSolver
     update::A
     step::B
     problem::C
@@ -321,8 +338,8 @@ function update(s::NonlinearSolver;problem=s.problem,kwargs...)
     NonlinearSolver(s.update,s.step,p,workspace,s.attributes)
 end
 
-function step(s::NonlinearSolver)
-    next = s.step(s.workspace,s.problem)
+function step(s::NonlinearSolver;kwargs...)
+    next = s.step(s.workspace,s.problem;kwargs...)
     #if next === nothing
     #    return nothing
     #end
@@ -341,15 +358,15 @@ function step(s::NonlinearSolver,state)
     s,state
 end
 
-abstract type NewAbstractODEProblem <: NewAbstractProblem end
+abstract type AbstractODEProblem <: AbstractProblem end
 
-#function update(p::NewAbstractODEProblem;kwargs...)
+#function update(p::AbstractODEProblem;kwargs...)
 #    function update_ode_problem(x)
 #        update(p,x;kwargs...)
 #    end
 #end
 
-#struct ODEProblemAge <: NewAbstractAge
+#struct ODEProblemAge <: AbstractAge
 #    solution::Int
 #    residual::Int
 #    jacobian::Int
@@ -373,7 +390,7 @@ function ode_problem(args...;constant_jacobian=Val(false),uses_mutable_types=Val
     ODEProblem(args...,attributes)
 end
 
-struct ODEProblem{A,B,C,D,E,F,G,H} <: NewAbstractODEProblem
+struct ODEProblem{A,B,C,D,E,F,G,H} <: AbstractODEProblem
     statement::A
     solution::B
     residual::C
@@ -432,13 +449,13 @@ function update(p::ODEProblem;kwargs...)
     p
 end
 
-abstract type NewAbstractODESolver <: NewAbstractSolver end
+abstract type AbstractODESolver <: AbstractSolver end
 
 function ode_solver(args...;attributes...)
     ODESolver(args...,attributes)
 end
 
-struct ODESolver{A,B,C,D,E} <: NewAbstractODESolver
+struct ODESolver{A,B,C,D,E} <: AbstractODESolver
     update::A
     step::B
     problem::C
@@ -452,8 +469,8 @@ function update(s::ODESolver;problem=s.problem,kwargs...)
     ODESolver(s.update,s.step,p,workspace,s.attributes)
 end
 
-function step(s::ODESolver)
-    next = s.step(s.workspace,s.problem)
+function step(s::ODESolver;kwargs...)
+    next = s.step(s.workspace,s.problem;kwargs...)
     #if next === nothing
     #    return nothing
     #end
