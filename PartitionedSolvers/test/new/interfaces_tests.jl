@@ -4,7 +4,7 @@ import PartitionedSolvers as PS
 using Test
 
 function mock_linear_solver(p)
-    @assert ! PS.is_mutable(p)
+    @assert ! PS.uses_mutable_types(p)
     Ainv = 1/PS.matrix(p)
     function update(Ainv,A)
         Ainv = 1/A
@@ -37,7 +37,7 @@ end
 x = 0.0
 A = 2.0
 b = 12.0
-lp = PS.linear_problem(x,A,b;is_mutable=false)
+lp = PS.linear_problem(x,A,b;uses_mutable_types=false)
 ls = mock_linear_solver(lp)
 ls = PS.solve(ls)
 x = PS.solution(ls)
@@ -65,7 +65,7 @@ function mock_nonlinear_problem(x0)
     r0 = 0*x0
     j0 = 0*x0
     workspace = nothing
-    PS.nonlinear_problem(x0,r0,j0,workspace;is_mutable=false) do p
+    PS.nonlinear_problem(x0,r0,j0,workspace;uses_mutable_types=false) do p
         x = PS.solution(p)
         if PS.residual(p) !== nothing
             p = PS.update(p,residual = 2*x^2 - 4)
@@ -106,10 +106,10 @@ function mock_nonlinear_solver_step(ws,p,phase=:start)
 end
 
 function mock_nonlinear_solver(p;solver=mock_linear_solver,iterations=10)
-    @assert ! PS.is_mutable(p)
+    @assert ! PS.uses_mutable_types(p)
     iteration = 0
     dx = PS.solution(p)
-    lp = PS.linear_problem(dx,PS.jacobian(p),PS.residual(p);is_mutable=false)
+    lp = PS.linear_problem(dx,PS.jacobian(p),PS.residual(p);uses_mutable_types=false)
     ls = solver(lp)
     workspace = (;ls,iteration,iterations)
     PS.nonlinear_solver(
@@ -150,7 +150,7 @@ function mock_ode(u)
     ts = (0,10)
     dx = (u,u)
     workspace = nothing
-    PS.ode_problem(x,r,j,ts,dx,workspace;is_mutable=false) do ode
+    PS.ode_problem(x,r,j,ts,dx,workspace;uses_mutable_types=false) do ode
         (t,u2,v2) = PS.solution(ode)
         du,dv = PS.coefficients(ode)
         if PS.residual(ode) !== nothing
@@ -166,7 +166,7 @@ end
 function mock_ode_solver_problem(x0,dt,ode0)
     t,u, = PS.solution(ode0)
     workspace = nothing
-    PS.nonlinear_problem(PS.residual(ode0),PS.jacobian(ode0),x0,workspace;is_mutable=false) do p
+    PS.nonlinear_problem(PS.residual(ode0),PS.jacobian(ode0),x0,workspace;uses_mutable_types=false) do p
         x = PS.solution(p)
         v = (x - u) / dt
         r = PS.residual(p)
@@ -216,7 +216,7 @@ function mock_ode_solver(ode0;
         dt = (PS.interval(ode0)[2]-PS.interval(ode0)[1])/10,
         solver = mock_nonlinear_solver)
 
-    @assert ! PS.is_mutable(ode0)
+    @assert ! PS.uses_mutable_types(ode0)
     ode = PS.update(ode0,coefficients=(1.0,1/dt))
     _,u,_ = PS.solution(ode)
     x = u

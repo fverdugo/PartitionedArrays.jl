@@ -6,7 +6,7 @@ using SparseArrays
 using LinearAlgebra
 using IterativeSolvers
 using Printf
-using NLsolve
+import NLsolve
 using SparseMatricesCSR
 
 export setup
