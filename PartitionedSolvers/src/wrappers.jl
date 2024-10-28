@@ -28,7 +28,7 @@ function IterativeSolvers_cg(p;kwargs...)
     linear_solver(update,step,p,A)
 end
 
-function NLSolvers_nlsolve_setup(p)
+function NLsolve_nlsolve_setup(p)
     function f!(r,x)
         update(p,residual=r,jacobian=nothing,solution=x)
         r
@@ -44,13 +44,13 @@ function NLSolvers_nlsolve_setup(p)
     df = NLsolve.OnceDifferentiable(f!,j!,fj!,solution(p),residual(p),jacobian(p))
 end
 
-function NLSolvers_nlsolve(p;kwargs...)
+function NLsolve_nlsolve(p;kwargs...)
     @assert uses_mutable_types(p)
-    workspace = NLSolvers_nlsolve_setup(p)
+    workspace = NLsolve_nlsolve_setup(p)
     function update(workspace,p)
-        workspace = NLSolvers_nlsolve_setup(p)
+        workspace = NLsolve_nlsolve_setup(p)
     end
-    function step(workspace,p,phase=:start;kwargs...)
+    function step(workspace,p,phase=:start;options...)
         if phase === :stop
             return nothing
         end
@@ -64,7 +64,7 @@ function NLSolvers_nlsolve(p;kwargs...)
     nonlinear_solver(update,step,p,workspace)
 end
 
-function NLSolvers_nlsolve_linsolve(solver,p)
+function NLsolve_nlsolve_linsolve(solver,p)
     x = solution(p)
     A = jacobian(p)
     r = residual(p)
