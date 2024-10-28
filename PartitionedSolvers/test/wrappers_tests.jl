@@ -56,13 +56,13 @@ end
 
 x .= 0
 p = PS.update(p,solution=x)
-s = PS.NLSolvers_nlsolve(p;show_trace=true,method=:newton)
+s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton)
 s = PS.solve(s)
 
-linsolve = PS.NLSolvers_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
+linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
 x .= 0
 p = PS.update(p,solution=x)
-s = PS.NLSolvers_nlsolve(p;show_trace=true,linsolve,method=:newton)
+s = PS.NLsolve_nlsolve(p;show_trace=true,linsolve,method=:newton)
 s = PS.solve(s)
 
 end # module
