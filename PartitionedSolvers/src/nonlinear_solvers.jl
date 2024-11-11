@@ -1,6 +1,6 @@
 # TODO This is a very vanilla NR solver for the moment
 function newton_raphson(p;
-        solver=LinearAlgebra_lu,
+        solver=default_solver,
         iterations=1000,
         residual_tol = convert(real(eltype(solution(p))), 1e-8),
         solution_tol = zero(real(eltype(solution(p)))),

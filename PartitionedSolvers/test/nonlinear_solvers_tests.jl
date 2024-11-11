@@ -30,4 +30,20 @@ p = mock_nonlinear_problem(x)
 s = PS.newton_raphson(p;verbose=true)
 s = PS.solve(s)
 
+x = [1.0]
+p = mock_nonlinear_problem(x)
+s = PS.solve(p)
+
+x = [1.0]
+p = mock_nonlinear_problem(x)
+for s in PS.history(p)
+    @show s.workspace.residual_loss
+end
+
+x = [1.0]
+p = mock_nonlinear_problem(x)
+for residual_loss in PS.history(s->s.workspace.residual_loss,p)
+    @show residual_loss
+end
+
 end # module
