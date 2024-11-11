@@ -26,7 +26,7 @@ abstract type AbstractSolver <: AbstractType end
 #    end
 #end
 
-function solve(solver;kwargs...)
+function solve(solver::AbstractSolver;kwargs...)
     solver, state = step(solver;kwargs...)
     while state !== :stop
         solver, state = step(solver,state)
@@ -34,12 +34,27 @@ function solve(solver;kwargs...)
     solver
 end
 
-function history(solver;kwargs...)
+function history(solver::AbstractSolver;kwargs...)
     History(identity,solver,kwargs)
 end
 
-function history(f,solver;kwargs...)
+function history(f,solver::AbstractSolver;kwargs...)
     History(f,solver,kwargs)
+end
+
+function solve(p::AbstractProblem;kwargs...)
+    s = default_solver(p)
+    solve(s;kwargs...)
+end
+
+function history(p::AbstractProblem;kwargs...)
+    s = default_solver(p)
+    history(s;kwargs...)
+end
+
+function history(f,p::AbstractProblem;kwargs...)
+    s = default_solver(p)
+    history(f,s;kwargs...)
 end
 
 struct History{A,B,C}
@@ -94,6 +109,8 @@ residual(a::AbstractSolver) = residual(problem(a))
 jacobian(a::AbstractSolver) = jacobian(problem(a))
 
 abstract type AbstractLinearProblem <: AbstractProblem end
+
+default_solver(p::AbstractLinearProblem) = LinearAlgebra_lu(p)
 
 #struct LinearProblemAge <: AbstractAge
 #    solution::Int
@@ -228,6 +245,8 @@ function preconditioner(solver,p)
 end
 
 abstract type AbstractNonlinearProblem <: AbstractProblem end
+
+default_solver(p::AbstractNonlinearProblem) = newton_raphson(p)
 
 #function update(p::AbstractNonlinearProblem;kwargs...)
 #    function update_nonlinear_problem(x)

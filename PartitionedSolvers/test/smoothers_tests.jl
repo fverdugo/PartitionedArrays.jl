@@ -19,6 +19,14 @@ tol = 1.e-8
 y = similar(x)
 y .= 0
 p = PS.linear_problem(y,A,b)
+s = PS.solve(p)
+y = PS.solution(s)
+@test norm(y-x)/norm(x) < tol
+
+tol = 1.e-8
+y = similar(x)
+y .= 0
+p = PS.linear_problem(y,A,b)
 s = PS.jacobi(p;iterations=1000)
 s = PS.solve(s)
 y = PS.solution(s)

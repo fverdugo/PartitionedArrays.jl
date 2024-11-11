@@ -13,5 +13,6 @@ include("interfaces.jl")
 include("wrappers.jl")
 include("smoothers.jl")
 include("amg.jl")
+include("nonlinear_solvers.jl")
 
 end # module
