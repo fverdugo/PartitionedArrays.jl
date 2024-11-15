@@ -328,7 +328,12 @@ function set(p::NonlinearProblem;kwargs...)
     else
         attrs = attributes(p)
     end
-    NonlinearProblem(st,x,b,A,p.workspace,attrs)
+    if hasproperty(data,:workspace)
+        ws = data.workspace
+    else
+        ws = workspace(p)
+    end
+    NonlinearProblem(st,x,b,A,ws,attrs)
 end
 
 function update(p::NonlinearProblem;kwargs...)
