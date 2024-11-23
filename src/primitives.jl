@@ -112,7 +112,7 @@ function permute_nesting(a::AbstractArray{<:AbstractArray})
     end
 end
 
-function permute_nesting(a::Tuple{Vararg{<:AbstractArray}})
+function permute_nesting(a::Tuple{Vararg{AbstractArray}})
     array_of_tuples(a)
 end
 
