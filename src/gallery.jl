@@ -587,6 +587,3 @@ function nullspace_linear_elasticity!(B,x)
     end
     B
 end
-
-
-
