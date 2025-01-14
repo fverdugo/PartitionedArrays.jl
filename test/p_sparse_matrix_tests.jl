@@ -162,17 +162,42 @@ function p_sparse_matrix_tests(distribute)
     centralize(A) |> display
     B = A*A
     @test centralize(B) == centralize(A)*centralize(A)
+
+    copy_I = deepcopy(I)
+    copy_J = deepcopy(J)
+    copy_V = deepcopy(V)
+    new_A, _ = PartitionedArrays.psparse_yung_sheng!(sparse, copy_I, copy_J, copy_V, row_partition, col_partition) |> fetch
+    centralize(new_A) |> display
+    new_B = new_A * new_A
+    @test centralize(new_B) == centralize(new_A) * centralize(new_A)
+
     # TODO Assembly in non-split_format format not yet implemented
     #A = psparse(I,J,V,row_partition,col_partition,split_format=false,assemble=true) |> fetch
     
     A,cache = psparse(I,J,V,row_partition,col_partition,reuse=true) |> fetch
     psparse!(A,V,cache) |> wait
 
+    copy_I = deepcopy(I)
+    copy_J = deepcopy(J)
+    copy_V = deepcopy(V)
+    new_A, new_cache = PartitionedArrays.psparse_yung_sheng!(sparse, copy_I, copy_J, copy_V, row_partition, col_partition) |> fetch
+    copy_V = deepcopy(V)
+    PartitionedArrays.psparse_yung_sheng!(new_A, copy_V, new_cache) |> wait
+
     A_fa = psparse(I,J,V,row_partition,col_partition) |> fetch
     rows_co = partition(axes(A_fa,2))
     A_co = consistent(A_fa,rows_co) |> fetch
     A_co,cache = consistent(A_fa,rows_co;reuse=true) |> fetch
     consistent!(A_co,A_fa,cache) |> wait
+
+    copy_I = deepcopy(I)
+    copy_J = deepcopy(J)
+    copy_V = deepcopy(V)
+    new_A_fa, _ = PartitionedArrays.psparse_yung_sheng!(sparse, copy_I, copy_J, copy_V, row_partition, col_partition) |> fetch
+    new_rows_co = partition(axes(new_A_fa, 2))
+    new_A_co = consistent(new_A_fa, new_rows_co) |> fetch
+    new_A_co, new_cache = consistent(new_A_fa, new_rows_co; reuse=true) |> fetch
+    consistent!(new_A_co, new_A_fa, new_cache) |> wait
 
     n = 10
     parts = rank
@@ -222,6 +247,36 @@ function p_sparse_matrix_tests(distribute)
       @test all( values .== 6 )
     end
 
+    copy_I = deepcopy(I)
+    copy_J = deepcopy(J)
+    copy_V = deepcopy(V)
+    new_A, _ = PartitionedArrays.psparse_yung_sheng!(sparse, copy_I, copy_J, copy_V, row_partition, col_partition) |> fetch
+    new_x = pfill(3.0, axes(new_A, 2); split_format=true)
+    new_b = similar(new_x, axes(new_A, 1))
+    mul!(new_b, new_A, new_x)
+    map(own_values(new_b)) do values
+        @test all(values .== 6)
+    end
+    consistent!(new_b) |> wait
+    map(partition(new_b)) do values
+        @test all(values .== 6)
+    end
+
+    copy_I = deepcopy(I)
+    copy_J = deepcopy(J)
+    copy_V = deepcopy(V)
+    new_A, _ = PartitionedArrays.psparse_yung_sheng!(sparse, copy_I, copy_J, copy_V, row_partition, col_partition) |> fetch
+    new_x = pfill(3.0, axes(new_A, 2))
+    new_b = similar(new_x, axes(new_A, 1))
+    mul!(new_b, new_A, new_x)
+    map(own_values(new_b)) do values
+        @test all(values .== 6)
+    end
+    consistent!(new_b) |> wait
+    map(partition(new_b)) do values
+        @test all(values .== 6)
+    end
+
     _A = similar(A)
     _A = similar(A,eltype(A))
     copy!(_A,A)
@@ -233,6 +288,19 @@ function p_sparse_matrix_tests(distribute)
     consistent!(b) |> wait
     map(partition(b)) do values
         @test all( values .== 3 )
+    end
+
+    _new_A = similar(new_A)
+    _new_A = similar(new_A, eltype(new_A))
+    copy!(_new_A, new_A)
+    _new_A = copy(new_A)
+
+    LinearAlgebra.fillstored!(new_A, 1.0)
+    fill!(new_x, 3.0)
+    mul!(new_b, new_A, new_x)
+    consistent!(new_b) |> wait
+    map(partition(new_b)) do values
+        @test all(values .== 3)
     end
     
     I,J,V = map(parts) do part
@@ -254,9 +322,22 @@ function p_sparse_matrix_tests(distribute)
     @test isa(y,PVector)
     dy = y - y
 
+    copy_I = deepcopy(I)
+    copy_J = deepcopy(J)
+    copy_V = deepcopy(V)
+    new_A, _ = PartitionedArrays.psparse_yung_sheng!(sparse, copy_I, copy_J, copy_V, row_partition, col_partition) |> fetch
+    new_x = pones(partition(axes(new_A, 2)))
+    new_y = new_A * new_x
+    @test isa(new_y, PVector)
+    new_dy = new_y - new_y
+
     x = IterativeSolvers.cg(A,y)
     r = A*x-y
     @test norm(r) < 1.0e-9
+
+    new_x = IterativeSolvers.cg(new_A, new_y)
+    new_r = new_A * new_x - new_y
+    @test norm(new_r) < 1.0e-9
 
     x = pfill(0.0,partition(axes(A,2)))
     IterativeSolvers.cg!(x,A,y)
@@ -264,10 +345,21 @@ function p_sparse_matrix_tests(distribute)
     @test norm(r) < 1.0e-9
     fill!(x,0.0)
 
+    new_x = pfill(0.0, partition(axes(new_A, 2)))
+    IterativeSolvers.cg!(new_x, new_A, new_y)
+    new_r = new_A * new_x - new_y
+    @test norm(new_r) < 1.0e-9
+    fill!(new_x, 0.0)
+
     x = A\y
     @test isa(x,PVector)
     r = A*x-y
     @test norm(r) < 1.0e-9
+
+    new_x = new_A \ new_y
+    @test isa(new_x, PVector)
+    new_r = new_A * new_x - new_y
+    @test norm(new_r) < 1.0e-9
 
     factors = lu(A)
     x .= 0
@@ -275,12 +367,25 @@ function p_sparse_matrix_tests(distribute)
     r = A*x-y
     @test norm(r) < 1.0e-9
 
+    new_factors = lu(new_A)
+    new_x .= 0
+    ldiv!(new_x, new_factors, new_y)
+    new_r = new_A * new_x - new_y
+    @test norm(new_r) < 1.0e-9
+
     lu!(factors,A)
     x .= 0
     ldiv!(x,factors,y)
     r = A*x-y
     map(i->fill!(i,100),ghost_values(r))
     @test norm(r) < 1.0e-9
+
+    lu!(new_factors, new_A)
+    new_x .= 0
+    ldiv!(new_x, new_factors, new_y)
+    new_r = new_A * new_x - new_y
+    map(i -> fill!(i, 100), ghost_values(new_r))
+    @test norm(new_r) < 1.0e-9
 
     rows_trivial = trivial_partition(parts,n)
     cols_trivial = rows_trivial
@@ -307,6 +412,14 @@ function p_sparse_matrix_tests(distribute)
     B,w,cache = repartition(A,v,rows_trivial,cols_trivial,reuse=true) |> fetch
     repartition!(B,w,A,v,cache) |> wait
 
+    new_B = repartition(new_A, rows_trivial, cols_trivial) |> fetch
+    new_B, new_cache = repartition(new_A, rows_trivial, cols_trivial; reuse=true) |> fetch
+    repartition!(new_B, new_A, new_cache)
+
+    new_B, new_w = repartition(new_A, v, rows_trivial, cols_trivial) |> fetch
+    new_B, new_w, new_cache = repartition(new_A, v, rows_trivial, cols_trivial, reuse=true) |> fetch
+    repartition!(new_B, new_w, new_A, v, new_cache) |> wait
+
     I2 = map(copy,I)
     V2 = map(copy,I)
     rows = row_partition
@@ -329,6 +442,11 @@ function p_sparse_matrix_tests(distribute)
     u = consistent(w,A_cols) |> fetch
     u,cache = consistent(w,A_cols;reuse=true) |> fetch
     consistent!(u,w,cache) |> wait
+
+    new_A_cols = partition(axes(new_A, 2))
+    u = consistent(w, new_A_cols) |> fetch
+    u, cache = consistent(w, A_cols; reuse=true) |> fetch
+    consistent!(u, w, cache) |> wait
 
     A,b = psystem(I,J,V,I2,V2,rows,cols) |> fetch
     A,b,cache = psystem(I,J,V,I2,V2,rows,cols,reuse=true) |> fetch
