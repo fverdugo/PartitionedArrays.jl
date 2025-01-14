@@ -1,0 +1,1 @@
+Dict{String, @NamedTuple{min::Float64, max::Float64, avg::Float64}}("Phase 143" => (min = 0.2068526, max = 0.2068526, avg = 0.2068526), "Phase 3" => (min = 0.0, max = 0.0, avg = 0.0), "Matrix Assembly" => (min = 0.4054487, max = 0.4054487, avg = 0.4054487), "Phase 1" => (min = 1.1e-6, max = 1.1e-6, avg = 1.1e-6))

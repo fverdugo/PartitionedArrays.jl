@@ -154,6 +154,15 @@ function JaggedArray{T,Ti}(a::AbstractArray{<:AbstractArray}) where {T,Ti}
   JaggedArray(data,ptrs)
 end
 
+# New
+function jagged_range(a::Union{JaggedArray,GenericJaggedArray},i::Integer)
+  u = one(eltype(a.ptrs))
+  pini = a.ptrs[i]
+  pend = a.ptrs[i+1]-u
+  pini:pend
+end
+
+###########
 
 Base.size(a::Union{JaggedArray,GenericJaggedArray}) = (length(a.ptrs)-1,)
 function Base.getindex(a::Union{JaggedArray,GenericJaggedArray},i::Int)

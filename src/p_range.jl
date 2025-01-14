@@ -408,7 +408,7 @@ end
 """
     neigs_snd, neigs_rcv = assembly_neighbors(index_partition;kwargs...)
 
-Return the ids of the neighbor parts from we send and receive data respectively
+Return the ids of the neighbor parts from which we send and receive data respectively
 in the assembly of distributed vectors defined on the index
 partition `index_partition`.
 partition `index_partition`. `kwargs` are delegated to [`ExchangeGraph`](@ref)
@@ -470,7 +470,7 @@ end
 
 function assembly_local_indices(indices,neighbors_snd,neighbors_rcv)
     cache = map(assembly_cache,indices)
-    mask =  map(cache) do mycache
+    mask = map(cache) do mycache
         isassigned(mycache.local_indices_snd) && isassigned(mycache.local_indices_rcv)
     end
     if ! getany(mask)

@@ -378,7 +378,6 @@ function p_sparse_matrix_tests(distribute)
     A_seq = centralize(A)
     spmm!(B,Z,A,cacheB)
     @test centralize(B) ≈ Z_seq*(A_seq)
-
     B = transpose(Z)*A
     @test centralize(B) ≈ transpose(Z_seq)*A_seq
 
